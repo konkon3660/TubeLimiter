@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>TubeLimiter</title>
+  <link rel="stylesheet" href="/assets/common.css">
+  <link rel="stylesheet" href="/assets/popup_animations.css">
+</head>
+<body>
+
+  <div class="header">
+    <div style="position: relative; z-index: 1;">
+      🎯 TubeLimiter
+    </div>
+  </div>
+
+  <div class="tab-nav">
+    <button class="tab-button active" data-tab="status">📊 상태</button>
+    <button class="tab-button" data-tab="controls">⚙️ 기능</button>
+  </div>
+
+  <div id="status" class="tab-content active">
+    <div class="progress-section-center">
+      <div class="progress-circle-small" id="progressCircle">
+        <div class="progress-content">
+          <div class="progress-time" id="untilBlock">0분</div>
+          <div class="progress-label">차단까지</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="quick-stats-grid">
+      <div class="stat-row">
+        <span class="stat-label">사용</span>
+        <span class="stat-value" id="usageTime">0분 0초</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">긴급</span>
+        <span class="stat-value" id="emergencyCount">0회</span>
+      </div>
+    </div>
+
+    <div class="status-badges">
+      <div class="badge-row">
+        <span class="badge-label">집중</span>
+        <div id="focusModeStatus">
+          <span class="status-badge status-inactive">비활성</span>
+        </div>
+      </div>
+      <div class="badge-row">
+        <span class="badge-label">AI</span>
+        <div id="studyAiStatus">
+          <span class="status-badge status-inactive">비활성</span>
+        </div>
+      </div>
+      <div class="badge-row">
+        <span class="badge-label">Shorts 차단</span>
+        <div id="shortsBlockStatus">
+          <span class="status-badge status-inactive">비활성</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="emergencyTimeLeft" class="emergency-alert" style="display:none;">
+      ⚠️ 긴급 시청 시간이 곧 만료됩니다!
+    </div>
+  </div>
+
+  <div id="controls" class="tab-content">
+    <div class="control-section">
+      <h4>🚨 긴급 시청</h4>
+      <button id="emergencyButton" class="btn-primary">
+        긴급 시청 요청
+      </button>
+    </div>
+
+    <div class="control-section">
+      <h4>🎯 집중 모드</h4>
+      <div class="input-group">
+        <label for="focusModeDelayInput">지연(분):</label>
+        <input type="number" id="focusModeDelayInput" min="0" max="120" value="0" placeholder="0">
+        <span class="input-hint">0 = 즉시 시작</span>
+      </div>
+      <div class="input-group">
+        <label for="focusModeDurationInput">지속(분):</label>
+        <input type="number" id="focusModeDurationInput" min="1" max="480" value="30" placeholder="30">
+      </div>
+      <button id="startFocusModeButton" class="btn-primary">
+        집중 모드 시작
+      </button>
+      <button id="stopFocusModeButton" class="btn-danger">
+        집중 모드 종료
+      </button>
+    </div>
+
+    <div class="footer-in-tab">
+      <button id="viewStatsButton" class="btn-secondary">
+        📈 통계
+      </button>
+      <button id="optionsButton" class="btn-secondary">
+        ⚙️ 옵션
+      </button>
+    </div>
+  </div>
+
+  
+  <script src="/popup.js" type="module"></script>
+</body>
+</html>

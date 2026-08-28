@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "TubeLimiter",
+  "version": "2.0.0",
+  "description": "유튜브 시청을 제한하고, 꾸준히 지킨 기록을 스트릭/XP/업적으로 보여주는 확장 프로그램",
+  "permissions": ["storage", "tabs", "scripting", "alarms"],
+  "host_permissions": ["*://*.youtube.com/*"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "assets/icon16.png",
+      "48": "assets/icon48.png",
+      "128": "assets/icon128.png"
+    }
+  },
+  "options_page": "options/options.html",
+  "content_scripts": [
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["content/content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

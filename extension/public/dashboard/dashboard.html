@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>TubeLimiter 대시보드</title>
+  <link rel="stylesheet" href="/assets/common.css">
+  <link rel="stylesheet" href="/assets/gamify.css">
+  <style>
+    body { width: auto; max-width: 720px; margin: 0 auto; padding-bottom: 40px; }
+    .section { padding: 16px; }
+    canvas { max-width: 100%; }
+  </style>
+</head>
+<body>
+  <div class="header"><div style="position: relative; z-index: 1;">📈 TubeLimiter 대시보드</div></div>
+
+  <div id="signedOutView" style="display:none;">
+    <div class="auth-box"><p>로그인 후 대시보드를 확인할 수 있어요.</p></div>
+  </div>
+
+  <div id="signedInView" style="display:none;">
+    <div class="section streak-hero">
+      <div class="streak-number" id="streakNumber">0</div>
+      <div class="streak-caption">일 연속 성공 · 최고 <span id="bestStreak">0</span>일 · 누적 성공 <span id="totalSuccess">0</span>일</div>
+      <div class="xp-bar-track" style="max-width:280px; margin: 8px auto 0;"><div class="xp-bar-fill" id="xpBarFill" style="width:0%"></div></div>
+      <div class="streak-caption">Lv.<span id="levelNumber">1</span> · <span id="xpLabel">0/100 XP</span></div>
+    </div>
+
+    <div class="section">
+      <h4>최근 28일 성공/실패</h4>
+      <div class="heatmap" id="heatmap"></div>
+    </div>
+
+    <div class="section">
+      <h4>업적</h4>
+      <div class="badge-grid" id="badgeGrid"></div>
+    </div>
+
+    <div class="section">
+      <h4>최근 사용 시간 (분)</h4>
+      <canvas id="usageChart" height="120"></canvas>
+    </div>
+  </div>
+
+  <script src="/assets/vendor/chart.umd.min.js"></script>
+  <script src="/dashboard/dashboard.js" type="module"></script>
+</body>
+</html>

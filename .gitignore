@@ -1,0 +1,5 @@
+node_modules/
+extension.zip
+.agents/
+.claude/skills/
+.claude/settings.local.json

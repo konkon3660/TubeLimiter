@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TubeLimiter 옵션</title>
+  <link rel="stylesheet" href="/assets/common.css">
+  <style>
+    body {
+      width: 100%;
+      min-height: 100vh;
+      padding: 0;
+      margin: 0;
+      background: var(--bg-color);
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 24px;
+    }
+
+    .page-header {
+      margin-bottom: 40px;
+      text-align: center;
+    }
+
+    .page-title {
+      font-size: 2em;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 8px;
+    }
+
+    .page-subtitle {
+      color: #94a3b8;
+      font-size: 0.95em;
+    }
+
+    /* 탭 네비게이션 */
+    .tab-navigation {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 32px;
+      border-bottom: 2px solid var(--border-color);
+      overflow-x: auto;
+      scrollbar-width: none; /* Firefox */
+      -ms-overflow-style: none; /* IE and Edge */
+    }
+
+    .tab-navigation::-webkit-scrollbar {
+      display: none; /* Chrome, Safari, Opera */
+    }
+
+    .tab-button {
+      padding: 12px 24px;
+      background: none;
+      border: none;
+      font-size: 0.95em;
+      font-weight: 600;
+      color: #94a3b8;
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .tab-button:hover {
+      color: var(--primary-color);
+      background: rgba(79, 70, 229, 0.05);
+    }
+
+    .tab-button.active {
+      color: var(--primary-color);
+      border-bottom-color: var(--primary-color);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .card {
+      background: var(--card-bg);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+      border: 1px solid var(--border-color);
+      box-shadow: var(--shadow);
+      transition: all 0.2s ease;
+    }
+
+    .card:hover {
+      box-shadow: var(--shadow-lg);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 2px solid var(--border-color);
+    }
+
+    .card-icon {
+      font-size: 1.5em;
+    }
+
+    .card-title {
+      font-size: 1.3em;
+      font-weight: 600;
+      color: #475569;
+      flex: 1;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #475569;
+      font-size: 0.95em;
+    }
+
+    .form-description {
+      font-size: 0.85em;
+      color: #94a3b8;
+      margin-top: 6px;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      font-size: 0.95em;
+      transition: all 0.2s ease;
+      background: var(--bg-color);
+      color: #475569;
+      box-sizing: border-box;
+    }
+
+    .form-input:focus {
+      border-color: var(--primary-color);
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+    }
+
+    .radio-group {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+    }
+
+    .radio-option {
+      display: flex;
+      align-items: center;
+      padding: 12px 16px;
+      border: 2px solid var(--border-color);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      background: var(--bg-color);
+    }
+
+    .radio-option:hover {
+      border-color: var(--primary-color);
+      background: rgba(79, 70, 229, 0.05);
+    }
+
+    .radio-option input[type="radio"] {
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border: 2px solid var(--border-color);
+      border-radius: 50%;
+      margin-right: 10px;
+      position: relative;
+      transition: all 0.2s ease;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .radio-option input[type="radio"]:checked {
+      border-color: var(--primary-color);
+      background: var(--primary-color);
+    }
+
+    .radio-option input[type="radio"]:checked::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 6px;
+      height: 6px;
+      background: white;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .radio-option:has(input:checked) {
+      border-color: var(--primary-color);
+      background: rgba(79, 70, 229, 0.1);
+      color: var(--primary-color);
+      font-weight: 600;
+    }
+
+    .btn {
+      padding: 11px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95em;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+      color: white;
+      box-shadow: var(--shadow);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .btn-primary:active {
+      transform: translateY(0);
+    }
+
+    .btn-danger {
+      background: linear-gradient(135deg, var(--danger-color), var(--danger-hover));
+      color: white;
+      box-shadow: var(--shadow);
+    }
+
+    .btn-danger:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .btn-secondary {
+      background: var(--bg-color);
+      color: var(--dark-gray);
+      border: 1px solid var(--border-color);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(79, 70, 229, 0.05);
+      border-color: var(--primary-color);
+    }
+
+    .status-message {
+      margin-top: 12px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.9em;
+      display: none;
+      animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .status-success {
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--success-color);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .status-error {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--danger-color);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .day-setting-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+    }
+
+    .day-setting {
+      background: var(--bg-color);
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      transition: all 0.2s ease;
+    }
+
+    .day-setting:hover {
+      box-shadow: var(--shadow);
+      border-color: var(--primary-color);
+    }
+
+    .day-setting-title {
+      font-weight: 600;
+      color: var(--dark-gray);
+      margin-bottom: 8px;
+      font-size: 0.9em;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .day-setting .input-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .day-setting .input-group input[type="number"] {
+      flex: 1;
+      padding: 6px 8px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      font-size: 0.85em;
+      background: var(--card-bg);
+      color: var(--dark-gray);
+    }
+
+    .day-setting .input-group input[type="number"]:focus {
+      border-color: var(--primary-color);
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+    }
+
+    .day-setting .input-group .unit {
+      font-size: 0.8em;
+      color: var(--gray);
+      font-weight: 500;
+      min-width: 24px;
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      background: var(--bg-color);
+      border-radius: 8px;
+      border: 2px solid var(--border-color);
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+
+    .checkbox-group:hover {
+      border-color: var(--primary-color);
+      background: rgba(79, 70, 229, 0.05);
+    }
+
+    .checkbox-group input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+      accent-color: var(--primary-color);
+      cursor: pointer;
+    }
+
+    .checkbox-group label {
+      font-size: 0.95em;
+      color: var(--dark-gray);
+      cursor: pointer;
+      font-weight: 500;
+      flex: 1;
+    }
+
+    /* 요일별 설정 내 체크박스 그룹 (더 컴팩트) */
+    .day-setting .checkbox-group {
+      padding: 6px 10px;
+      gap: 6px;
+      border-width: 1px;
+    }
+
+    .day-setting .checkbox-group input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+    }
+
+    .day-setting .checkbox-group label {
+      font-size: 0.8em;
+    }
+
+    #whitelistList {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      max-height: 600px;
+      overflow-y: auto;
+    }
+
+    #whitelistList::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    #whitelistList::-webkit-scrollbar-track {
+      background: var(--bg-color);
+      border-radius: 4px;
+    }
+
+    #whitelistList::-webkit-scrollbar-thumb {
+      background: var(--border-color);
+      border-radius: 4px;
+    }
+
+    #whitelistList::-webkit-scrollbar-thumb:hover {
+      background: var(--gray);
+    }
+
+    #whitelistList li {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      background: var(--bg-color);
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      transition: all 0.2s ease;
+    }
+
+    #whitelistList li:hover {
+      background: rgba(79, 70, 229, 0.05);
+      border-color: var(--primary-color);
+    }
+
+    .whitelist-item-thumbnail {
+      width: 120px;
+      height: 68px;
+      object-fit: cover;
+      border-radius: 6px;
+      flex-shrink: 0;
+      background: var(--border-color);
+    }
+
+    .whitelist-item-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .whitelist-item-title {
+      font-weight: 600;
+      color: var(--dark-gray);
+      font-size: 0.95em;
+      margin-bottom: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .shorts-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 6px;
+      background: linear-gradient(135deg, #ff0000, #cc0000);
+      color: white;
+      font-size: 0.7em;
+      font-weight: 700;
+      border-radius: 4px;
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+
+    .study-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 6px;
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: white;
+      font-size: 0.7em;
+      font-weight: 700;
+      border-radius: 4px;
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+
+    .whitelist-item-url {
+      font-size: 0.85em;
+      color: #94a3b8;
+      font-family: monospace;
+      word-break: break-all;
+    }
+
+    .whitelist-item-actions {
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .whitelist-item-actions button {
+      padding: 6px 16px;
+      font-size: 0.85em;
+      min-width: 70px;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    /* 반응형 디자인 */
+    @media (max-width: 768px) {
+      .container {
+        padding: 24px 16px;
+      }
+
+      .page-title {
+        font-size: 1.6em;
+      }
+
+      .card {
+        padding: 20px;
+      }
+
+      .radio-group {
+        grid-template-columns: 1fr;
+      }
+
+      .day-setting-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .button-group {
+        flex-direction: column;
+      }
+
+      .button-group .btn {
+        width: 100%;
+        justify-content: center;
+      }
+
+      .tab-navigation {
+        gap: 4px;
+      }
+
+      .tab-button {
+        padding: 10px 16px;
+        font-size: 0.85em;
+      }
+
+      .whitelist-item-thumbnail {
+        width: 80px;
+        height: 45px;
+      }
+
+      #whitelistList li {
+        flex-wrap: wrap;
+      }
+
+      .whitelist-item-actions {
+        width: 100%;
+        justify-content: flex-end;
+      }
+    }
+
+    /* 다크 모드 지원 */
+    @media (prefers-color-scheme: dark) {
+      .page-subtitle {
+        color: #cbd5e1;
+      }
+
+      .tab-button {
+        color: #cbd5e1;
+      }
+
+      .tab-button:hover {
+        background: rgba(79, 70, 229, 0.2);
+      }
+
+      .card-title {
+        color: #e2e8f0;
+      }
+
+      .form-label {
+        color: #e2e8f0;
+      }
+
+      .form-description {
+        color: #cbd5e1;
+      }
+
+      .whitelist-item-url {
+        color: #cbd5e1;
+      }
+
+      .day-setting-title {
+        color: #e2e8f0;
+      }
+
+      .checkbox-group label {
+        color: #e2e8f0;
+      }
+
+      .whitelist-item-title {
+        color: #e2e8f0;
+      }
+
+      .form-input {
+        color: #e2e8f0;
+      }
+
+      .day-setting .input-group input[type="number"] {
+        color: #e2e8f0;
+      }
+
+      .day-setting .input-group .unit {
+        color: #cbd5e1;
+      }
+
+      .radio-option {
+        color: #cbd5e1;
+      }
+
+      .radio-option:hover {
+        background: rgba(79, 70, 229, 0.15);
+      }
+
+      .checkbox-group:hover {
+        background: rgba(79, 70, 229, 0.15);
+      }
+
+      .btn-secondary {
+        color: #cbd5e1;
+      }
+
+      .btn-secondary:hover {
+        background: rgba(79, 70, 229, 0.2);
+        color: #e2e8f0;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="page-header">
+      <div class="page-title">🎯 TubeLimiter 설정</div>
+      <div class="page-subtitle">YouTube 사용 시간 관리 및 제한 설정</div>
+    </div>
+
+    <!-- 탭 네비게이션 -->
+    <div class="tab-navigation">
+      <button class="tab-button active" data-tab="time-limit">⏱️ 시간 제한 설정</button>
+      <button class="tab-button" data-tab="emergency">🚨 긴급 시청 설정</button>
+      <button class="tab-button" data-tab="rules">🤖 AI 및 차단 규칙</button>
+      <button class="tab-button" data-tab="whitelist">✅ 화이트리스트</button>
+    </div>
+
+    <!-- 시간 제한 설정 탭 -->
+    <div class="tab-content active" id="time-limit">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon">⏱️</div>
+          <div class="card-title">시간 제한 설정</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">초기화 주기</label>
+          <div class="radio-group">
+            <label class="radio-option">
+              <input type="radio" id="resetDailyLimit" name="dailyLimitResetFrequency" value="daily">
+              <span>매일</span>
+            </label>
+            <label class="radio-option">
+              <input type="radio" id="resetWeeklyLimit" name="dailyLimitResetFrequency" value="weekly">
+              <span>매주</span>
+            </label>
+            <label class="radio-option">
+              <input type="radio" id="resetMonthlyLimit" name="dailyLimitResetFrequency" value="monthly">
+              <span>매월</span>
+            </label>
+            <label class="radio-option">
+              <input type="radio" id="resetByDayLimit" name="dailyLimitResetFrequency" value="by_day">
+              <span>요일별</span>
+            </label>
+          </div>
+          <div class="form-description">시간 제한이 초기화되는 주기를 설정합니다</div>
+        </div>
+
+        <div style="margin-top: 20px;">
+          <button id="saveDailyLimitResetFrequencyButton" class="btn btn-primary">💾 주기 저장</button>
+          <div id="dailyLimitResetFrequencyStatus" class="status-message"></div>
+        </div>
+
+        <div style="margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border-color);">
+          <label class="form-label">사용 시간 제한</label>
+          <div id="dailyLimitSettingContainer"></div>
+          <div style="margin-top: 20px;">
+            <button id="saveDailyLimitSettingButton" class="btn btn-primary">💾 시간 저장</button>
+            <div id="dailyLimitSettingStatus" class="status-message"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 긴급 시청 설정 탭 -->
+    <div class="tab-content" id="emergency">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon">🚨</div>
+          <div class="card-title">긴급 시청 설정</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">초기화 주기</label>
+          <div class="radio-group">
+            <label class="radio-option">
+              <input type="radio" id="resetDaily" name="emergencyResetFrequency" value="daily">
+              <span>매일</span>
+            </label>
+            <label class="radio-option">
+              <input type="radio" id="resetWeekly" name="emergencyResetFrequency" value="weekly">
+              <span>매주</span>
+            </label>
+            <label class="radio-option">
+              <input type="radio" id="resetMonthly" name="emergencyResetFrequency" value="monthly">
+              <span>매월</span>
+            </label>
+            <label class="radio-option">
+              <input type="radio" id="resetByDay" name="emergencyResetFrequency" value="by_day">
+              <span>요일별</span>
+            </label>
+          </div>
+          <div class="form-description">긴급 시청 횟수가 초기화되는 주기를 설정합니다</div>
+        </div>
+
+        <div style="margin-top: 20px;">
+          <button id="saveEmergencyResetFrequencyButton" class="btn btn-primary">💾 주기 저장</button>
+          <div id="emergencyResetFrequencyStatus" class="status-message"></div>
+        </div>
+
+        <div style="margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border-color);">
+          <label class="form-label">긴급 시청 횟수</label>
+          <div id="emergencyUsesSettingContainer"></div>
+          <div style="margin-top: 20px;">
+            <button id="saveEmergencyUsesSettingButton" class="btn btn-primary">💾 횟수 저장</button>
+            <div id="emergencyUsesSettingStatus" class="status-message"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI 및 차단 규칙 탭 -->
+    <div class="tab-content" id="rules">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon">🤖</div>
+          <div class="card-title">AI 및 차단 규칙</div>
+        </div>
+
+        <div class="form-group">
+          <label class="checkbox-group">
+            <input type="checkbox" id="useStudyAI">
+            <label for="useStudyAI">공부 감지 AI 사용</label>
+          </label>
+          <div class="form-description">AI가 공부 중인지 자동으로 감지하여 시간을 차감하지 않습니다</div>
+        </div>
+
+        <div class="form-group">
+          <label class="checkbox-group">
+            <input type="checkbox" id="alwaysBlockShorts">
+            <label for="alwaysBlockShorts">YouTube Shorts 항상 차단</label>
+          </label>
+          <div class="form-description">사용 시간과 관계없이 Shorts를 항상 차단합니다</div>
+        </div>
+
+        <div style="margin-top: 20px;">
+          <button id="saveRulesButton" class="btn btn-primary">💾 설정 저장</button>
+          <div id="rulesStatus" class="status-message"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 화이트리스트 탭 -->
+    <div class="tab-content" id="whitelist">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon">✅</div>
+          <div class="card-title">화이트리스트</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="whitelistUrlInput">URL 추가</label>
+          <input type="text" id="whitelistUrlInput" class="form-input" placeholder="youtube.com/watch?v=...">
+          <div class="form-description">시간 제한에서 제외할 YouTube URL을 입력하세요</div>
+        </div>
+
+        <div class="form-group">
+          <label class="checkbox-group">
+            <input type="checkbox" id="isStudyVideo">
+            <label for="isStudyVideo">공부 영상으로 등록</label>
+          </label>
+          <div class="form-description">체크하면 AI 감지와 관계없이 항상 공부 중으로 인식됩니다</div>
+        </div>
+
+        <div style="margin-top: 16px;">
+          <button id="addWhitelistButton" class="btn btn-primary">➕ 추가</button>
+          <div id="whitelistStatus" class="status-message"></div>
+        </div>
+
+        <div style="margin-top: 24px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <label class="form-label" style="margin-bottom: 0;">등록된 URL</label>
+            <div class="radio-group" style="grid-template-columns: repeat(3, auto); gap: 8px; margin: 0;">
+              <label class="radio-option" style="padding: 6px 12px; font-size: 0.85em;">
+                <input type="radio" name="whitelistFilter" value="all" checked>
+                <span>전체</span>
+              </label>
+              <label class="radio-option" style="padding: 6px 12px; font-size: 0.85em;">
+                <input type="radio" name="whitelistFilter" value="study">
+                <span>공부</span>
+              </label>
+              <label class="radio-option" style="padding: 6px 12px; font-size: 0.85em;">
+                <input type="radio" name="whitelistFilter" value="non-study">
+                <span>비공부</span>
+              </label>
+            </div>
+          </div>
+          <ul id="whitelistList"></ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/options.js" type="module"></script>
+</body>
+</html>
