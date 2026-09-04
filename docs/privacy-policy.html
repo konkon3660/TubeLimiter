@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TubeLimiter 개인정보처리방침 / Privacy Policy</title>
+<meta name="description" content="TubeLimiter 크롬 확장 프로그램 및 안드로이드 앱의 개인정보처리방침 / Privacy policy for the TubeLimiter Chrome extension and Android app.">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --fg: #1b1b1f;
+    --muted: #5b5b66;
+    --rule: #e2e2e8;
+    --accent: #b8341f;
+    --card: #f6f6f8;
+    --code-bg: #eeeef2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16161a;
+      --fg: #e8e8ec;
+      --muted: #a0a0ad;
+      --rule: #2e2e36;
+      --accent: #ff8a70;
+      --card: #1e1e24;
+      --code-bg: #26262e;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo",
+      "Malgun Gothic", "Noto Sans KR", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.75;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 40px 20px 80px; }
+  header { border-bottom: 1px solid var(--rule); padding-bottom: 20px; margin-bottom: 8px; }
+  h1 { font-size: 1.7rem; line-height: 1.35; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 {
+    font-size: 1.2rem; margin: 40px 0 10px; padding-top: 20px;
+    border-top: 1px solid var(--rule); letter-spacing: -0.01em;
+  }
+  h3 { font-size: 1rem; margin: 24px 0 6px; }
+  p, li { margin: 8px 0; }
+  ul { padding-left: 22px; }
+  a { color: var(--accent); }
+  .meta { color: var(--muted); font-size: 0.9rem; line-height: 1.6; }
+  .lead { color: var(--muted); }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.87em; background: var(--code-bg);
+    padding: 1px 5px; border-radius: 4px;
+  }
+  .table-wrap { overflow-x: auto; margin: 14px 0; -webkit-overflow-scrolling: touch; }
+  table { border-collapse: collapse; width: 100%; min-width: 460px; font-size: 0.93rem; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--rule); }
+  th { font-weight: 600; background: var(--card); white-space: nowrap; }
+  .note {
+    background: var(--card); border-left: 3px solid var(--accent);
+    padding: 12px 16px; margin: 18px 0; border-radius: 0 6px 6px 0;
+  }
+  .note p { margin: 4px 0; }
+  .lang-switch { font-size: 0.9rem; margin-top: 14px; }
+  hr.lang-divider { border: 0; border-top: 3px double var(--rule); margin: 64px 0 8px; }
+  footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 0.88rem; }
+  @media (max-width: 480px) {
+    main { padding: 28px 16px 60px; }
+    h1 { font-size: 1.4rem; }
+  }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>TubeLimiter 개인정보처리방침</h1>
+  <p class="meta">
+    최종 수정일: 2026년 9월 5일<br>
+    적용 대상: TubeLimiter 안드로이드 앱(<code>com.tubelimiter.app</code>) 및 TubeLimiter 크롬 확장 프로그램
+  </p>
+  <p class="lang-switch"><a href="#english">English version below ↓</a></p>
+</header>
+
+<p class="lead">
+  TubeLimiter는 유튜브 시청 시간을 스스로 정한 한도 안에서 관리하도록 돕는 개인 제작 도구입니다.
+  이 방침은 앱과 확장 프로그램이 실제로 어떤 데이터를 다루는지를, 코드에 구현된 그대로 설명합니다.
+</p>
+
+<h2>1. 운영자 및 연락처</h2>
+<ul>
+  <li>운영자: TubeLimiter 개발자(개인 개발자)</li>
+  <li>문의 및 데이터 삭제 요청: <a href="mailto:jookpower1022@gmail.com">jookpower1022@gmail.com</a></li>
+</ul>
+<p>개인정보 관련 문의는 위 이메일로 보내주시면 됩니다.</p>
+
+<h2>2. 수집하는 정보</h2>
+
+<h3>2-1. 계정 정보</h3>
+<p>
+  로그인은 이메일 주소와 비밀번호로 이루어지며, 인증은 Supabase Auth가 처리합니다.
+  Supabase에는 <strong>이메일 주소</strong>와 계정 식별자(UUID), 그리고 Supabase가 관리하는
+  비밀번호 자격증명이 저장됩니다. 비밀번호 원문은 앱이나 확장 프로그램이 저장하지 않습니다.
+  가입 확인·비밀번호 재설정 메일은 Supabase가 이 이메일 주소로 발송합니다.
+</p>
+<p>
+  <strong>로그인은 선택입니다.</strong> 로그인하지 않아도 한도 설정, 사용시간 측정, 차단은
+  기기 안에서 그대로 동작하며 이 경우 서버로 전송되는 데이터는 없습니다.
+  로그인은 여러 기기(폰 · PC 브라우저) 사이에서 기록을 합치기 위한 기능입니다.
+</p>
+
+<h3>2-2. 서버(Supabase)에 저장되는 데이터</h3>
+<p>로그인 상태에서 저장되는 값은 아래 네 개의 테이블이 전부입니다.</p>
+
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>테이블</th><th>저장 내용</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>daily_usage</code></td>
+      <td>
+        날짜별 유튜브 사용 시간 합계(<code>usage_ms</code>), Shorts 시청 시간(<code>shorts_ms</code>,
+        브라우저에서만 집계), 그중 긴급 시청으로 본 시간(<code>emergency_ms</code>), 갱신 시각.
+        <strong>날짜와 밀리초 단위 숫자뿐</strong>이며 어떤 영상을 봤는지는 포함되지 않습니다.
+      </td>
+    </tr>
+    <tr>
+      <td><code>settings</code></td>
+      <td>
+        사용자가 직접 정한 설정값: 일일 한도, 요일별 한도, 한도 리셋 주기, Shorts 항상 차단 여부,
+        <strong>사용자가 직접 입력한 화이트리스트 문자열</strong>(브라우저 전용 예외 규칙),
+        긴급 시청 허용 횟수·리셋 주기, 알림 주기 및 마일스톤 알림 사용 여부,
+        하드코어 모드 상태와 해제 요청 시각, 예약 차단 시간대(요일·시작/종료 분).
+      </td>
+    </tr>
+    <tr>
+      <td><code>streaks</code></td>
+      <td>
+        연속 성공 일수, 최고 기록, 마지막 판정 날짜, 총 성공 일수, XP,
+        완벽한 날 수 및 완벽한 날 연속·최고 기록.
+      </td>
+    </tr>
+    <tr>
+      <td><code>achievements</code></td>
+      <td>획득한 뱃지 식별자(예: <code>streak_7</code>, <code>perfect_30</code>)와 획득 시각.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<div class="note">
+  <p><strong>수집하지 않는 것</strong></p>
+  <p>
+    영상 제목, 영상 ID, 채널명, 시청 기록, 검색어, 페이지 내용, 화면 캡처, 기기 식별자(광고 ID 등),
+    위치 정보, 연락처, 통화·문자, 사진, 마이크·카메라 데이터는 수집하지도, 저장하지도, 전송하지도 않습니다.
+  </p>
+  <p>
+    화이트리스트 항목은 사용자가 설정 화면에서 직접 타이핑해 넣은 예외 규칙 문자열이며,
+    방문 기록을 자동으로 수집한 결과가 아닙니다.
+  </p>
+  <p>
+    광고 SDK, 분석 SDK, 크래시 리포팅 SDK를 일절 포함하지 않습니다.
+    앱과 확장 프로그램이 통신하는 외부 서버는 Supabase 하나뿐입니다.
+  </p>
+</div>
+
+<h2>3. 안드로이드 앱이 요구하는 권한</h2>
+<p>매니페스트에 선언된 권한과 그 이유는 다음과 같습니다.</p>
+
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>권한</th><th>필요한 이유</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>PACKAGE_USAGE_STATS</code><br>(사용정보 접근)</td>
+      <td>
+        유튜브 앱이 화면 앞에 있던 시간을 재기 위해 필요합니다. 설정 화면에서 사용자가 직접 켜야 합니다.
+      </td>
+    </tr>
+    <tr>
+      <td><code>SYSTEM_ALERT_WINDOW</code><br>(다른 앱 위에 표시)</td>
+      <td>한도를 다 쓴 뒤 유튜브를 열면 차단 화면을 위에 띄우기 위해 필요합니다.</td>
+    </tr>
+    <tr>
+      <td><code>POST_NOTIFICATIONS</code></td>
+      <td>남은 시간 알림과, 감시 서비스가 실행 중임을 알리는 상시 알림을 표시합니다.</td>
+    </tr>
+    <tr>
+      <td><code>FOREGROUND_SERVICE</code>,<br><code>FOREGROUND_SERVICE_SPECIAL_USE</code></td>
+      <td>
+        사용시간 측정과 차단이 앱을 닫아도 계속 동작하도록 포그라운드 서비스로 상주하기 위해 필요합니다.
+      </td>
+    </tr>
+    <tr>
+      <td><code>RECEIVE_BOOT_COMPLETED</code></td>
+      <td>기기를 재부팅해도 감시가 자동으로 다시 시작되도록 합니다.</td>
+    </tr>
+    <tr>
+      <td><code>REQUEST_IGNORE_BATTERY_OPTIMIZATIONS</code></td>
+      <td>
+        절전 모드에서 측정이 끊기지 않도록 배터리 최적화 예외를 요청합니다. 사용자가 거부해도 앱은 동작합니다.
+      </td>
+    </tr>
+    <tr>
+      <td><code>INTERNET</code></td>
+      <td>로그인과 Supabase 동기화에만 사용합니다.</td>
+    </tr>
+    <tr>
+      <td><code>&lt;queries&gt;</code> — <code>com.google.android.youtube</code></td>
+      <td>
+        유튜브 앱 하나만 조회 대상으로 선언합니다. 설치된 앱 목록 전체를 읽지 않습니다.
+      </td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<div class="note">
+  <p><strong>안드로이드에서의 사용시간 감지는 "앱 단위"입니다.</strong></p>
+  <p>
+    앱은 안드로이드의 <code>UsageStatsManager</code>가 주는 앱 전환 이벤트만 읽고,
+    그중 유튜브 패키지(<code>com.google.android.youtube</code>)에 해당하지 않는 이벤트는
+    즉시 버립니다. 다른 앱의 사용 기록은 저장하거나 전송하지 않습니다.
+  </p>
+  <p>
+    이 방식은 "유튜브 앱이 화면에 떠 있었는가"만 알 수 있을 뿐,
+    <strong>무엇을 보고 있는지는 원리상 알 수 없습니다.</strong>
+    화면 내용을 읽는 접근성 서비스(AccessibilityService)는 사용하지 않습니다.
+    같은 이유로 안드로이드에서는 Shorts 구분이나 URL 화이트리스트가 지원되지 않습니다.
+  </p>
+  <p>
+    앱은 <code>android:allowBackup="false"</code>로 설정되어 있어 앱 데이터가
+    안드로이드 자동 백업으로 클라우드에 올라가지 않습니다.
+  </p>
+</div>
+
+<h2>4. 크롬 확장 프로그램이 요구하는 권한</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>권한</th><th>필요한 이유</th></tr></thead>
+  <tbody>
+    <tr><td><code>storage</code></td><td>설정과 사용 기록을 브라우저 안에 저장합니다.</td></tr>
+    <tr>
+      <td><code>tabs</code>, <code>scripting</code>,<br>호스트 권한 <code>*://*.youtube.com/*</code></td>
+      <td>
+        현재 탭이 유튜브 시청 페이지(<code>/watch</code>, <code>/shorts</code>)인지 판별해 시간을 재고,
+        한도 초과 시 해당 탭에 차단 화면을 넣습니다. 접근 범위는 youtube.com으로 한정됩니다.
+      </td>
+    </tr>
+    <tr><td><code>alarms</code></td><td>주기적인 시간 측정과 하루 경계 처리를 예약합니다.</td></tr>
+    <tr><td><code>notifications</code></td><td>남은 시간 알림을 표시합니다.</td></tr>
+  </tbody>
+</table>
+</div>
+<p>
+  탭 주소는 "유튜브 시청 페이지인지 / Shorts인지 / 사용자가 넣은 예외 규칙에 해당하는지"를
+  판별하기 위해 메모리에서 즉시 검사할 뿐이며, 저장되거나 서버로 전송되지 않습니다.
+  유튜브 이외의 사이트는 확장 프로그램의 접근 대상이 아닙니다.
+</p>
+
+<h2>5. 기기 안에만 남는 데이터</h2>
+<p>
+  아래 데이터는 서버로 전송되지 않고 기기(안드로이드 DataStore / 크롬 <code>chrome.storage.local</code>)에만 저장됩니다.
+</p>
+<ul>
+  <li>날짜별·시간대별 사용 기록, Shorts 사용 기록</li>
+  <li>긴급 시청 사용 시간과 <strong>사용 횟수</strong> 기록(횟수는 서버로 올라가지 않습니다)</li>
+  <li>집중 모드 · 수동 차단 · 예약 차단의 현재 상태, 알림 발송 이력</li>
+  <li>서버 설정의 로컬 캐시, 마지막 동기화 지점 표시값</li>
+  <li>로그인한 경우 Supabase 인증 세션 토큰(자동 로그인 유지용)</li>
+</ul>
+<p>
+  앱이나 확장 프로그램을 삭제하면 이 로컬 데이터도 함께 사라집니다.
+</p>
+
+<h2>6. 데이터를 보관하는 곳과 접근 범위</h2>
+<ul>
+  <li>
+    서버 데이터는 <strong>Supabase</strong>(데이터베이스 · 인증 호스팅)에 저장됩니다.
+    Supabase는 이 서비스의 유일한 외부 처리자이며, 개인정보 처리 방침은
+    <a href="https://supabase.com/privacy" target="_blank" rel="noopener noreferrer">https://supabase.com/privacy</a>에서 확인할 수 있습니다.
+  </li>
+  <li>
+    네 개 테이블 모두 Postgres의 행 수준 보안(RLS)이 켜져 있고,
+    정책은 <code>auth.uid() = user_id</code>인 행에만 읽기·쓰기를 허용합니다.
+    즉, <strong>로그인한 본인 계정의 행만 읽고 쓸 수 있습니다.</strong>
+  </li>
+  <li>
+    데이터를 판매하지 않으며, 광고주나 데이터 브로커를 포함한 제3자에게 제공·공유하지 않습니다.
+    법령에 따른 적법한 요구가 있는 경우를 제외하고 외부로 이전하지 않습니다.
+  </li>
+</ul>
+
+<h2>7. 보관 기간과 삭제 방법</h2>
+<p>
+  데이터는 사용자가 삭제를 요청할 때까지 보관되며, 자동 만료 기간은 두고 있지 않습니다.
+</p>
+<div class="note">
+  <p>
+    <strong>현재 앱 안에 계정 삭제 버튼은 없습니다.</strong>
+    앱과 확장 프로그램에는 로그아웃 기능만 있습니다.
+  </p>
+  <p>
+    계정과 서버 기록 전체를 지우려면 <a href="mailto:jookpower1022@gmail.com">jookpower1022@gmail.com</a>으로
+    가입에 사용한 이메일 주소를 적어 삭제를 요청해 주세요. 요청을 확인한 뒤 30일 이내에 처리합니다.
+    계정을 삭제하면 위 네 테이블의 해당 사용자 행도 함께 삭제됩니다
+    (모든 테이블이 계정에 <code>on delete cascade</code>로 연결되어 있습니다).
+  </p>
+  <p>
+    기기 안의 데이터만 지우려면 앱/확장 프로그램을 삭제하거나, 안드로이드에서 앱 저장공간을 비우면 됩니다.
+  </p>
+</div>
+
+<h2>8. 아동의 개인정보</h2>
+<p>
+  이 서비스는 아동을 대상으로 만들어지지 않았으며, 만 14세 미만(대한민국 기준) 또는
+  만 13세 미만(그 외 지역) 아동의 개인정보를 의도적으로 수집하지 않습니다.
+  해당 연령 미만의 아동이 계정을 만든 사실을 알게 되면 해당 계정과 데이터를 삭제합니다.
+  보호자께서는 위 연락처로 삭제를 요청하실 수 있습니다.
+</p>
+
+<h2>9. 보안에 대한 안내</h2>
+<p>
+  앱과 서버 사이의 통신은 HTTPS로 이루어지며, 서버 데이터 접근은 위에서 설명한 행 수준 보안 정책으로
+  계정 단위로 제한됩니다. 다만 이 서비스는 개인이 만든 소규모 프로젝트이고,
+  데이터 저장·암호화·백업의 실질적인 부분은 Supabase의 인프라에 의존합니다.
+  어떠한 인증이나 외부 감사도 받은 바 없습니다.
+</p>
+
+<h2>10. 방침의 변경</h2>
+<p>
+  기능이 바뀌어 다루는 데이터가 달라지면 이 문서를 갱신하고 상단의 최종 수정일을 바꿉니다.
+  변경된 내용은 이 페이지에 게시된 시점부터 적용됩니다. 중요한 변경이 있을 경우
+  앱 또는 스토어 등록 정보를 통해 함께 알리겠습니다.
+</p>
+
+<h2>11. 문의</h2>
+<p>
+  개인정보 관련 문의, 열람 · 정정 · 삭제 요청:
+  <a href="mailto:jookpower1022@gmail.com">jookpower1022@gmail.com</a>
+</p>
+
+<hr class="lang-divider">
+
+<header id="english" style="border-bottom:none; margin-top:32px;">
+  <h1 style="border:0;">TubeLimiter Privacy Policy (English)</h1>
+  <p class="meta">
+    Last updated: September 5, 2026<br>
+    Applies to: the TubeLimiter Android app (<code>com.tubelimiter.app</code>) and the TubeLimiter Chrome extension
+  </p>
+</header>
+
+<p class="lead">
+  TubeLimiter is a small, independently built tool that helps you keep your own YouTube
+  viewing inside a limit you set for yourself. This policy describes exactly what the app
+  and the extension do with data, as implemented in the source code.
+</p>
+
+<h2>1. Who runs this, and how to reach us</h2>
+<ul>
+  <li>Operator: the TubeLimiter developer (an individual developer)</li>
+  <li>Contact and data deletion requests: <a href="mailto:jookpower1022@gmail.com">jookpower1022@gmail.com</a></li>
+</ul>
+
+<h2>2. What is collected</h2>
+
+<h3>2.1 Account information</h3>
+<p>
+  Sign-in uses an email address and a password, handled by Supabase Auth. Supabase stores your
+  <strong>email address</strong>, an account identifier (UUID), and the password credential it manages.
+  The app and the extension never store your plaintext password. Sign-up confirmation and
+  password-reset emails are sent by Supabase to that address.
+</p>
+<p>
+  <strong>Signing in is optional.</strong> Limits, time tracking and blocking all work on the device
+  without an account, and in that case nothing is sent to any server. An account exists only so that
+  records can be combined across devices (phone and desktop browser).
+</p>
+
+<h3>2.2 Data stored on the server (Supabase)</h3>
+<p>When you are signed in, these four tables are the complete set of what is stored.</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Table</th><th>Contents</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>daily_usage</code></td>
+      <td>
+        Per-day total YouTube time (<code>usage_ms</code>), Shorts time
+        (<code>shorts_ms</code>, browser only), how much of that was "emergency" viewing
+        (<code>emergency_ms</code>), and an updated-at timestamp. <strong>Dates and millisecond
+        counts only</strong> — nothing about which videos were watched.
+      </td>
+    </tr>
+    <tr>
+      <td><code>settings</code></td>
+      <td>
+        The settings you choose yourself: daily limit, per-weekday limits, reset frequency,
+        always-block-Shorts flag, <strong>whitelist strings you typed in yourself</strong>
+        (browser-only exception rules), emergency-viewing allowance and reset frequency,
+        notification interval and milestone toggle, hardcore mode state and its disable-request
+        timestamp, and scheduled block windows (weekdays plus start/end minute).
+      </td>
+    </tr>
+    <tr>
+      <td><code>streaks</code></td>
+      <td>
+        Current streak, best streak, last judged date, total successful days, XP,
+        perfect-day count, and current/best perfect-day streaks.
+      </td>
+    </tr>
+    <tr>
+      <td><code>achievements</code></td>
+      <td>Badge keys you have unlocked (e.g. <code>streak_7</code>, <code>perfect_30</code>) and when.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<div class="note">
+  <p><strong>What is never collected</strong></p>
+  <p>
+    Video titles, video IDs, channel names, watch history, search queries, page contents,
+    screenshots, device or advertising identifiers, location, contacts, calls or SMS, photos,
+    microphone or camera data. None of these are read, stored, or transmitted.
+  </p>
+  <p>
+    Whitelist entries are exception rules you type into the settings screen yourself; they are
+    not a record of sites you visited.
+  </p>
+  <p>
+    There is no advertising SDK, no analytics SDK, and no crash-reporting SDK in either client.
+    Supabase is the only external server either client talks to.
+  </p>
+</div>
+
+<h2>3. Android permissions</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Permission</th><th>Why it is needed</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>PACKAGE_USAGE_STATS</code><br>(Usage access)</td>
+      <td>To measure how long the YouTube app was in the foreground. You must enable it yourself in system settings.</td>
+    </tr>
+    <tr>
+      <td><code>SYSTEM_ALERT_WINDOW</code><br>(Display over other apps)</td>
+      <td>To draw the blocking screen over YouTube once your limit is spent.</td>
+    </tr>
+    <tr>
+      <td><code>POST_NOTIFICATIONS</code></td>
+      <td>To show remaining-time notifications and the ongoing notification for the monitoring service.</td>
+    </tr>
+    <tr>
+      <td><code>FOREGROUND_SERVICE</code>,<br><code>FOREGROUND_SERVICE_SPECIAL_USE</code></td>
+      <td>To keep tracking and blocking running after you leave the app.</td>
+    </tr>
+    <tr>
+      <td><code>RECEIVE_BOOT_COMPLETED</code></td>
+      <td>To restart monitoring automatically after the device reboots.</td>
+    </tr>
+    <tr>
+      <td><code>REQUEST_IGNORE_BATTERY_OPTIMIZATIONS</code></td>
+      <td>To ask for a battery-optimization exemption so tracking is not delayed in Doze. The app still works if you decline.</td>
+    </tr>
+    <tr>
+      <td><code>INTERNET</code></td>
+      <td>Used only for sign-in and Supabase synchronization.</td>
+    </tr>
+    <tr>
+      <td><code>&lt;queries&gt;</code> — <code>com.google.android.youtube</code></td>
+      <td>Declares YouTube as the only package the app can look up. The full installed-app list is not read.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<div class="note">
+  <p><strong>Detection on Android is package-level only.</strong></p>
+  <p>
+    The app reads app-transition events from Android's <code>UsageStatsManager</code> and
+    immediately discards every event that is not the YouTube package
+    (<code>com.google.android.youtube</code>). Usage of other apps is never stored or transmitted.
+  </p>
+  <p>
+    This tells the app only whether the YouTube app was on screen. <strong>It cannot tell what is
+    being watched.</strong> No AccessibilityService (which can read screen contents) is used.
+    For the same reason, Shorts detection and URL whitelists are not supported on Android.
+  </p>
+  <p>
+    The app sets <code>android:allowBackup="false"</code>, so its data is not uploaded to the
+    cloud by Android's automatic backup.
+  </p>
+</div>
+
+<h2>4. Chrome extension permissions</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Permission</th><th>Why it is needed</th></tr></thead>
+  <tbody>
+    <tr><td><code>storage</code></td><td>Stores your settings and usage records inside the browser.</td></tr>
+    <tr>
+      <td><code>tabs</code>, <code>scripting</code>,<br>host access to <code>*://*.youtube.com/*</code></td>
+      <td>
+        To tell whether the active tab is a YouTube watch page (<code>/watch</code>, <code>/shorts</code>)
+        so time can be counted, and to insert the blocking screen into that tab when the limit is spent.
+        Access is limited to youtube.com.
+      </td>
+    </tr>
+    <tr><td><code>alarms</code></td><td>Schedules periodic time counting and the daily rollover.</td></tr>
+    <tr><td><code>notifications</code></td><td>Shows remaining-time notifications.</td></tr>
+  </tbody>
+</table>
+</div>
+<p>
+  The tab address is checked in memory only, to decide whether the page is a YouTube watch page,
+  whether it is Shorts, and whether it matches an exception rule you entered. It is not saved and
+  not transmitted. Sites other than YouTube are outside the extension's access.
+</p>
+
+<h2>5. Data that stays on your device</h2>
+<p>
+  The following is stored only on the device (Android DataStore / Chrome
+  <code>chrome.storage.local</code>) and is never sent to the server:
+</p>
+<ul>
+  <li>Per-day and per-hour usage records, and Shorts usage records</li>
+  <li>Emergency-viewing durations and the <strong>number of times</strong> used (the count never leaves the device)</li>
+  <li>Current focus mode, manual block and scheduled block state, and notification history</li>
+  <li>A local cache of your settings and the markers for the last sync point</li>
+  <li>If you are signed in, the Supabase session token that keeps you signed in</li>
+</ul>
+<p>Uninstalling the app or the extension removes this local data with it.</p>
+
+<h2>6. Where data is held, and who can read it</h2>
+<ul>
+  <li>
+    Server data is stored with <strong>Supabase</strong> (hosted database and authentication).
+    Supabase is the only third-party processor involved; its privacy policy is at
+    <a href="https://supabase.com/privacy" target="_blank" rel="noopener noreferrer">https://supabase.com/privacy</a>.
+  </li>
+  <li>
+    All four tables have Postgres row-level security enabled, with policies that allow reads and
+    writes only where <code>auth.uid() = user_id</code>. In other words,
+    <strong>an account can only ever reach its own rows.</strong>
+  </li>
+  <li>
+    Data is not sold, and it is not shared with advertisers, data brokers, or any other third party.
+    It is not transferred elsewhere except where required by law.
+  </li>
+</ul>
+
+<h2>7. Retention and deletion</h2>
+<p>Data is kept until you ask for it to be deleted; there is no automatic expiry.</p>
+<div class="note">
+  <p>
+    <strong>There is currently no in-app "delete account" button.</strong>
+    The app and the extension offer sign-out only.
+  </p>
+  <p>
+    To have your account and all server records deleted, email
+    <a href="mailto:jookpower1022@gmail.com">jookpower1022@gmail.com</a> from or naming the address
+    you signed up with. Requests are handled within 30 days of confirmation. Deleting the account
+    removes your rows in all four tables as well — every table is tied to the account with
+    <code>on delete cascade</code>.
+  </p>
+  <p>
+    To remove only the on-device data, uninstall the app or extension, or clear the app's storage on Android.
+  </p>
+</div>
+
+<h2>8. Children</h2>
+<p>
+  This service is not directed at children and does not knowingly collect personal information
+  from children under 14 (in the Republic of Korea) or under 13 elsewhere. If we learn that such
+  an account exists, it and its data will be deleted. A parent or guardian can request deletion
+  at the contact address above.
+</p>
+
+<h2>9. A note on security</h2>
+<p>
+  Traffic between the clients and the server uses HTTPS, and access to server data is limited per
+  account by the row-level security policies described above. That said, this is a small project
+  built by one person, and the substance of storage, encryption and backup rests on Supabase's
+  infrastructure. It holds no certification and has undergone no external audit.
+</p>
+
+<h2>10. Changes to this policy</h2>
+<p>
+  If a feature change alters what data is handled, this document will be updated and the
+  "last updated" date at the top changed. Changes take effect when posted on this page.
+  Significant changes will also be noted in the app or the store listing.
+</p>
+
+<h2>11. Contact</h2>
+<p>
+  Privacy questions, and requests to access, correct, or delete your data:
+  <a href="mailto:jookpower1022@gmail.com">jookpower1022@gmail.com</a>
+</p>
+
+<footer>
+  TubeLimiter · <a href="./index.html">홈 / Home</a>
+</footer>
+
+</main>
+</body>
+</html>

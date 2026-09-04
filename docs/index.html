@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TubeLimiter</title>
+<meta name="description" content="TubeLimiter — 유튜브 시청 시간 제한 도구. 크롬 확장 프로그램과 안드로이드 앱.">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --fg: #1b1b1f;
+    --muted: #5b5b66;
+    --rule: #e2e2e8;
+    --accent: #b8341f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16161a;
+      --fg: #e8e8ec;
+      --muted: #a0a0ad;
+      --rule: #2e2e36;
+      --accent: #ff8a70;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo",
+      "Malgun Gothic", "Noto Sans KR", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.75;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 56px 20px 80px; }
+  h1 { font-size: 1.7rem; margin: 0 0 6px; letter-spacing: -0.01em; }
+  p { margin: 10px 0; }
+  .lead { color: var(--muted); }
+  ul { padding-left: 22px; margin: 18px 0; }
+  li { margin: 8px 0; }
+  a { color: var(--accent); }
+  footer {
+    margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--rule);
+    color: var(--muted); font-size: 0.88rem;
+  }
+  @media (max-width: 480px) {
+    main { padding: 32px 16px 60px; }
+    h1 { font-size: 1.4rem; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>TubeLimiter</h1>
+  <p class="lead">
+    유튜브 시청 시간을 스스로 정한 한도 안에서 관리하는 도구입니다.
+    크롬 확장 프로그램과 안드로이드 앱, 두 클라이언트가 하나의 계정을 공유합니다.
+  </p>
+  <p class="lead">
+    A tool for keeping your own YouTube viewing inside a limit you set.
+    A Chrome extension and an Android app, sharing one account.
+  </p>
+
+  <ul>
+    <li><a href="./privacy-policy.html">개인정보처리방침 / Privacy Policy</a></li>
+    <li><a href="https://github.com/konkon3660/TubeLimiter">GitHub 저장소 / Source repository</a></li>
+  </ul>
+
+  <footer>
+    문의 / Contact: <a href="mailto:jookpower1022@gmail.com">jookpower1022@gmail.com</a>
+  </footer>
+</main>
+</body>
+</html>
