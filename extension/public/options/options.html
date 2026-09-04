@@ -6,11 +6,272 @@
   <link rel="stylesheet" href="/assets/common.css">
   <link rel="stylesheet" href="/assets/gamify.css">
   <style>
-    body { width: auto; max-width: 560px; margin: 0 auto; padding-bottom: 40px; }
-    .day-limit-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-    .day-limit-row label { width: 60px; }
-    .whitelist-item { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
-    .whitelist-item input { flex: 1; }
+    html { background: var(--light-gray); min-height: 100%; }
+
+    body {
+      width: auto;
+      max-width: 760px;
+      margin: 24px auto;
+      padding-bottom: 0;
+      background: transparent;
+      font-size: 15px;
+    }
+
+    body > .header {
+      max-width: 760px;
+      margin: 0 auto 16px;
+      border-radius: 14px;
+      box-shadow: var(--shadow-lg);
+      font-size: 1.3em;
+      padding: 18px 20px;
+    }
+
+    #signedOutView, #signedInView {
+      max-width: 760px;
+      margin: 0 auto;
+    }
+
+    #signedOutView .auth-box {
+      background: var(--bg-color);
+      border-radius: 14px;
+      box-shadow: var(--shadow-lg);
+    }
+
+    #signedInView {
+      padding: 0 !important;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    #signedInView .control-section {
+      margin: 0;
+      background: var(--bg-color);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      padding: 18px 20px;
+    }
+
+    #signedInView .wide-section {
+      grid-column: 1 / -1;
+    }
+
+    #signedInView .control-section h4 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 1.05em;
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    /* form rows: label on top, input below — reads better at desktop width */
+    .field-row { margin-bottom: 14px; }
+    .field-row:last-child { margin-bottom: 0; }
+    .field-row > label {
+      display: block;
+      font-size: 0.85em;
+      font-weight: 600;
+      color: var(--gray);
+      margin-bottom: 6px;
+    }
+    .field-row input[type="number"],
+    .field-row select {
+      width: 100%;
+      padding: 9px 11px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: var(--card-bg);
+      color: var(--dark-gray);
+      font-size: 0.95em;
+    }
+    .field-row input:focus, .field-row select:focus {
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+      outline: none;
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.92em;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .checkbox-row input { width: auto; margin: 0; }
+
+    .day-limit-row {
+      display: grid;
+      grid-template-columns: 72px 1fr;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .day-limit-row label { width: auto; font-size: 0.9em; color: var(--gray); font-weight: 500; }
+    .day-limit-row input {
+      width: 100%;
+      padding: 7px 9px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: var(--card-bg);
+      color: var(--dark-gray);
+    }
+
+    .whitelist-item {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .whitelist-item input {
+      flex: 1;
+      width: auto;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: var(--card-bg);
+      color: var(--dark-gray);
+    }
+    .whitelist-item button {
+      width: auto;
+      flex: none;
+      margin-top: 0;
+      padding: 8px 14px;
+      white-space: nowrap;
+    }
+    .whitelist-item button[data-remove] {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--danger-color);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+    .whitelist-item button[data-remove]:hover {
+      background: rgba(239, 68, 68, 0.18);
+    }
+    #whitelistList:empty::after {
+      content: '등록된 화이트리스트가 없습니다.';
+      display: block;
+      font-size: 0.85em;
+      color: var(--gray);
+      padding: 8px 0;
+    }
+
+    .schedule-item {
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+      background: var(--card-bg);
+    }
+    .schedule-item-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .schedule-item-header .schedule-label {
+      flex: 1;
+      width: auto;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-color);
+      color: var(--dark-gray);
+    }
+    .schedule-item-header .schedule-enabled-toggle {
+      white-space: nowrap;
+      font-size: 0.85em;
+    }
+    .schedule-item-header button {
+      width: auto;
+      flex: none;
+      margin-top: 0;
+      padding: 8px 14px;
+      white-space: nowrap;
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--danger-color);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+    .schedule-item-header button:hover {
+      background: rgba(239, 68, 68, 0.18);
+    }
+    .schedule-days {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .day-toggle-chip {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.82em;
+      color: var(--gray);
+      border: 1px solid var(--border-color);
+      border-radius: 999px;
+      padding: 4px 10px;
+      cursor: pointer;
+    }
+    .day-toggle-chip input { width: auto; margin: 0; }
+    .schedule-times {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .schedule-times input[type="time"] {
+      padding: 7px 9px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-color);
+      color: var(--dark-gray);
+    }
+    #scheduleList:empty::after {
+      content: '등록된 예약 차단이 없습니다.';
+      display: block;
+      font-size: 0.85em;
+      color: var(--gray);
+      padding: 8px 0;
+    }
+
+    .save-bar {
+      grid-column: 1 / -1;
+      position: sticky;
+      bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--bg-color);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      box-shadow: var(--shadow-lg);
+      padding: 14px 20px;
+    }
+    .save-bar #saveButton { width: auto; margin: 0; padding: 10px 28px; }
+    .save-bar #saveStatus { margin: 0; }
+    .save-bar #signOutButton { width: auto; margin: 0 0 0 auto; padding: 10px 20px; }
+
+    @media (max-width: 680px) {
+      body { margin: 0; font-size: 14px; }
+      body > .header { margin: 0 0 12px; border-radius: 0; }
+      #signedInView { grid-template-columns: 1fr; padding: 0 12px !important; }
+      #signedOutView { padding: 0 12px; }
+      .save-bar { position: static; flex-wrap: wrap; }
+      .save-bar #signOutButton { margin-left: 0; }
+      /* 16px 미만 인풋은 iOS Safari에서 포커스 시 자동 확대됨 */
+      .field-row input[type="number"],
+      .field-row select,
+      .day-limit-row input,
+      .whitelist-item input {
+        font-size: 16px;
+      }
+    }
+
+    @media (max-width: 420px) {
+      #signedInView .control-section { padding: 16px; }
+      .day-limit-row { grid-template-columns: 60px 1fr; }
+    }
   </style>
 </head>
 <body>
@@ -23,14 +284,14 @@
     </div>
   </div>
 
-  <div id="signedInView" style="display:none; padding: 16px;">
+  <div id="signedInView" style="display:none;">
     <div class="control-section">
       <h4>⏱️ 일일 시청 제한</h4>
-      <div class="input-group">
-        <label><input type="checkbox" id="byDayToggle"> 요일별로 다르게 설정</label>
+      <div class="field-row">
+        <label class="checkbox-row"><input type="checkbox" id="byDayToggle"> 요일별로 다르게 설정</label>
       </div>
-      <div id="simpleLimitBlock" class="input-group">
-        <label for="dailyLimitInput">하루 제한(분, 0=무제한):</label>
+      <div id="simpleLimitBlock" class="field-row">
+        <label for="dailyLimitInput">하루 제한(분, 0=무제한)</label>
         <input type="number" id="dailyLimitInput" min="0" value="30">
       </div>
       <div id="byDayLimitBlock" style="display:none;">
@@ -43,30 +304,45 @@
         <div class="day-limit-row" data-day="6"><label>토요일</label><input type="number" min="-1"></div>
         <div class="input-hint">-1 = 그 요일은 무제한</div>
       </div>
+      <div id="limitLockHint" class="input-hint" style="display:none; margin-top:8px; color: var(--danger-color);">🔒 하드코어 모드가 켜져 있어 한도를 수정할 수 없습니다. 하드코어 모드를 끄면 수정할 수 있습니다.</div>
     </div>
 
     <div class="control-section">
-      <h4>🚫 Shorts</h4>
-      <label><input type="checkbox" id="alwaysBlockShortsToggle"> YouTube Shorts 항상 차단</label>
-    </div>
-
-    <div class="control-section">
-      <h4>📋 화이트리스트</h4>
-      <div id="whitelistList"></div>
-      <div class="whitelist-item">
-        <input type="text" id="whitelistInput" placeholder="URL 또는 채널 일부 문자열">
-        <button id="addWhitelistButton" class="btn-secondary">추가</button>
+      <h4>🔥 하드코어 · Shorts</h4>
+      <div id="hardcoreOffBlock" class="field-row">
+        <div class="input-hint">켜면 위 시청 한도가 잠기고, 스트릭 기능이 활성화됩니다. 끄려면 1시간을 기다려야 합니다.</div>
+        <button type="button" id="enableHardcoreButton" class="btn-primary" style="margin-top:8px; width:auto;">하드코어 모드 켜기</button>
       </div>
+      <div id="hardcoreOnBlock" class="field-row" style="display:none;">
+        <div class="input-hint">🔥 하드코어 모드 켜짐 · 한도 잠금 중</div>
+        <button type="button" id="requestHardcoreOffButton" class="btn-secondary" style="margin-top:8px; width:auto;">해제 예약 (1시간 후 꺼짐)</button>
+      </div>
+      <div id="hardcorePendingBlock" class="field-row" style="display:none;">
+        <div class="input-hint" id="hardcorePendingText">⏳ 해제까지 남음</div>
+        <button type="button" id="cancelHardcoreOffButton" class="btn-secondary" style="margin-top:8px; width:auto;">예약 취소하고 계속 잠그기</button>
+      </div>
+      <div class="field-row">
+        <label class="checkbox-row"><input type="checkbox" id="alwaysBlockShortsToggle"> YouTube Shorts 항상 차단</label>
+      </div>
+    </div>
+
+    <div class="control-section">
+      <h4>⏰ 알람</h4>
+      <div class="field-row">
+        <label for="alarmIntervalInput">N분마다 알림(분, 0=끄기)</label>
+        <input type="number" id="alarmIntervalInput" min="0" value="0">
+      </div>
+      <label class="checkbox-row"><input type="checkbox" id="alarmMilestonesToggle"> 남은 시간 알림 (30/10/5/1분 전)</label>
     </div>
 
     <div class="control-section">
       <h4>🆘 긴급 시청</h4>
-      <div class="input-group">
-        <label for="emergencyUsesInput">횟수:</label>
+      <div class="field-row">
+        <label for="emergencyUsesInput">횟수</label>
         <input type="number" id="emergencyUsesInput" min="0" value="3">
       </div>
-      <div class="input-group">
-        <label for="emergencyResetSelect">초기화 주기:</label>
+      <div class="field-row">
+        <label for="emergencyResetSelect">초기화 주기</label>
         <select id="emergencyResetSelect">
           <option value="daily">매일</option>
           <option value="weekly">매주</option>
@@ -75,8 +351,27 @@
       </div>
     </div>
 
-    <button id="saveButton" class="btn-primary">저장</button>
-    <div id="saveStatus" class="input-hint"></div>
+    <div class="control-section wide-section">
+      <h4>📋 화이트리스트</h4>
+      <div id="whitelistList"></div>
+      <div class="whitelist-item">
+        <input type="text" id="whitelistInput" placeholder="URL 또는 채널 일부 문자열">
+        <button id="addWhitelistButton" class="btn-secondary">추가</button>
+      </div>
+    </div>
+
+    <div class="control-section wide-section">
+      <h4>🕒 예약 차단</h4>
+      <div class="input-hint" style="margin-bottom:10px;">정해진 요일·시간대엔 한도와 무관하게 자동으로 차단됩니다. 집중 모드처럼 긴급 시청으로 우회할 수 없어요.</div>
+      <div id="scheduleList"></div>
+      <button type="button" id="addScheduleButton" class="btn-secondary" style="width:auto;">+ 예약 추가</button>
+    </div>
+
+    <div class="save-bar">
+      <button id="saveButton" class="btn-primary">저장</button>
+      <div id="saveStatus" class="input-hint"></div>
+      <button id="signOutButton" class="btn-secondary">로그아웃</button>
+    </div>
   </div>
 
   <script src="/options/options.js" type="module"></script>

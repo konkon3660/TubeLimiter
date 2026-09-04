@@ -12,6 +12,25 @@
   border-radius: 6px;
   transition: width 0.3s ease;
 }
+.level-tier-badge {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.02em;
+}
+#streakSection.tier-seed .xp-bar-fill { background: linear-gradient(90deg, #4ade80, #22c55e); }
+#streakSection.tier-seed .level-tier-badge { color: #16a34a; }
+#streakSection.tier-trainee .xp-bar-fill { background: linear-gradient(90deg, #60a5fa, #3b82f6); }
+#streakSection.tier-trainee .level-tier-badge { color: #2563eb; }
+#streakSection.tier-skilled .xp-bar-fill { background: linear-gradient(90deg, #c084fc, #a855f7); }
+#streakSection.tier-skilled .level-tier-badge { color: #9333ea; }
+#streakSection.tier-master .xp-bar-fill { background: linear-gradient(90deg, #fbbf24, #eab308); }
+#streakSection.tier-master .level-tier-badge { color: #ca8a04; }
+#streakSection.tier-legend .xp-bar-fill { background: linear-gradient(90deg, #f97316, #ef4444, #eab308); }
+#streakSection.tier-legend .level-tier-badge { color: #dc2626; }
+
 .streak-hero {
   text-align: center;
   padding: 12px 0;
@@ -23,53 +42,84 @@
 }
 .streak-hero .streak-caption {
   font-size: 13px;
-  opacity: 0.7;
+  color: #64748b;
   margin-top: 4px;
+}
+.streak-hero .streak-caption strong {
+  color: var(--primary-color, #4f46e5);
+  font-weight: 700;
 }
 .badge-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
   gap: 10px;
   margin-top: 12px;
 }
 .badge-item {
   text-align: center;
-  padding: 8px 4px;
+  padding: 10px 4px;
   border-radius: 10px;
-  background: rgba(0, 0, 0, 0.04);
-  font-size: 22px;
-  opacity: 0.35;
+  background: var(--card-bg, rgba(0, 0, 0, 0.04));
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.1));
+  font-size: 24px;
+  opacity: 0.55;
   filter: grayscale(1);
 }
 .badge-item.unlocked {
   opacity: 1;
   filter: none;
-  background: rgba(255, 176, 46, 0.15);
+  background: rgba(255, 176, 46, 0.18);
+  border-color: rgba(255, 176, 46, 0.5);
 }
 .badge-item .badge-caption {
   display: block;
   font-size: 11px;
   margin-top: 4px;
-  opacity: 0.8;
+  color: #64748b;
+  font-weight: 600;
 }
+.badge-item.unlocked .badge-caption { color: #b45309; }
+.badge-item.perfect-badge.unlocked {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: rgba(56, 189, 248, 0.5);
+}
+.badge-item.perfect-badge.unlocked .badge-caption { color: #0369a1; }
 .heatmap {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
+  gap: 5px;
   margin-top: 8px;
 }
 .heatmap .day-cell {
   aspect-ratio: 1;
-  border-radius: 3px;
-  background: rgba(0, 0, 0, 0.06);
+  border-radius: 4px;
+  background: var(--card-bg, #eef1f5);
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
 }
-.heatmap .day-cell.success { background: #4caf50; }
-.heatmap .day-cell.fail { background: #e57373; }
-.heatmap .day-cell.today { outline: 2px solid #ffb02e; }
+.heatmap .day-cell.success { background: #86efac; border-color: #4ade80; }
+.heatmap .day-cell.perfect { background: #16a34a; border-color: #15803d; }
+.heatmap .day-cell.fail { background: #ef4444; border-color: #dc2626; }
+.heatmap .day-cell.today { outline: 2px solid #ffb02e; outline-offset: 1px; }
+.heatmap-legend {
+  margin-top: 10px;
+  font-size: 11px;
+  color: #64748b;
+}
 
+body.dark-mode .streak-hero .streak-caption { color: #cbd5e1; }
 body.dark-mode .badge-item { background: rgba(255, 255, 255, 0.06); }
+body.dark-mode .badge-item .badge-caption { color: #cbd5e1; }
 body.dark-mode .xp-bar-track { background: rgba(255, 255, 255, 0.12); }
 body.dark-mode .heatmap .day-cell { background: rgba(255, 255, 255, 0.08); }
+body.dark-mode .heatmap-legend { color: #cbd5e1; }
+
+@media (prefers-color-scheme: dark) {
+  .streak-hero .streak-caption { color: #cbd5e1; }
+  .badge-item .badge-caption { color: #cbd5e1; }
+  .xp-bar-track { background: rgba(255, 255, 255, 0.12); }
+  .heatmap .day-cell { background: rgba(255, 255, 255, 0.08); }
+  .heatmap-legend { color: #cbd5e1; }
+}
 
 .auth-box {
   padding: 16px;

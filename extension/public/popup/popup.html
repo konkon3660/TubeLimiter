@@ -24,14 +24,16 @@
     </div>
 
     <div id="status" class="tab-content active">
-      <div class="streak-hero">
-        <div class="streak-number" id="streakNumber">0</div>
-        <div class="streak-caption">일 연속 성공 · 최고 <span id="bestStreak">0</span>일</div>
+      <div id="streakSection" style="display:none;">
+        <div class="streak-hero">
+          <div class="streak-number" id="streakNumber">0</div>
+          <div class="streak-caption">일 연속 성공 · 최고 <span id="bestStreak">0</span>일</div>
+        </div>
+        <div class="xp-bar-track"><div class="xp-bar-fill" id="xpBarFill" style="width:0%"></div></div>
+        <div class="streak-caption" style="text-align:center; margin-top:4px;">Lv.<span id="levelNumber">1</span> · <span id="xpLabel">0/100 XP</span></div>
       </div>
-      <div class="xp-bar-track"><div class="xp-bar-fill" id="xpBarFill" style="width:0%"></div></div>
-      <div class="streak-caption" style="text-align:center; margin-top:4px;">Lv.<span id="levelNumber">1</span> · <span id="xpLabel">0/100 XP</span></div>
 
-      <div class="progress-section-center" style="margin-top:16px;">
+      <div class="progress-section-center" style="margin-top:12px;">
         <div class="progress-circle-small" id="progressCircle">
           <div class="progress-content">
             <div class="progress-time" id="untilBlock">0분</div>
@@ -53,8 +55,12 @@
 
       <div class="status-badges">
         <div class="badge-row">
-          <span class="badge-label">집중 모드</span>
-          <div id="focusModeStatus"><span class="status-badge status-inactive">비활성</span></div>
+          <span class="badge-label">지금 소모 중</span>
+          <div id="consumingStatus"><span class="status-badge status-inactive">대기 중</span></div>
+        </div>
+        <div class="badge-row">
+          <span class="badge-label">모드</span>
+          <div id="modeStatus"><span class="status-badge status-inactive">비활성</span></div>
         </div>
       </div>
     </div>
@@ -77,14 +83,12 @@
         </div>
         <button id="startFocusModeButton" class="btn-primary">집중 모드 시작</button>
         <button id="stopFocusModeButton" class="btn-danger">집중 모드 종료</button>
+        <button id="cancelFocusStopButton" class="btn-secondary" style="display:none;">종료 예약 취소</button>
       </div>
 
       <div class="footer-in-tab">
         <button id="viewDashboardButton" class="btn-secondary">📈 대시보드</button>
         <button id="optionsButton" class="btn-secondary">⚙️ 옵션</button>
-      </div>
-      <div class="footer-in-tab">
-        <button id="signOutButton" class="btn-secondary">로그아웃</button>
       </div>
     </div>
   </div>

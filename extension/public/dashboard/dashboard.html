@@ -6,9 +6,146 @@
   <link rel="stylesheet" href="/assets/common.css">
   <link rel="stylesheet" href="/assets/gamify.css">
   <style>
-    body { width: auto; max-width: 720px; margin: 0 auto; padding-bottom: 40px; }
-    .section { padding: 16px; }
+    html { background: var(--light-gray); min-height: 100%; }
+
+    body {
+      width: auto;
+      max-width: 920px;
+      margin: 40px auto;
+      padding-bottom: 0;
+      background: transparent;
+      font-size: 15px;
+    }
+
+    body > .header {
+      max-width: 920px;
+      margin: 0 auto 20px;
+      border-radius: 14px;
+      box-shadow: var(--shadow-lg);
+      font-size: 1.3em;
+      padding: 20px;
+    }
+
+    #signedOutView, #signedInView {
+      max-width: 920px;
+      margin: 0 auto;
+    }
+
+    #signedOutView .auth-box {
+      background: var(--bg-color);
+      border-radius: 14px;
+      box-shadow: var(--shadow-lg);
+    }
+
+    #signedInView {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      align-items: start;
+      gap: 16px;
+    }
+
+    .section {
+      margin: 0;
+      padding: 20px;
+      background: var(--bg-color);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .section h4 {
+      margin: 0 0 16px 0;
+      padding-bottom: 12px;
+      color: var(--dark-gray);
+      font-weight: 600;
+      font-size: 1.05em;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    #streakSection { display: contents; }
+    .hero-section { grid-column: 1 / -1; }
+    .heatmap-section { grid-column: span 1; }
+    .badge-section { grid-column: span 1; }
+    .chart-section { grid-column: 1 / -1; }
+    .hourly-section { grid-column: 1 / -1; }
+
+    .chart-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 0 0 16px 0;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .chart-header h4 {
+      margin: 0;
+      padding-bottom: 0;
+      border: none;
+    }
+    .chart-controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .chip-group {
+      display: inline-flex;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .chip {
+      border: none;
+      background: transparent;
+      color: var(--dark-gray);
+      padding: 5px 12px;
+      font-size: 0.85em;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .chip + .chip { border-left: 1px solid var(--border-color); }
+    .chip.active { background: var(--primary-color); color: #fff; }
+
+    .streak-hero { padding: 4px 0; }
+    .streak-hero .streak-number { font-size: 52px; }
+
+    .hero-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      max-width: 480px;
+      margin: 16px auto 0;
+    }
+    .hero-stats .info-item { margin: 0; }
+
+    .xp-bar-track { max-width: 320px; margin: 16px auto 0 !important; }
+
+    .streak-locked-hint {
+      grid-column: 1 / -1;
+      text-align: center;
+      color: var(--gray);
+      font-size: 0.9em;
+      background: transparent;
+      border: 1px dashed var(--border-color);
+      box-shadow: none;
+    }
+
     canvas { max-width: 100%; }
+
+    @media (max-width: 800px) {
+      body { margin: 0; font-size: 14px; }
+      body > .header { margin: 0 0 12px; border-radius: 0; }
+      #signedInView { grid-template-columns: 1fr; padding: 0 12px; }
+      #signedOutView { padding: 0 12px; }
+      .hero-stats { grid-template-columns: 1fr 1fr 1fr; max-width: none; }
+    }
+
+    @media (max-width: 420px) {
+      .section { padding: 16px; }
+      .streak-hero .streak-number { font-size: 40px; }
+      .hero-stats { gap: 8px; }
+    }
   </style>
 </head>
 <body>
@@ -19,26 +156,70 @@
   </div>
 
   <div id="signedInView" style="display:none;">
-    <div class="section streak-hero">
-      <div class="streak-number" id="streakNumber">0</div>
-      <div class="streak-caption">일 연속 성공 · 최고 <span id="bestStreak">0</span>일 · 누적 성공 <span id="totalSuccess">0</span>일</div>
-      <div class="xp-bar-track" style="max-width:280px; margin: 8px auto 0;"><div class="xp-bar-fill" id="xpBarFill" style="width:0%"></div></div>
-      <div class="streak-caption">Lv.<span id="levelNumber">1</span> · <span id="xpLabel">0/100 XP</span></div>
+    <div id="streakSection">
+      <div class="section hero-section streak-hero">
+        <div class="streak-number" id="streakNumber">0</div>
+        <div class="streak-caption">일 연속 성공 · <strong id="streakLimitLabel">하루 30분</strong> 제한 유지 중</div>
+        <div class="hero-stats">
+          <div class="info-item">
+            <span class="info-label">최고 기록</span>
+            <span class="info-value" id="bestStreak">0</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">레벨</span>
+            <span class="info-value" id="levelNumber">1</span>
+            <span class="level-tier-badge" id="levelTierBadge"></span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">누적 성공</span>
+            <span class="info-value" id="totalSuccess">0</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">완벽한 날</span>
+            <span class="info-value" id="perfectDays">0</span>
+          </div>
+        </div>
+        <div class="xp-bar-track"><div class="xp-bar-fill" id="xpBarFill" style="width:0%"></div></div>
+        <div class="streak-caption" id="xpLabel">0/100 XP</div>
+      </div>
+
+      <div class="section badge-section">
+        <h4>업적</h4>
+        <div class="badge-grid" id="badgeGrid"></div>
+      </div>
     </div>
 
-    <div class="section">
-      <h4>최근 28일 성공/실패</h4>
+    <div class="section streak-locked-hint" id="streakLockedHint" style="display:none;">
+      🔒 옵션에서 하드코어 모드를 켜면 스트릭·업적이 기록됩니다.
+    </div>
+
+    <div class="section heatmap-section">
+      <h4>최근 28일 기록</h4>
+      <div class="heatmap-legend">💎 진한 초록 = 완벽한 날(긴급 시청 0회) · 연두 = 성공 · 빨강 = 한도 초과</div>
       <div class="heatmap" id="heatmap"></div>
     </div>
 
-    <div class="section">
-      <h4>업적</h4>
-      <div class="badge-grid" id="badgeGrid"></div>
+    <div class="section chart-section">
+      <div class="chart-header">
+        <h4>최근 사용 시간 (분)</h4>
+        <div class="chart-controls">
+          <div class="chip-group" id="chartRangeGroup">
+            <button type="button" class="chip" data-range="7">7일</button>
+            <button type="button" class="chip" data-range="14">14일</button>
+            <button type="button" class="chip" data-range="30">30일</button>
+          </div>
+          <div class="chip-group" id="chartModeGroup">
+            <button type="button" class="chip" data-mode="minutes">분</button>
+            <button type="button" class="chip" data-mode="percent">% 한도</button>
+          </div>
+        </div>
+      </div>
+      <canvas id="usageChart" height="90"></canvas>
     </div>
 
-    <div class="section">
-      <h4>최근 사용 시간 (분)</h4>
-      <canvas id="usageChart" height="120"></canvas>
+    <div class="section hourly-section">
+      <h4>시간대별 이용 패턴</h4>
+      <canvas id="hourlyChart" height="90"></canvas>
     </div>
   </div>
 

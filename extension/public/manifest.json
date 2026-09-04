@@ -3,7 +3,7 @@
   "name": "TubeLimiter",
   "version": "2.0.0",
   "description": "유튜브 시청을 제한하고, 꾸준히 지킨 기록을 스트릭/XP/업적으로 보여주는 확장 프로그램",
-  "permissions": ["storage", "tabs", "scripting", "alarms"],
+  "permissions": ["storage", "tabs", "scripting", "alarms", "notifications"],
   "host_permissions": ["*://*.youtube.com/*"],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
