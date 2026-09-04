@@ -3,3 +3,5 @@ extension.zip
 .agents/
 .claude/skills/
 .claude/settings.local.json
+.idea/
+.vscode/
