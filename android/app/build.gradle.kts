@@ -1,8 +1,33 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ktlint)
 }
+
+// Release signing is opt-in: drop an untracked android/keystore.properties next to this
+// module's parent with storeFile/storePassword/keyAlias/keyPassword and the release build
+// is signed. Without it the build still succeeds, it just produces an unsigned APK, so CI
+// and fresh clones never need the secret.
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+}
+val configuredStoreFile = keystoreProperties.getProperty("storeFile").orEmpty()
+val releaseStoreFile =
+    if (configuredStoreFile.isBlank()) {
+        null
+    } else {
+        rootProject.file(configuredStoreFile).takeIf { it.exists() }
+    }
+
+// Version lives in gradle.properties so a release bump is a one-line edit that does not
+// touch the build script (and CI can override it with -PtubelimiterVersionCode=...).
+val appVersionCode = (project.property("tubelimiterVersionCode") as String).trim().toInt()
+val appVersionName = (project.property("tubelimiterVersionName") as String).trim()
 
 android {
     namespace = "com.tubelimiter.app"
@@ -12,13 +37,32 @@ android {
         applicationId = "com.tubelimiter.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
+    }
+
+    signingConfigs {
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = releaseStoreFile
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            if (releaseStoreFile != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
@@ -53,4 +97,24 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+}
+
+ktlint {
+    // The existing source is formatted in IntelliJ's Kotlin style, not ktlint's stricter
+    // "ktlint_official" one; pinning the style keeps the check meaningful (unused imports,
+    // import order, indentation, spacing) instead of demanding a wholesale reformat.
+    // @Composable functions are PascalCase by convention, not a naming violation.
+    additionalEditorconfig.set(
+        mapOf(
+            "ktlint_code_style" to "intellij_idea",
+            "ktlint_function_naming_ignore_when_annotated_with" to "Composable,Preview",
+            // Pure line-wrapping preference; the source deliberately wraps expression
+            // bodies that ktlint would pull back onto the signature line.
+            "ktlint_standard_function-signature" to "disabled",
+        ),
+    )
+    // Reports without failing the build: the current source carries a small backlog of
+    // formatting deviations (`./gradlew ktlintCheck` lists them, `ktlintFormat` fixes most).
+    // Once that is cleared, flip this to false to make the check enforcing.
+    ignoreFailures.set(true)
 }

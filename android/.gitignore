@@ -10,3 +10,9 @@ captures/
 *.apk
 *.keystore
 !debug.keystore
+
+# Release signing material - never commit these.
+keystore.properties
+*.jks
+*.p12
+release/
