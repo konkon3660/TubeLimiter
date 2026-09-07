@@ -24,7 +24,7 @@ import {
   isShortsUrl,
   isShortsLimitExceeded
 } from '../lib/blockDecision.js';
-import { evaluateAlarms } from '../lib/alarmRules.js';
+import { ALARM_KIND, evaluateAlarms } from '../lib/alarmRules.js';
 import {
   planDateRollover,
   planEmergencyReset,
@@ -34,6 +34,7 @@ import {
 import { planLimitHistoryUpdate } from '../lib/limitHistory.js';
 import { DiagnosticKind, summarizeFailure } from '../lib/syncDiagnostics.js';
 import { recordDiagnosticFailure, recordSyncSuccess } from '../lib/diagnosticsStore.js';
+import { t, tCount } from '../lib/i18n.js';
 
 const MAX_ELAPSED_MS = 10 * 60 * 1000; // 비정상적으로 큰 elapsed 값 방어
 const DEFAULT_DAILY_LIMIT_MS = 30 * 60 * 1000;
@@ -794,9 +795,21 @@ function notify(id, title, message) {
 // "업데이트"만 하고 토스트 배너를 다시 띄우지 않아, 하루 첫 알림 말고는 안 보일 수 있다.
 // (마일스톤은 분 단위로 한 번씩만 뜨므로 고정 id로 충분하다.)
 function alarmNotificationId(notification) {
-  if (notification.kind === 'milestone') return `tube-limiter-milestone-${notification.minutes}`;
-  if (notification.kind === 'scheduleSoon') return `tube-limiter-schedule-soon-${Date.now()}`;
+  if (notification.kind === ALARM_KIND.milestone) return `tube-limiter-milestone-${notification.minutes}`;
+  if (notification.kind === ALARM_KIND.scheduleSoon) return `tube-limiter-schedule-soon-${Date.now()}`;
   return `tube-limiter-interval-${Date.now()}`;
+}
+
+// 알림 문구는 판정(lib/alarmRules.js)이 아니라 여기서 붙인다 — 그쪽은 chrome.* 없이 도는
+// 순수 함수라야 하고, 문구는 언어마다 어순도 단복수도 달라 messages.json이 정해야 한다.
+const ALARM_MESSAGE_KEYS = {
+  [ALARM_KIND.interval]: 'notify_alarm_interval',
+  [ALARM_KIND.milestone]: 'notify_alarm_milestone',
+  [ALARM_KIND.scheduleSoon]: 'notify_alarm_schedule_soon'
+};
+
+function alarmNotificationMessage(notification) {
+  return tCount(ALARM_MESSAGE_KEYS[notification.kind], notification.minutes);
 }
 
 async function checkAlarms(currentUsage, limitMs) {
@@ -815,7 +828,7 @@ async function checkAlarms(currentUsage, limitMs) {
   });
 
   for (const notification of notifications) {
-    notify(alarmNotificationId(notification), 'TubeLimiter', notification.message);
+    notify(alarmNotificationId(notification), 'TubeLimiter', alarmNotificationMessage(notification));
   }
 
   if (changed) await setStorage({ alarm_state: state });
@@ -844,7 +857,7 @@ async function checkUsageAndBlock() {
       focusModeEndTime = null;
       focusStopRequestedAt = null;
       await setStorage({ focusModeActive: false, focusModeEndTime: null, focusStopRequestedAt: null });
-      notify(`tube-limiter-focus-end-${Date.now()}`, 'TubeLimiter', '집중 모드가 종료되었습니다.');
+      notify(`tube-limiter-focus-end-${Date.now()}`, 'TubeLimiter', t('notify_focus_end'));
     }
   }
 
@@ -854,7 +867,7 @@ async function checkUsageAndBlock() {
     focusModeEndTime = Date.now() + (storedState.focusModeDelayDuration || 30) * 60 * 1000;
     focusStopRequestedAt = null;
     await setStorage({ focusModeActive: true, focusModeEndTime, focusModeDelayEndTime: null, focusStopRequestedAt: null });
-    notify(`tube-limiter-focus-start-${Date.now()}`, 'TubeLimiter', '집중 모드가 시작되었습니다.');
+    notify(`tube-limiter-focus-start-${Date.now()}`, 'TubeLimiter', t('notify_focus_start'));
   }
 
   // 긴급 시청 만료: 마찬가지로 setTimeout이 못 돌아오면 여기서 복구 (안 하면 이후 모든 차단이 영구히 풀림)
@@ -888,7 +901,7 @@ async function checkUsageAndBlock() {
     notify(
       `tube-limiter-schedule-${scheduleBlockActive ? 'start' : 'end'}-${Date.now()}`,
       'TubeLimiter',
-      scheduleBlockActive ? '예약된 차단 시간이 시작되었습니다.' : '예약된 차단 시간이 종료되었습니다.'
+      scheduleBlockActive ? t('notify_schedule_start') : t('notify_schedule_end')
     );
   }
 
@@ -1082,7 +1095,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       // 그래도 "막힌 게 있는" 상태이므로 발급을 허용한다 — Shorts 한도는 전체 한도와 같은 급의
       // 한도 차단이라 긴급 시청으로 뚫을 수 있어야 한다.
       if (!isYoutubeBlocked && !shortsLimitBlocked) {
-        sendResponse({ success: false, message: '현재 차단 상태가 아닙니다.' });
+        sendResponse({ success: false, message: t('emergency_error_not_blocked') });
         return;
       }
 
@@ -1092,14 +1105,14 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
         'focusModeActive', 'focusModeEndTime'
       ]);
       if (fmActive && (!fmEndTime || Date.now() < fmEndTime)) {
-        sendResponse({ success: false, message: '집중 모드 중에는 긴급 시청을 쓸 수 없어요.' });
+        sendResponse({ success: false, message: t('emergency_error_focus_mode') });
         return;
       }
 
       // 예약 차단도 집중 모드와 같은 급 - 한도와 무관하게 무조건 차단하는 커밋먼트 장치이므로
       // 긴급 시청 발급 자체를 거부한다 (checkUsageAndBlock의 우선순위와 동일한 원칙).
       if (isScheduleActive(new Date(), settingsCache.scheduled_blocks || []).active) {
-        sendResponse({ success: false, message: '예약된 차단 시간에는 긴급 시청을 쓸 수 없어요.' });
+        sendResponse({ success: false, message: t('emergency_error_scheduled') });
         return;
       }
 
@@ -1107,13 +1120,16 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       if (last_emergency_granted_at) {
         const remainingMs = EMERGENCY_GRANT_COOLDOWN_MS - (Date.now() - last_emergency_granted_at);
         if (remainingMs > 0) {
-          sendResponse({ success: false, message: `${Math.ceil(remainingMs / 1000)}초 후 다시 시도해주세요.` });
+          sendResponse({
+            success: false,
+            message: tCount('emergency_error_cooldown', Math.ceil(remainingMs / 1000))
+          });
           return;
         }
       }
 
       if (remainingUses <= 0) {
-        sendResponse({ success: false, message: '남은 긴급 시청 횟수가 없습니다.' });
+        sendResponse({ success: false, message: t('emergency_error_no_uses') });
         return;
       }
 
@@ -1163,7 +1179,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
         focusStopRequestedAt = null;
         await setStorage({ focusModeActive: true, focusModeEndTime, focusModeDelayEndTime: null, focusStopRequestedAt: null });
         await checkUsageAndBlock();
-        if (viaDelay) notify(`tube-limiter-focus-start-${Date.now()}`, 'TubeLimiter', '집중 모드가 시작되었습니다.');
+        if (viaDelay) notify(`tube-limiter-focus-start-${Date.now()}`, 'TubeLimiter', t('notify_focus_start'));
       };
 
       if (delay > 0) {

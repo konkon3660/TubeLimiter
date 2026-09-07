@@ -4,7 +4,8 @@ import {
   DIAGNOSTIC_CAPACITY,
   SYNC_STALE_THRESHOLD_MS,
   DiagnosticKind,
-  diagnosticKindLabel,
+  StaleSyncReason,
+  diagnosticKindMessageKey,
   sanitizeDiagnosticCode,
   summarizeFailure,
   normalizeDiagnosticEvents,
@@ -36,9 +37,10 @@ test('이벤트 종류 이름이 안드로이드 DiagnosticKind와 문자열까�
   });
 });
 
-test('모르는 종류는 라벨 대신 원래 문자열을 그대로 보여준다', () => {
-  assert.equal(diagnosticKindLabel(DiagnosticKind.SYNC_USAGE), '사용시간 보고');
-  assert.equal(diagnosticKindLabel('sync_future_thing'), 'sync_future_thing');
+test('종류마다 메시지 키를 주고, 모르는 종류는 null이다 (호출자가 원래 값을 그대로 쓴다)', () => {
+  // 문구가 아니라 키를 돌려주는 게 핵심이다 — 이 파일은 chrome.i18n 없이 돌아야 한다.
+  assert.equal(diagnosticKindMessageKey(DiagnosticKind.SYNC_USAGE), 'diag_kind_sync_usage');
+  assert.equal(diagnosticKindMessageKey('sync_future_thing'), null);
 });
 
 // --- sanitize: 마지막 방어선 ---
@@ -253,25 +255,41 @@ test('시각은 MM-DD HH:mm으로 보여준다', () => {
   assert.equal(formatDiagnosticTime(at), '09-07 04:05');
 });
 
-test('성공 기록이 없고 실패도 없으면 없음 두 줄만 나온다', () => {
+test('읽을 수 없는 시각은 null이다 (뭐라고 적을지는 화면이 정한다)', () => {
+  assert.equal(formatDiagnosticTime(Number.NaN), null);
+});
+
+// 머리말 문구는 화면(options.js)이 chrome.i18n으로 넣는다. 여기서는 그 자리에 무엇이 오든
+// 줄 순서와 각 줄의 모양이 그대로인지만 본다.
+const LABELS = {
+  title: 'REPORT',
+  lastSuccess: 'LAST: 09-07 04:05',
+  noFailures: 'NO FAILURES',
+  failureCount: 'FAILURES 2'
+};
+
+test('실패가 없으면 머리말 두 줄 + 없음 한 줄만 나온다', () => {
   assert.equal(
-    buildDiagnosticsReport(null, []),
-    'TubeLimiter 동기화 진단\n최근 성공: 없음\n최근 실패: 없음'
+    buildDiagnosticsReport([], LABELS),
+    'REPORT\nLAST: 09-07 04:05\nNO FAILURES'
   );
 });
 
 test('복사 텍스트에는 시각·종류·코드·횟수만 들어간다', () => {
   const at = new Date(2026, 8, 7, 4, 5).getTime();
-  const report = buildDiagnosticsReport(at, [
-    { atMillis: at, kind: DiagnosticKind.SYNC_USAGE, code: 'rpc/http_500', count: 3 },
-    { atMillis: at, kind: DiagnosticKind.AUTH, code: 'session_refresh', count: 1 }
-  ]);
+  const report = buildDiagnosticsReport(
+    [
+      { atMillis: at, kind: DiagnosticKind.SYNC_USAGE, code: 'rpc/http_500', count: 3 },
+      { atMillis: at, kind: DiagnosticKind.AUTH, code: 'session_refresh', count: 1 }
+    ],
+    LABELS
+  );
   assert.equal(
     report,
     [
-      'TubeLimiter 동기화 진단',
-      '최근 성공: 09-07 04:05',
-      '최근 실패 2건',
+      'REPORT',
+      'LAST: 09-07 04:05',
+      'FAILURES 2',
       '09-07 04:05 sync_usage rpc/http_500 x3',
       '09-07 04:05 auth session_refresh'
     ].join('\n')
@@ -279,9 +297,10 @@ test('복사 텍스트에는 시각·종류·코드·횟수만 들어간다', ()
 });
 
 test('복사 텍스트도 sanitize를 거친다 (저장소가 예전 버전 값이어도 새지 않는다)', () => {
-  const report = buildDiagnosticsReport(null, [
-    { atMillis: 0, kind: 'auth', code: 'denied for victim@example.com', count: 1 }
-  ]);
+  const report = buildDiagnosticsReport(
+    [{ atMillis: 0, kind: 'auth', code: 'denied for victim@example.com', count: 1 }],
+    LABELS
+  );
   assert.ok(!report.includes('victim@example.com'));
   assert.ok(report.includes('[redacted]'));
 });
@@ -300,8 +319,8 @@ test('마지막 성공이 24시간 이내면 경고하지 않는다', () => {
 test('마지막 성공이 24시간을 넘기면 경과 시간을 사실대로 알린다', () => {
   const now = 100 * HOUR;
   const warning = staleSyncWarning(true, now - 30 * HOUR, true, now);
-  assert.ok(warning);
-  assert.ok(warning.includes('30시간째'));
+  // 문구가 아니라 사유 + 경과 시간을 돌려준다 — 문구는 popup.js가 chrome.i18n으로 붙인다.
+  assert.deepEqual(warning, { reason: StaleSyncReason.STALE, hours: 30 });
 });
 
 test('임계값 경계는 안드로이드와 같다: 1ms 모자라면 조용하고, 정각부터 경고한다', () => {
@@ -317,6 +336,6 @@ test('한 번도 성공한 적 없고 실패도 없으면 (막 로그인한 직�
 
 test('한 번도 성공한 적 없는데 실패만 쌓였으면 시간 대신 사실만 말한다', () => {
   const warning = staleSyncWarning(true, null, true, 100 * HOUR);
-  assert.ok(warning);
-  assert.ok(!warning.includes('시간째'));
+  // 경과 시간을 셀 기준점이 없으므로 hours 없이 사유만 돌려준다.
+  assert.deepEqual(warning, { reason: StaleSyncReason.NEVER_SUCCEEDED });
 });

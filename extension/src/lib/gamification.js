@@ -33,13 +33,16 @@ export function unusedTimeXpBonus(usageMs, limitMs) {
   return Math.floor(unusedMs / (UNUSED_MINUTES_PER_XP * 60 * 1000));
 }
 
-// 레벨 티어: 레벨업 시 코스메틱(색상/칭호)만 바뀐다 — 한도/긴급시청 등 실질 기능엔 영향 없음
+// 레벨 티어: 레벨업 시 코스메틱(색상/칭호)만 바뀐다 — 한도/긴급시청 등 실질 기능엔 영향 없음.
+// 칭호 문구는 여기 두지 않는다(이 파일은 chrome.* 없이 node:test로 도는 순수 로직이다) —
+// key만 돌려주고, 화면에 쓸 이름은 dashboard.js가 chrome.i18n으로 붙인다. 이모지는 언어와
+// 무관한 그림이라 그대로 둔다.
 const LEVEL_TIERS = [
-  { min: 50, key: 'legend', title: '전설', emoji: '👑' },
-  { min: 20, key: 'master', title: '마스터', emoji: '⭐' },
-  { min: 10, key: 'skilled', title: '숙련자', emoji: '🔥' },
-  { min: 5, key: 'trainee', title: '수련생', emoji: '🌿' },
-  { min: 1, key: 'seed', title: '새싹', emoji: '🌱' }
+  { min: 50, key: 'legend', emoji: '👑' },
+  { min: 20, key: 'master', emoji: '⭐' },
+  { min: 10, key: 'skilled', emoji: '🔥' },
+  { min: 5, key: 'trainee', emoji: '🌿' },
+  { min: 1, key: 'seed', emoji: '🌱' }
 ];
 
 export function getLevelTier(level) {

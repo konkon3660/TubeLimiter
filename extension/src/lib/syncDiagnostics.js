@@ -83,18 +83,23 @@ export const DiagnosticKind = {
   MONITOR: 'monitor'
 };
 
-const KIND_LABELS = {
-  [DiagnosticKind.SYNC_SETTINGS]: '설정 동기화',
-  [DiagnosticKind.SYNC_STREAK]: '연속 기록 / 뱃지',
-  [DiagnosticKind.SYNC_USAGE]: '사용시간 보고',
-  [DiagnosticKind.EMERGENCY_FETCH]: '긴급 횟수 조회',
-  [DiagnosticKind.AUTH]: '로그인 세션',
-  [DiagnosticKind.MONITOR]: '감시 루프'
+// 화면에 뿌릴 이름은 언어마다 다르므로 여기엔 messages.json의 **키만** 둔다 (이 파일은
+// chrome.* 없이 node:test에서 도는 순수 로직이다). 문구를 붙이는 건 options.js 몫이다.
+const KIND_MESSAGE_KEYS = {
+  [DiagnosticKind.SYNC_SETTINGS]: 'diag_kind_sync_settings',
+  [DiagnosticKind.SYNC_STREAK]: 'diag_kind_sync_streak',
+  [DiagnosticKind.SYNC_USAGE]: 'diag_kind_sync_usage',
+  [DiagnosticKind.EMERGENCY_FETCH]: 'diag_kind_emergency_fetch',
+  [DiagnosticKind.AUTH]: 'diag_kind_auth',
+  [DiagnosticKind.MONITOR]: 'diag_kind_monitor'
 };
 
-/** 화면 표시용 한글 이름. 모르는 종류(예전 버전이 남긴 값)는 그대로 보여준다. */
-export function diagnosticKindLabel(kind) {
-  return KIND_LABELS[kind] || kind;
+/**
+ * 종류에 해당하는 메시지 키. 모르는 종류(예전 버전이 남긴 값)는 번역할 이름이 없으므로 null —
+ * 그때는 호출자가 원래 값을 그대로 보여준다.
+ */
+export function diagnosticKindMessageKey(kind) {
+  return KIND_MESSAGE_KEYS[kind] || null;
 }
 
 /**
@@ -216,10 +221,13 @@ function toMillisOrNull(value) {
   return Number.isFinite(millis) ? millis : null;
 }
 
-/** 화면과 클립보드가 같이 쓰는 시각 표기. 초 단위까지는 진단에 필요 없다. */
+/**
+ * 화면과 클립보드가 같이 쓰는 시각 표기. 초 단위까지는 진단에 필요 없다.
+ * 읽을 수 없는 값이면 null — "알 수 없음"을 어떤 말로 적을지는 호출자가 정한다.
+ */
 export function formatDiagnosticTime(millis) {
   const date = new Date(millis);
-  if (Number.isNaN(date.getTime())) return '알 수 없음';
+  if (Number.isNaN(date.getTime())) return null;
   const pad = (n) => String(n).padStart(2, '0');
   return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
@@ -227,29 +235,49 @@ export function formatDiagnosticTime(millis) {
 /**
  * 클립보드로 나가는 텍스트. 여기 들어가는 값은 시각·종류·코드·횟수뿐이라, 어디에 붙여넣어도
  * 계정을 특정할 수 있는 정보가 따라나가지 않는다. (안드로이드 buildDiagnosticsReport와 같은 형식)
+ *
+ * 머리말 문구는 언어마다 다르므로 인자로 받는다 — 이 파일에는 문구를 두지 않는다. 줄 순서와
+ * 각 줄의 모양(무엇을 내보내고 무엇을 버리는가)만 여기서 정한다.
+ *
+ * @param {Array} events 저장돼 있던 실패 목록
+ * @param {object} labels
+ * @param {string} labels.title 첫 줄 제목
+ * @param {string} labels.lastSuccess "최근 성공: <시각>" 한 줄 (시각은 호출자가 이미 넣어둔다)
+ * @param {string} labels.noFailures 실패가 하나도 없을 때의 한 줄
+ * @param {string} labels.failureCount "최근 실패 N건" 한 줄
  */
-export function buildDiagnosticsReport(lastSuccessAtMillis, events) {
-  const lastSuccessMillis = toMillisOrNull(lastSuccessAtMillis);
-  const lastSuccess = lastSuccessMillis === null ? '없음' : formatDiagnosticTime(lastSuccessMillis);
-  const header = `TubeLimiter 동기화 진단\n최근 성공: ${lastSuccess}`;
+export function buildDiagnosticsReport(events, labels) {
+  const header = `${labels.title}\n${labels.lastSuccess}`;
   const list = normalizeDiagnosticEvents(events);
-  if (list.length === 0) return `${header}\n최근 실패: 없음`;
+  if (list.length === 0) return `${header}\n${labels.noFailures}`;
   const lines = list
     .map((event) => {
       const repeat = event.count > 1 ? ` x${event.count}` : '';
       return `${formatDiagnosticTime(event.atMillis)} ${event.kind} ${event.code}${repeat}`;
     })
     .join('\n');
-  return `${header}\n최근 실패 ${list.length}건\n${lines}`;
+  return `${header}\n${labels.failureCount}\n${lines}`;
 }
 
+/** staleSyncWarning이 돌려주는 사유. 실제 문구는 팝업(popup.js)이 붙인다. */
+export const StaleSyncReason = Object.freeze({
+  /** 이 계정으로 한 번도 동기화에 성공한 적이 없다 — 경과 시간을 셀 기준점이 없다. */
+  NEVER_SUCCEEDED: 'neverSucceeded',
+  /** 마지막 성공이 임계값(기본 24시간)을 넘겼다. hours에 경과 시간이 담긴다. */
+  STALE: 'stale'
+});
+
 /**
- * 팝업에 띄울 한 줄 경고, 띄울 게 없으면 null.
+ * 팝업에 띄울 경고의 **판정**, 띄울 게 없으면 null. 문구가 아니라 사유(+ 경과 시간)를 돌려준다 —
+ * 문구를 여기서 만들면 이 파일이 chrome.i18n에 묶여 node:test에서 못 돌게 된다.
  *
  * 로그아웃 상태에서는 애초에 동기화할 게 없으니 조용히 넘어간다. 성공 기록이 아예 없는데
- * 실패는 쌓인 경우는 "며칠째 실패"를 셀 기준점이 없으므로 시간 대신 사실만 말한다. 문구는
- * 겁주지 않는 선에서 사실만 — 사용자가 지금 당장 뭘 잘못한 게 아니고, 실제로 그냥 오프라인일
- * 수도 있다. (안드로이드 staleSyncWarning과 같은 판정, 안내하는 화면 이름만 다르다)
+ * 실패는 쌓인 경우는 "며칠째 실패"를 셀 기준점이 없으므로 시간 대신 사실만 말한다
+ * (NEVER_SUCCEEDED). 문구는 겁주지 않는 선에서 사실만 — 사용자가 지금 당장 뭘 잘못한 게
+ * 아니고, 실제로 그냥 오프라인일 수도 있다. (안드로이드 staleSyncWarning과 같은 판정,
+ * 안내하는 화면 이름만 다르다)
+ *
+ * @returns {{reason: string, hours?: number}|null}
  */
 export function staleSyncWarning(
   signedIn,
@@ -261,12 +289,9 @@ export function staleSyncWarning(
   if (!signedIn) return null;
   const lastSuccess = toMillisOrNull(lastSuccessAtMillis);
   if (lastSuccess === null) {
-    return hasRecordedFailure
-      ? '아직 한 번도 동기화에 성공하지 못했어요. 옵션 > 동기화 상태에서 확인할 수 있어요.'
-      : null;
+    return hasRecordedFailure ? { reason: StaleSyncReason.NEVER_SUCCEEDED } : null;
   }
   const elapsed = nowMillis - lastSuccess;
   if (elapsed < thresholdMillis) return null;
-  const hours = Math.floor(elapsed / (60 * 60 * 1000));
-  return `동기화가 ${hours}시간째 되지 않고 있어요. 옵션 > 동기화 상태에서 확인할 수 있어요.`;
+  return { reason: StaleSyncReason.STALE, hours: Math.floor(elapsed / (60 * 60 * 1000)) };
 }

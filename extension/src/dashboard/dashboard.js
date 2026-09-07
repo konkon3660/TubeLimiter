@@ -14,6 +14,9 @@ import {
 import { computeLimitForDate } from '../lib/limits.js';
 import { resolveLimitForDate } from '../lib/limitHistory.js';
 import { mergeHistories } from '../lib/historyMerge.js';
+import { applyI18n, pluralMessageKey, t, tCount } from '../lib/i18n.js';
+
+applyI18n();
 
 const signedOutView = document.getElementById('signedOutView');
 const signedInView = document.getElementById('signedInView');
@@ -23,6 +26,16 @@ let chartRangeDays = 14;
 let chartMode = 'minutes'; // 'minutes' | 'percent' — 세션 중에만 유지, 기본값은 항상 '분'
 let usageChartInstance = null;
 let hourlyChartInstance = null;
+
+// 레벨 티어의 칭호. gamification.js는 key만 돌려준다(그쪽은 chrome.* 없이 도는 순수 로직) —
+// 키를 문자열로 조립하지 않고 표로 적어두면 이 파일만 읽어도 어떤 문구가 쓰이는지 보인다.
+const TIER_MESSAGE_KEYS = {
+  seed: 'tier_seed',
+  trainee: 'tier_trainee',
+  skilled: 'tier_skilled',
+  master: 'tier_master',
+  legend: 'tier_legend'
+};
 
 // 히트맵(28일)과 막대그래프(최대 30일)를 다 채우려면 30일이면 충분하다. 더 길게 읽어봐야
 // 화면에 그릴 곳이 없고, select 응답만 커진다.
@@ -74,8 +87,8 @@ function setHistoryNote(message) {
 }
 
 function formatMinutes(ms) {
-  if (!Number.isFinite(ms)) return '무제한';
-  return `${Math.round(ms / 60000)}분`;
+  if (!Number.isFinite(ms)) return t('common_unlimited');
+  return tCount('minutes', Math.round(ms / 60000));
 }
 
 /**
@@ -92,14 +105,34 @@ function formatMinutes(ms) {
  */
 function formatDayBreakdown(usageMs, limitMs, emergencyMs, emergencyUses, limitEstimated = false) {
   const ownMs = Math.max(0, usageMs - Math.max(0, emergencyMs));
-  const parts = [`사용 ${formatMinutes(usageMs)}`];
+  const parts = [t('dashboard_breakdown_used', [formatMinutes(usageMs)])];
   if (emergencyMs > 0 || emergencyUses > 0) {
-    const usesLabel = emergencyUses === null ? '' : `(${emergencyUses}회)`;
-    parts.push(`긴급 ${formatMinutes(emergencyMs)}${usesLabel}`);
-    parts.push(`판정 기준 ${formatMinutes(ownMs)}`);
+    parts.push(
+      emergencyUses === null
+        ? t('dashboard_breakdown_emergency', [formatMinutes(emergencyMs)])
+        : t(pluralMessageKey('dashboard_breakdown_emergency_with_uses', emergencyUses), [
+          formatMinutes(emergencyMs),
+          String(emergencyUses)
+        ])
+    );
+    parts.push(t('dashboard_breakdown_counted', [formatMinutes(ownMs)]));
   }
-  parts.push(`한도 ${formatMinutes(limitMs)}${limitEstimated ? '(현재 설정 기준 추정)' : ''}`);
+  parts.push(
+    limitEstimated
+      ? t('dashboard_breakdown_limit_estimated', [formatMinutes(limitMs)])
+      : t('dashboard_breakdown_limit', [formatMinutes(limitMs)])
+  );
   return parts.join(' · ');
+}
+
+/** 그날의 판정을 한 마디로. 툴팁 첫 줄에 날짜와 나란히 들어간다. */
+function dayStatusLabel(usage, limit, emergencyMs, emergencyUses) {
+  if (isPerfectDay(usage, limit, emergencyMs, emergencyUses ?? 0)) return t('dashboard_status_perfect');
+  if (!isDaySuccess(usage, limit, emergencyMs)) return t('dashboard_status_over');
+  if (emergencyUses > 0) {
+    return t(pluralMessageKey('dashboard_status_success_with_emergency', emergencyUses), [String(emergencyUses)]);
+  }
+  return t('dashboard_status_success');
 }
 
 async function renderHeatmap(usageHistory, settings, emergencyHistory = {}, limitHistory = {}) {
@@ -129,21 +162,33 @@ async function renderHeatmap(usageHistory, settings, emergencyHistory = {}, limi
       const breakdown = formatDayBreakdown(usage, limit, emergencyMs, emergencyUses, limitEstimated);
       if (isPerfectDay(usage, limit, emergencyMs, emergencyUses ?? 0)) {
         cell.classList.add('perfect');
-        cell.title = `${date} · 완벽한 날
-${breakdown}`;
       } else if (isDaySuccess(usage, limit, emergencyMs)) {
         cell.classList.add('success');
-        cell.title = `${date} · 성공${emergencyUses > 0 ? ` (긴급 시청 ${emergencyUses}회)` : ''}
-${breakdown}`;
       } else {
         cell.classList.add('fail');
-        cell.title = `${date} · 초과
-${breakdown}`;
       }
+      // "날짜 · 판정" 다음 줄에 근거. 세 조각의 순서가 언어마다 다를 수 있어 통째로 한 문구로 만든다.
+      cell.title = t('dashboard_day_tooltip', [
+        date,
+        dayStatusLabel(usage, limit, emergencyMs, emergencyUses),
+        breakdown
+      ]);
     }
     if (date === today) cell.classList.add('today');
     container.appendChild(cell);
   });
+}
+
+// 뱃지는 이모지 + 짧은 설명 한 줄. 문구가 번역돼 들어오므로 innerHTML 대신 DOM으로 짓는다.
+function createBadge(emoji, className, caption, title) {
+  const item = document.createElement('div');
+  item.className = className;
+  if (title) item.title = title;
+  const captionEl = document.createElement('span');
+  captionEl.className = 'badge-caption';
+  captionEl.textContent = caption;
+  item.append(emoji, captionEl);
+  return item;
 }
 
 async function renderBadges(userId) {
@@ -153,19 +198,21 @@ async function renderBadges(userId) {
   grid.innerHTML = '';
   STREAK_MILESTONES.forEach((days) => {
     const key = milestoneAchievementKey(days);
-    const item = document.createElement('div');
-    item.className = 'badge-item' + (unlockedKeys.has(key) ? ' unlocked' : '');
-    item.innerHTML = `🏅<span class="badge-caption">${days}일</span>`;
-    grid.appendChild(item);
+    grid.appendChild(
+      createBadge('🏅', 'badge-item' + (unlockedKeys.has(key) ? ' unlocked' : ''), tCount('days', days))
+    );
   });
   // 완벽한 날(긴급 시청 0회) 연속 기록 뱃지 — 스트릭 뱃지와 같은 그리드에 이어서 붙인다.
   PERFECT_MILESTONES.forEach((days) => {
     const key = perfectAchievementKey(days);
-    const item = document.createElement('div');
-    item.className = 'badge-item perfect-badge' + (unlockedKeys.has(key) ? ' unlocked' : '');
-    item.title = `긴급 시청 없이 ${days}일 연속 한도 준수`;
-    item.innerHTML = `💎<span class="badge-caption">완벽 ${days}일</span>`;
-    grid.appendChild(item);
+    grid.appendChild(
+      createBadge(
+        '💎',
+        'badge-item perfect-badge' + (unlockedKeys.has(key) ? ' unlocked' : ''),
+        tCount('dashboard_perfect_badge_caption', days),
+        tCount('dashboard_perfect_badge_title', days)
+      )
+    );
   });
 }
 
@@ -196,7 +243,7 @@ function renderChart(usageHistory, settings, limitHistory = {}) {
       labels: dates.map((d) => d.slice(5)),
       datasets: [
         {
-          label: isPercent ? '한도 대비 사용률(%)' : '사용 시간(분)',
+          label: isPercent ? t('dashboard_chart_label_percent') : t('dashboard_chart_label_minutes'),
           data: values,
           backgroundColor: '#f97316',
           borderRadius: 4
@@ -248,10 +295,10 @@ function renderHourlyChart(usageHistoryHourly) {
   hourlyChartInstance = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: Array.from({ length: 24 }, (_, hour) => `${hour}시`),
+      labels: Array.from({ length: 24 }, (_, hour) => t('dashboard_hour_label', [String(hour)])),
       datasets: [
         {
-          label: '평균 사용 시간(분)',
+          label: t('dashboard_chart_label_hourly_avg'),
           data: avgMinutesByHour,
           backgroundColor: '#4f46e5',
           borderRadius: 4
@@ -343,9 +390,7 @@ async function init() {
     serverRows || []
   );
   setHistoryNote(
-    serverRows
-      ? '히트맵과 사용 시간 그래프는 이 계정에 연결된 모든 기기의 기록을 합쳐서 보여줍니다.'
-      : '서버 기록을 불러오지 못해 이 기기에 저장된 기록만 표시하고 있어요.'
+    serverRows ? t('dashboard_history_note_merged') : t('dashboard_history_note_local_only')
   );
 
   const hourlyHistory = usage_history_hourly || {};
@@ -365,8 +410,14 @@ async function init() {
     const { level, xpIntoLevel, xpForNextLevel } = getLevelProgress(xp);
 
     const todayLimitMs = computeLimitForDate(settingsCache, getTodayDate());
-    const limitLabel = Number.isFinite(todayLimitMs) ? `하루 ${Math.round(todayLimitMs / 60000)}분` : '무제한';
-    document.getElementById('streakLimitLabel').textContent = limitLabel;
+    const limitLabel = Number.isFinite(todayLimitMs)
+      ? t('dashboard_daily_limit_value', [String(Math.round(todayLimitMs / 60000))])
+      : t('common_unlimited');
+    // 단복수는 연속 일수로 가르고, $1에는 위 한도 문구가 들어간다.
+    document.getElementById('streakCaption').textContent = t(
+      pluralMessageKey('dashboard_streak_caption', currentStreak),
+      [limitLabel]
+    );
 
     document.getElementById('streakNumber').textContent = currentStreak;
     document.getElementById('bestStreak').textContent = bestStreak;
@@ -377,7 +428,7 @@ async function init() {
     document.getElementById('xpBarFill').style.width = `${Math.min(100, (xpIntoLevel / xpForNextLevel) * 100)}%`;
 
     const tier = getLevelTier(level);
-    document.getElementById('levelTierBadge').textContent = `${tier.emoji} ${tier.title}`;
+    document.getElementById('levelTierBadge').textContent = `${tier.emoji} ${t(TIER_MESSAGE_KEYS[tier.key])}`;
     const streakSectionEl = document.getElementById('streakSection');
     streakSectionEl.className = streakSectionEl.className.replace(/\btier-\S+/g, '').trim();
     streakSectionEl.classList.add(`tier-${tier.key}`);

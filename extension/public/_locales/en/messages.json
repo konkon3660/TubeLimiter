@@ -1,0 +1,728 @@
+{
+  "appName": {
+    "message": "TubeLimiter"
+  },
+  "appDescription": {
+    "message": "Set a daily YouTube limit and see the days you kept it as streaks, XP and badges."
+  },
+  "common_unlimited": {
+    "message": "Unlimited"
+  },
+  "common_none": {
+    "message": "None"
+  },
+  "common_unknown": {
+    "message": "Unknown"
+  },
+  "common_loading": {
+    "message": "Checking..."
+  },
+  "minutes_one": {
+    "message": "$1 minute"
+  },
+  "minutes_other": {
+    "message": "$1 minutes"
+  },
+  "days_one": {
+    "message": "$1 day"
+  },
+  "days_other": {
+    "message": "$1 days"
+  },
+  "times_one": {
+    "message": "$1 time"
+  },
+  "times_other": {
+    "message": "$1 times"
+  },
+  "action_sign_in_or_up": {
+    "message": "Sign in / Sign up"
+  },
+  "action_request_emergency": {
+    "message": "Request an emergency view"
+  },
+  "action_start_focus": {
+    "message": "Start focus mode"
+  },
+  "action_stop_focus": {
+    "message": "End focus mode"
+  },
+  "action_cancel_stop_request": {
+    "message": "Cancel the scheduled end"
+  },
+  "action_cancel_focus_schedule": {
+    "message": "Cancel scheduled focus mode"
+  },
+  "action_open_dashboard": {
+    "message": "📈 Dashboard"
+  },
+  "action_open_options": {
+    "message": "⚙️ Options"
+  },
+  "action_add": {
+    "message": "Add"
+  },
+  "action_delete": {
+    "message": "Remove"
+  },
+  "action_refresh": {
+    "message": "Refresh"
+  },
+  "action_copy": {
+    "message": "Copy"
+  },
+  "action_clear": {
+    "message": "Clear"
+  },
+  "action_save": {
+    "message": "Save"
+  },
+  "action_sign_out": {
+    "message": "Sign out"
+  },
+  "action_cancel": {
+    "message": "Cancel"
+  },
+  "status_idle": {
+    "message": "Idle"
+  },
+  "status_counting": {
+    "message": "Counting"
+  },
+  "status_off": {
+    "message": "Off"
+  },
+  "popup_signed_out_desc": {
+    "message": "Sign in and your streak and XP stay in sync across devices."
+  },
+  "popup_tab_status": {
+    "message": "📊 Status"
+  },
+  "popup_tab_controls": {
+    "message": "⚙️ Controls"
+  },
+  "popup_streak_caption_one": {
+    "message": "day in a row · best $1"
+  },
+  "popup_streak_caption_other": {
+    "message": "days in a row · best $1"
+  },
+  "popup_until_block_label": {
+    "message": "Until block"
+  },
+  "popup_until_block_title": {
+    "message": "$1 left until the block"
+  },
+  "popup_stat_today_usage": {
+    "message": "Watched today"
+  },
+  "popup_stat_today_shorts": {
+    "message": "Shorts today"
+  },
+  "popup_stat_emergency_left": {
+    "message": "Emergency views left"
+  },
+  "popup_usage_of_limit": {
+    "message": "$1 / $2"
+  },
+  "popup_badge_tracking_label": {
+    "message": "Counting now"
+  },
+  "popup_badge_mode_label": {
+    "message": "Mode"
+  },
+  "popup_section_emergency": {
+    "message": "🚨 Emergency view"
+  },
+  "popup_section_focus": {
+    "message": "🎯 Focus mode"
+  },
+  "popup_focus_delay_label": {
+    "message": "Delay (min):"
+  },
+  "popup_focus_duration_label": {
+    "message": "Length (min):"
+  },
+  "popup_mode_emergency": {
+    "message": "Emergency view · $1"
+  },
+  "popup_mode_focus": {
+    "message": "Focus mode · $1"
+  },
+  "popup_mode_focus_stopping": {
+    "message": "Focus mode ending · $1"
+  },
+  "popup_mode_focus_pending": {
+    "message": "Focus mode starts in · $1"
+  },
+  "popup_mode_scheduled_default_label": {
+    "message": "Scheduled block"
+  },
+  "popup_mode_scheduled_until": {
+    "message": "$1 · until $2"
+  },
+  "popup_emergency_in_use": {
+    "message": "Emergency view running"
+  },
+  "popup_emergency_blocked_focus": {
+    "message": "Not available in focus mode"
+  },
+  "popup_emergency_blocked_schedule": {
+    "message": "Not available during a scheduled block"
+  },
+  "popup_emergency_cooldown_one": {
+    "message": "Try again in $1 second"
+  },
+  "popup_emergency_cooldown_other": {
+    "message": "Try again in $1 seconds"
+  },
+  "popup_sync_warning_never": {
+    "message": "This device hasn't synced yet. You can check under Options > Sync status."
+  },
+  "popup_sync_warning_stale_one": {
+    "message": "Nothing has synced for $1 hour. You can check under Options > Sync status."
+  },
+  "popup_sync_warning_stale_other": {
+    "message": "Nothing has synced for $1 hours. You can check under Options > Sync status."
+  },
+  "auth_page_title": {
+    "message": "TubeLimiter sign in"
+  },
+  "auth_email_placeholder": {
+    "message": "Email"
+  },
+  "auth_password_placeholder": {
+    "message": "Password (6 characters or more)"
+  },
+  "auth_sign_in": {
+    "message": "Sign in"
+  },
+  "auth_sign_up": {
+    "message": "Sign up"
+  },
+  "auth_switch_to_sign_up": {
+    "message": "No account yet? Sign up"
+  },
+  "auth_switch_to_sign_in": {
+    "message": "Already have an account? Sign in"
+  },
+  "auth_error_invalid_input": {
+    "message": "Enter an email and a password of at least 6 characters."
+  },
+  "auth_error_generic": {
+    "message": "Something went wrong with that request."
+  },
+  "auth_signed_in_done": {
+    "message": "Signed in. Close this tab and open the TubeLimiter popup again."
+  },
+  "auth_signed_up_done": {
+    "message": "We sent a confirmation email. Check your inbox, then close this tab and sign in. (If email confirmation is off in your Supabase project, you can sign in right away.)"
+  },
+  "options_page_title": {
+    "message": "TubeLimiter settings"
+  },
+  "options_header": {
+    "message": "⚙️ TubeLimiter settings"
+  },
+  "options_signed_out_desc": {
+    "message": "Sign in first to save your settings."
+  },
+  "options_section_daily_limit": {
+    "message": "⏱️ Daily watch limit"
+  },
+  "options_by_day_toggle": {
+    "message": "Set a different limit per weekday"
+  },
+  "options_daily_limit_label": {
+    "message": "Daily limit (minutes, 0 = unlimited)"
+  },
+  "weekday_sunday": {
+    "message": "Sunday"
+  },
+  "weekday_monday": {
+    "message": "Monday"
+  },
+  "weekday_tuesday": {
+    "message": "Tuesday"
+  },
+  "weekday_wednesday": {
+    "message": "Wednesday"
+  },
+  "weekday_thursday": {
+    "message": "Thursday"
+  },
+  "weekday_friday": {
+    "message": "Friday"
+  },
+  "weekday_saturday": {
+    "message": "Saturday"
+  },
+  "options_by_day_hint": {
+    "message": "-1 = no limit on that day"
+  },
+  "options_shorts_limit_label": {
+    "message": "Daily Shorts limit (minutes, 0 = no limit)"
+  },
+  "options_shorts_limit_hint": {
+    "message": "Separate from the overall limit above. Once you pass it only Shorts pages are blocked; regular videos keep running on whatever is left of the overall limit. An emergency view unblocks it."
+  },
+  "options_limit_lock_hint": {
+    "message": "🔒 Hardcore mode is on, so the limits are locked. Turn hardcore mode off to change them."
+  },
+  "options_section_hardcore": {
+    "message": "🔥 Hardcore · Shorts"
+  },
+  "options_hardcore_off_hint": {
+    "message": "Turning this on locks the limits above and starts tracking streaks. Turning it off takes an hour."
+  },
+  "options_hardcore_enable": {
+    "message": "Turn on hardcore mode"
+  },
+  "options_hardcore_on_hint": {
+    "message": "🔥 Hardcore mode on · limits locked"
+  },
+  "options_hardcore_request_off": {
+    "message": "Schedule the unlock (takes effect in an hour)"
+  },
+  "options_hardcore_pending_label": {
+    "message": "⏳ Time left until unlock"
+  },
+  "options_hardcore_cancel_off": {
+    "message": "Cancel and keep it locked"
+  },
+  "options_hardcore_unlocking_soon": {
+    "message": "⏳ Unlocking shortly..."
+  },
+  "options_hardcore_pending_countdown": {
+    "message": "⏳ $1m $2s until unlock"
+  },
+  "options_hardcore_off_streak_warning": {
+    "message": "Turning it off now resets your $1-day streak to zero. "
+  },
+  "options_hardcore_off_confirm": {
+    "message": "$1Turn hardcore mode off? It actually switches off an hour from now, and you can cancel any time before that. Go ahead?"
+  },
+  "options_always_block_shorts": {
+    "message": "Always block YouTube Shorts"
+  },
+  "options_section_alarms": {
+    "message": "⏰ Alarms"
+  },
+  "options_alarm_interval_label": {
+    "message": "Remind me every N minutes (0 = off)"
+  },
+  "options_alarm_milestones_label": {
+    "message": "Remind me when time is running out (30/10/5/1 min left)"
+  },
+  "options_section_emergency": {
+    "message": "🆘 Emergency views"
+  },
+  "options_emergency_uses_label": {
+    "message": "How many"
+  },
+  "options_emergency_reset_label": {
+    "message": "Resets"
+  },
+  "options_reset_daily": {
+    "message": "Daily"
+  },
+  "options_reset_weekly": {
+    "message": "Weekly"
+  },
+  "options_reset_monthly": {
+    "message": "Monthly"
+  },
+  "options_section_whitelist": {
+    "message": "📋 Allowlist"
+  },
+  "options_whitelist_empty": {
+    "message": "Nothing on the allowlist yet."
+  },
+  "options_whitelist_placeholder": {
+    "message": "Part of a URL or channel name"
+  },
+  "options_section_schedule": {
+    "message": "🕒 Scheduled blocks"
+  },
+  "options_schedule_hint": {
+    "message": "On the days and hours you pick, YouTube is blocked no matter what your limit says. Like focus mode, an emergency view won't get around it."
+  },
+  "options_schedule_empty": {
+    "message": "No scheduled blocks yet."
+  },
+  "options_schedule_add": {
+    "message": "+ Add a schedule"
+  },
+  "options_schedule_label_placeholder": {
+    "message": "Label (e.g. Night hours)"
+  },
+  "options_schedule_enabled": {
+    "message": "On"
+  },
+  "options_schedule_default_label": {
+    "message": "Night hours"
+  },
+  "weekday_short_sun": {
+    "message": "Sun"
+  },
+  "weekday_short_mon": {
+    "message": "Mon"
+  },
+  "weekday_short_tue": {
+    "message": "Tue"
+  },
+  "weekday_short_wed": {
+    "message": "Wed"
+  },
+  "weekday_short_thu": {
+    "message": "Thu"
+  },
+  "weekday_short_fri": {
+    "message": "Fri"
+  },
+  "weekday_short_sat": {
+    "message": "Sat"
+  },
+  "options_section_diagnostics": {
+    "message": "🩺 Sync status / diagnostics"
+  },
+  "options_diagnostics_hint": {
+    "message": "The last successful sync and any failures since. This stays in this browser and is never sent anywhere. Nothing that identifies your account (email, tokens, user ID) is recorded."
+  },
+  "options_diagnostics_last_success_label": {
+    "message": "Last success:"
+  },
+  "options_diagnostics_empty": {
+    "message": "No failures recorded."
+  },
+  "options_diagnostics_copied": {
+    "message": "Copied."
+  },
+  "options_diagnostics_copy_failed": {
+    "message": "Couldn't copy. Select the list and copy it by hand."
+  },
+  "options_diagnostics_cleared": {
+    "message": "Records cleared."
+  },
+  "options_saving": {
+    "message": "Saving..."
+  },
+  "options_saved": {
+    "message": "Saved."
+  },
+  "options_save_failed": {
+    "message": "Couldn't save: $1"
+  },
+  "options_action_failed": {
+    "message": "That didn't go through: $1"
+  },
+  "options_section_danger": {
+    "message": "⚠️ Danger zone"
+  },
+  "options_danger_desc": {
+    "message": "Deleting your account removes everything below, from the server and from this browser."
+  },
+  "options_danger_irreversible": {
+    "message": "This cannot be undone."
+  },
+  "options_danger_item_account": {
+    "message": "Your account (sign-in details)"
+  },
+  "options_danger_item_usage": {
+    "message": "Watch time history"
+  },
+  "options_danger_item_streak": {
+    "message": "Streaks · XP"
+  },
+  "options_danger_item_badges": {
+    "message": "Badges"
+  },
+  "options_danger_item_settings": {
+    "message": "Settings (limits · allowlist · scheduled blocks and so on)"
+  },
+  "options_delete_account": {
+    "message": "Delete account"
+  },
+  "options_delete_confirm_label": {
+    "message": "Type the value below exactly to confirm"
+  },
+  "options_delete_permanently": {
+    "message": "Delete permanently"
+  },
+  "options_delete_fallback_phrase": {
+    "message": "delete"
+  },
+  "options_delete_confirm_message": {
+    "message": "Deleting your account permanently removes your account, watch time history, streaks and XP, badges and settings. This cannot be undone. Continue?"
+  },
+  "options_deleting_account": {
+    "message": "Deleting your account..."
+  },
+  "options_delete_failed": {
+    "message": "Couldn't delete: $1 — your account and records are still there."
+  },
+  "options_account_deleted_title": {
+    "message": "✅ Your account has been deleted."
+  },
+  "options_account_deleted_hint": {
+    "message": "Your account, watch time history, streaks and XP, badges and settings are all gone, and the data stored in this browser was removed too. Sign up again whenever you'd like to come back."
+  },
+  "diag_kind_sync_settings": {
+    "message": "Settings sync"
+  },
+  "diag_kind_sync_streak": {
+    "message": "Streak / badges"
+  },
+  "diag_kind_sync_usage": {
+    "message": "Watch time upload"
+  },
+  "diag_kind_emergency_fetch": {
+    "message": "Emergency count lookup"
+  },
+  "diag_kind_auth": {
+    "message": "Sign-in session"
+  },
+  "diag_kind_monitor": {
+    "message": "Monitor loop"
+  },
+  "diag_report_title": {
+    "message": "TubeLimiter sync diagnostics"
+  },
+  "diag_report_last_success": {
+    "message": "Last success: $1"
+  },
+  "diag_report_no_failures": {
+    "message": "Recent failures: none"
+  },
+  "diag_report_failure_count_one": {
+    "message": "$1 recent failure"
+  },
+  "diag_report_failure_count_other": {
+    "message": "$1 recent failures"
+  },
+  "dashboard_page_title": {
+    "message": "TubeLimiter dashboard"
+  },
+  "dashboard_header": {
+    "message": "📈 TubeLimiter dashboard"
+  },
+  "dashboard_signed_out_desc": {
+    "message": "Sign in to see your dashboard."
+  },
+  "dashboard_streak_caption_one": {
+    "message": "day in a row keeping the $1 limit"
+  },
+  "dashboard_streak_caption_other": {
+    "message": "days in a row keeping the $1 limit"
+  },
+  "dashboard_daily_limit_value": {
+    "message": "$1 min/day"
+  },
+  "dashboard_best_record": {
+    "message": "Best"
+  },
+  "dashboard_level": {
+    "message": "Level"
+  },
+  "dashboard_total_success": {
+    "message": "Days on target"
+  },
+  "dashboard_perfect_days": {
+    "message": "Perfect days"
+  },
+  "dashboard_badges": {
+    "message": "Badges"
+  },
+  "dashboard_streak_locked_hint": {
+    "message": "🔒 Turn on hardcore mode in Options and streaks and badges start being recorded."
+  },
+  "dashboard_heatmap_title": {
+    "message": "Last 28 days"
+  },
+  "dashboard_heatmap_legend": {
+    "message": "💎 Dark green = perfect day (no emergency views) · light green = on target · red = over the limit"
+  },
+  "dashboard_chart_title": {
+    "message": "Recent watch time (min)"
+  },
+  "dashboard_range_7": {
+    "message": "7 days"
+  },
+  "dashboard_range_14": {
+    "message": "14 days"
+  },
+  "dashboard_range_30": {
+    "message": "30 days"
+  },
+  "dashboard_mode_minutes": {
+    "message": "Minutes"
+  },
+  "dashboard_mode_percent": {
+    "message": "% of limit"
+  },
+  "dashboard_hourly_title": {
+    "message": "Time-of-day pattern"
+  },
+  "dashboard_hourly_note": {
+    "message": "This chart shows only this device — the hourly breakdown never leaves it."
+  },
+  "dashboard_history_note_merged": {
+    "message": "The heatmap and watch time chart combine the records from every device on this account."
+  },
+  "dashboard_history_note_local_only": {
+    "message": "Couldn't load the server records, so this is only what's stored on this device."
+  },
+  "dashboard_breakdown_used": {
+    "message": "Watched $1"
+  },
+  "dashboard_breakdown_emergency": {
+    "message": "Emergency $1"
+  },
+  "dashboard_breakdown_counted": {
+    "message": "Counted $1"
+  },
+  "dashboard_breakdown_limit": {
+    "message": "Limit $1"
+  },
+  "dashboard_breakdown_limit_estimated": {
+    "message": "Limit $1 (estimated from current settings)"
+  },
+  "dashboard_status_perfect": {
+    "message": "Perfect day"
+  },
+  "dashboard_status_success": {
+    "message": "On target"
+  },
+  "dashboard_status_success_with_emergency_one": {
+    "message": "On target ($1 emergency view)"
+  },
+  "dashboard_status_success_with_emergency_other": {
+    "message": "On target ($1 emergency views)"
+  },
+  "dashboard_status_over": {
+    "message": "Over the limit"
+  },
+  "dashboard_day_tooltip": {
+    "message": "$1 · $2\n$3"
+  },
+  "dashboard_perfect_badge_caption_one": {
+    "message": "$1 perfect day"
+  },
+  "dashboard_perfect_badge_caption_other": {
+    "message": "$1 perfect days"
+  },
+  "dashboard_perfect_badge_title_one": {
+    "message": "Kept the limit $1 day in a row with no emergency views"
+  },
+  "dashboard_perfect_badge_title_other": {
+    "message": "Kept the limit $1 days in a row with no emergency views"
+  },
+  "dashboard_chart_label_minutes": {
+    "message": "Watch time (min)"
+  },
+  "dashboard_chart_label_percent": {
+    "message": "Share of limit (%)"
+  },
+  "dashboard_chart_label_hourly_avg": {
+    "message": "Average watch time (min)"
+  },
+  "dashboard_hour_label": {
+    "message": "$1:00"
+  },
+  "tier_seed": {
+    "message": "Sprout"
+  },
+  "tier_trainee": {
+    "message": "Trainee"
+  },
+  "tier_skilled": {
+    "message": "Skilled"
+  },
+  "tier_master": {
+    "message": "Master"
+  },
+  "tier_legend": {
+    "message": "Legend"
+  },
+  "block_reason_focus_mode": {
+    "message": "Focus mode is on, so YouTube is paused."
+  },
+  "block_reason_scheduled": {
+    "message": "This is a scheduled block, so YouTube is paused."
+  },
+  "block_reason_manual": {
+    "message": "YouTube is blocked manually right now."
+  },
+  "block_reason_always_shorts": {
+    "message": "Shorts are always blocked in your settings."
+  },
+  "block_reason_shorts_limit": {
+    "message": "You've used up today's Shorts limit, so only Shorts are blocked. Regular videos still run on what's left of the overall limit."
+  },
+  "block_reason_usage_limit": {
+    "message": "You've reached today's watch time limit, so YouTube is paused."
+  },
+  "block_reason_default": {
+    "message": "YouTube is paused."
+  },
+  "block_streak_note": {
+    "message": "You'll find out tomorrow whether today counted toward your streak."
+  },
+  "alarm_toast": {
+    "message": "⏰ $1"
+  },
+  "notify_focus_start": {
+    "message": "Focus mode has started."
+  },
+  "notify_focus_end": {
+    "message": "Focus mode has ended."
+  },
+  "notify_schedule_start": {
+    "message": "A scheduled block has started."
+  },
+  "notify_schedule_end": {
+    "message": "The scheduled block has ended."
+  },
+  "notify_alarm_interval_one": {
+    "message": "You've been watching YouTube for $1 minute today."
+  },
+  "notify_alarm_interval_other": {
+    "message": "You've been watching YouTube for $1 minutes today."
+  },
+  "notify_alarm_milestone_one": {
+    "message": "$1 minute of YouTube time left today."
+  },
+  "notify_alarm_milestone_other": {
+    "message": "$1 minutes of YouTube time left today."
+  },
+  "notify_alarm_schedule_soon_one": {
+    "message": "A scheduled block starts in $1 minute."
+  },
+  "notify_alarm_schedule_soon_other": {
+    "message": "A scheduled block starts in $1 minutes."
+  },
+  "emergency_error_not_blocked": {
+    "message": "Nothing is blocked right now."
+  },
+  "emergency_error_focus_mode": {
+    "message": "Emergency views aren't available during focus mode."
+  },
+  "emergency_error_scheduled": {
+    "message": "Emergency views aren't available during a scheduled block."
+  },
+  "emergency_error_cooldown_one": {
+    "message": "Try again in $1 second."
+  },
+  "emergency_error_cooldown_other": {
+    "message": "Try again in $1 seconds."
+  },
+  "emergency_error_no_uses": {
+    "message": "You have no emergency views left."
+  },
+  "dashboard_breakdown_emergency_with_uses_one": {
+    "message": "Emergency $1 ($2 view)"
+  },
+  "dashboard_breakdown_emergency_with_uses_other": {
+    "message": "Emergency $1 ($2 views)"
+  }
+}

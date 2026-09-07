@@ -3,7 +3,7 @@ import { supabase, getCurrentUser } from '../lib/supabaseClient.js';
 import { HARDCORE_DISABLE_COOLDOWN_MS } from '../lib/hardcore.js';
 import {
   buildDiagnosticsReport,
-  diagnosticKindLabel,
+  diagnosticKindMessageKey,
   formatDiagnosticTime
 } from '../lib/syncDiagnostics.js';
 import {
@@ -11,6 +11,9 @@ import {
   clearDiagnostics,
   readDiagnostics
 } from '../lib/diagnosticsStore.js';
+import { applyI18n, t, tCount } from '../lib/i18n.js';
+
+applyI18n();
 
 const signedOutView = document.getElementById('signedOutView');
 const signedInView = document.getElementById('signedInView');
@@ -84,13 +87,17 @@ function renderHardcoreState() {
     const updateCountdown = () => {
       const remaining = requestedAt + HARDCORE_DISABLE_COOLDOWN_MS - Date.now();
       if (remaining <= 0) {
-        hardcorePendingText.textContent = '⏳ 곧 해제됩니다...';
+        hardcorePendingText.textContent = t('options_hardcore_unlocking_soon');
         return;
       }
       const totalSeconds = Math.floor(remaining / 1000);
       const m = Math.floor(totalSeconds / 60);
       const s = totalSeconds % 60;
-      hardcorePendingText.textContent = `⏳ 해제까지 ${m}분 ${String(s).padStart(2, '0')}초 남음`;
+      // 분·초를 따로 넘겨 문구 쪽에서 어순을 정한다 (카운트다운이라 단복수는 나누지 않는다).
+      hardcorePendingText.textContent = t('options_hardcore_pending_countdown', [
+        String(m),
+        String(s).padStart(2, '0')
+      ]);
     };
     updateCountdown();
     hardcorePendingInterval = setInterval(updateCountdown, 1000);
@@ -104,7 +111,7 @@ async function updateHardcoreFields(fields) {
   const patch = { user_id: user.id, ...fields, updated_at: new Date().toISOString() };
   const { data, error } = await supabase.from('settings').upsert(patch).select().maybeSingle();
   if (error) {
-    alert(`처리 실패: ${error.message}`);
+    alert(t('options_action_failed', [error.message]));
     return;
   }
   currentSettings = data || { ...currentSettings, ...patch };
@@ -122,10 +129,11 @@ document.getElementById('requestHardcoreOffButton').addEventListener('click', as
   const { data: streak } = await supabase.from('streaks').select('current_streak').eq('user_id', user.id).maybeSingle();
   const currentStreak = streak?.current_streak || 0;
 
+  // 영어에서도 "your 1-day streak / your 5-day streak"로 형태가 같아 단복수를 나누지 않는다.
   const streakWarning = currentStreak > 0
-    ? `지금 끄면 ${currentStreak}일 연속 기록이 0으로 초기화돼요. `
+    ? t('options_hardcore_off_streak_warning', [String(currentStreak)])
     : '';
-  if (!confirm(`${streakWarning}하드코어 모드를 끌까요? 지금부터 1시간 뒤에 실제로 꺼지고, 그 전엔 언제든 취소할 수 있어요. 그래도 해제하시겠어요?`)) return;
+  if (!confirm(t('options_hardcore_off_confirm', [streakWarning]))) return;
 
   updateHardcoreFields({ hardcore_disable_requested_at: new Date().toISOString() });
 });
@@ -149,7 +157,7 @@ function renderWhitelist() {
     const removeButton = document.createElement('button');
     removeButton.className = 'btn-secondary';
     removeButton.dataset.remove = idx;
-    removeButton.textContent = '삭제';
+    removeButton.textContent = t('action_delete');
 
     row.appendChild(input);
     row.appendChild(removeButton);
@@ -178,7 +186,15 @@ document.getElementById('addWhitelistButton').addEventListener('click', () => {
 
 // --- 예약 차단(요일별 반복 시간대 자동 차단) ---
 // 판정 로직(wrap 규칙 등)은 lib/schedule.js, 여기선 편집 UI만 담당한다.
-const DAY_LABELS_SHORT = ['일', '월', '화', '수', '목', '금', '토'];
+const DAY_LABEL_KEYS = [
+  'weekday_short_sun',
+  'weekday_short_mon',
+  'weekday_short_tue',
+  'weekday_short_wed',
+  'weekday_short_thu',
+  'weekday_short_fri',
+  'weekday_short_sat'
+];
 
 function minutesToTimeInputValue(minutes) {
   const normalized = ((minutes % 1440) + 1440) % 1440;
@@ -209,7 +225,7 @@ function renderScheduledBlocks() {
     const labelInput = document.createElement('input');
     labelInput.type = 'text';
     labelInput.className = 'schedule-label';
-    labelInput.placeholder = '라벨 (예: 밤 시간)';
+    labelInput.placeholder = t('options_schedule_label_placeholder');
     labelInput.value = block.label || '';
     labelInput.addEventListener('change', () => {
       scheduledBlocks[idx].label = labelInput.value;
@@ -224,11 +240,11 @@ function renderScheduledBlocks() {
       scheduledBlocks[idx].enabled = enabledInput.checked;
     });
     enabledLabel.appendChild(enabledInput);
-    enabledLabel.appendChild(document.createTextNode('켜짐'));
+    enabledLabel.appendChild(document.createTextNode(t('options_schedule_enabled')));
 
     const removeButton = document.createElement('button');
     removeButton.className = 'btn-secondary';
-    removeButton.textContent = '삭제';
+    removeButton.textContent = t('action_delete');
     removeButton.addEventListener('click', () => {
       scheduledBlocks.splice(idx, 1);
       renderScheduledBlocks();
@@ -240,7 +256,7 @@ function renderScheduledBlocks() {
 
     const daysRow = document.createElement('div');
     daysRow.className = 'schedule-days';
-    DAY_LABELS_SHORT.forEach((label, dayIdx) => {
+    DAY_LABEL_KEYS.forEach((labelKey, dayIdx) => {
       const dayLabel = document.createElement('label');
       dayLabel.className = 'day-toggle-chip';
       const dayInput = document.createElement('input');
@@ -250,7 +266,7 @@ function renderScheduledBlocks() {
         scheduledBlocks[idx].days[dayIdx] = dayInput.checked ? 1 : 0;
       });
       dayLabel.appendChild(dayInput);
-      dayLabel.appendChild(document.createTextNode(label));
+      dayLabel.appendChild(document.createTextNode(t(labelKey)));
       daysRow.appendChild(dayLabel);
     });
 
@@ -288,7 +304,7 @@ function renderScheduledBlocks() {
 document.getElementById('addScheduleButton').addEventListener('click', () => {
   scheduledBlocks.push({
     id: `sb-${Date.now()}`,
-    label: '밤 시간',
+    label: t('options_schedule_default_label'),
     days: [1, 1, 1, 1, 1, 1, 1],
     startMinute: 22 * 60,
     endMinute: 7 * 60,
@@ -368,18 +384,18 @@ document.getElementById('saveButton').addEventListener('click', async () => {
 
   const settings = collectSettings();
   const statusEl = document.getElementById('saveStatus');
-  statusEl.textContent = '저장 중...';
+  statusEl.textContent = t('options_saving');
 
   const { error } = await supabase.from('settings').upsert({ user_id: user.id, ...settings, updated_at: new Date().toISOString() });
   if (error) {
-    statusEl.textContent = `저장 실패: ${error.message}`;
+    statusEl.textContent = t('options_save_failed', [error.message]);
     return;
   }
 
   currentSettings = { ...currentSettings, ...settings };
   await setStorage({ settingsCache: currentSettings });
   await chrome.runtime.sendMessage({ action: 'settingsUpdated' });
-  statusEl.textContent = '저장됨.';
+  statusEl.textContent = t('options_saved');
   setTimeout(() => (statusEl.textContent = ''), 2000);
 });
 
@@ -394,17 +410,28 @@ const diagnosticsStatusEl = document.getElementById('diagnosticsStatus');
 
 let diagnosticsSnapshot = { events: [], lastSuccessAtMillis: null };
 
+// formatDiagnosticTime은 읽을 수 없는 값이면 null을 준다 — 어떤 말로 적을지는 화면이 정한다.
+function formatTimeLabel(millis) {
+  return formatDiagnosticTime(millis) ?? t('common_unknown');
+}
+
+function lastSuccessLabel(millis) {
+  return millis === null ? t('common_none') : formatTimeLabel(millis);
+}
+
 function renderDiagnosticsRow(event) {
   const row = document.createElement('div');
   row.className = 'diagnostics-row';
 
   const time = document.createElement('span');
   time.className = 'diag-time';
-  time.textContent = formatDiagnosticTime(event.atMillis);
+  time.textContent = formatTimeLabel(event.atMillis);
 
   const kind = document.createElement('span');
   kind.className = 'diag-kind';
-  kind.textContent = diagnosticKindLabel(event.kind);
+  // 모르는 종류(예전 버전이 남긴 값)는 번역할 이름이 없으니 저장된 값을 그대로 보여준다.
+  const kindKey = diagnosticKindMessageKey(event.kind);
+  kind.textContent = kindKey ? t(kindKey) : event.kind;
 
   // 코드는 오류 메시지에서 뽑아낸 값이라 innerHTML로 끼워 넣지 않는다(화이트리스트 렌더와 같은 원칙).
   const code = document.createElement('span');
@@ -426,14 +453,13 @@ async function renderDiagnostics() {
   diagnosticsSnapshot = await readDiagnostics();
   const { events, lastSuccessAtMillis } = diagnosticsSnapshot;
 
-  diagnosticsLastSuccessEl.textContent =
-    lastSuccessAtMillis === null ? '없음' : formatDiagnosticTime(lastSuccessAtMillis);
+  diagnosticsLastSuccessEl.textContent = lastSuccessLabel(lastSuccessAtMillis);
 
   diagnosticsListEl.replaceChildren();
   if (events.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'diagnostics-empty';
-    empty.textContent = '기록된 실패가 없습니다.';
+    empty.textContent = t('options_diagnostics_empty');
     diagnosticsListEl.appendChild(empty);
     return;
   }
@@ -448,16 +474,20 @@ document.getElementById('refreshDiagnosticsButton').addEventListener('click', as
 document.getElementById('copyDiagnosticsButton').addEventListener('click', async () => {
   // 방금 실패가 더 쌓였을 수 있으니 화면에 그려둔 값이 아니라 저장소를 다시 읽고 복사한다.
   await renderDiagnostics();
-  const report = buildDiagnosticsReport(
-    diagnosticsSnapshot.lastSuccessAtMillis, diagnosticsSnapshot.events
-  );
+  // 줄 순서와 "무엇을 내보내고 무엇을 버리는가"는 순수 함수가 정하고, 머리말 문구만 여기서 넣는다.
+  const report = buildDiagnosticsReport(diagnosticsSnapshot.events, {
+    title: t('diag_report_title'),
+    lastSuccess: t('diag_report_last_success', [lastSuccessLabel(diagnosticsSnapshot.lastSuccessAtMillis)]),
+    noFailures: t('diag_report_no_failures'),
+    failureCount: tCount('diag_report_failure_count', diagnosticsSnapshot.events.length)
+  });
   try {
     await navigator.clipboard.writeText(report);
-    diagnosticsStatusEl.textContent = '복사했습니다.';
+    diagnosticsStatusEl.textContent = t('options_diagnostics_copied');
   } catch {
     // 클립보드 권한이 막혀 있으면(포커스 없음 등) 조용히 실패한다 — 이 기능이 진단 도구인데
     // 여기서까지 소리 없이 넘어가면 곤란하다.
-    diagnosticsStatusEl.textContent = '복사에 실패했습니다. 목록을 직접 선택해 복사해주세요.';
+    diagnosticsStatusEl.textContent = t('options_diagnostics_copy_failed');
   }
   setTimeout(() => (diagnosticsStatusEl.textContent = ''), 3000);
 });
@@ -465,7 +495,7 @@ document.getElementById('copyDiagnosticsButton').addEventListener('click', async
 document.getElementById('clearDiagnosticsButton').addEventListener('click', async () => {
   await clearDiagnostics();
   await renderDiagnostics();
-  diagnosticsStatusEl.textContent = '기록을 지웠습니다.';
+  diagnosticsStatusEl.textContent = t('options_diagnostics_cleared');
   setTimeout(() => (diagnosticsStatusEl.textContent = ''), 3000);
 });
 
@@ -481,8 +511,8 @@ const confirmDeleteAccountButton = document.getElementById('confirmDeleteAccount
 const cancelDeleteAccountButton = document.getElementById('cancelDeleteAccountButton');
 const deleteAccountStatus = document.getElementById('deleteAccountStatus');
 
-// 이메일 없이 가입된 계정(소셜 등)이면 확인 문구로 '삭제'를 쓴다.
-const DELETE_FALLBACK_PHRASE = '삭제';
+// 이메일 없이 가입된 계정(소셜 등)이면 확인 문구로 짧은 낱말 하나를 쓴다(ko '삭제' / en 'delete').
+const DELETE_FALLBACK_PHRASE = t('options_delete_fallback_phrase');
 let deleteConfirmPhrase = '';
 let deleteInFlight = false;
 
@@ -506,7 +536,7 @@ deleteAccountConfirmInput.addEventListener('input', renderDeleteConfirmState);
 
 deleteAccountButton.addEventListener('click', () => {
   if (deleteInFlight) return;
-  if (!confirm('계정을 삭제하면 계정, 사용 시간 기록, 스트릭·XP, 뱃지, 설정이 모두 영구 삭제됩니다. 되돌릴 수 없습니다. 계속할까요?')) return;
+  if (!confirm(t('options_delete_confirm_message'))) return;
 
   deleteAccountConfirmBlock.style.display = '';
   deleteAccountConfirmInput.value = '';
@@ -531,14 +561,14 @@ confirmDeleteAccountButton.addEventListener('click', async () => {
   deleteInFlight = true;
   confirmDeleteAccountButton.disabled = true;
   setDeleteControlsDisabled(true);
-  deleteAccountStatus.textContent = '계정을 삭제하는 중...';
+  deleteAccountStatus.textContent = t('options_deleting_account');
 
   const { error } = await supabase.functions.invoke('delete-account');
   if (error) {
     // 서버가 거절했으면 로컬은 아무것도 건드리지 않는다. 로그인 상태 그대로 두고 다시 시도할 수 있게.
     deleteInFlight = false;
     setDeleteControlsDisabled(false);
-    deleteAccountStatus.textContent = `삭제 실패: ${error.message} — 계정과 기록은 그대로 남아 있습니다.`;
+    deleteAccountStatus.textContent = t('options_delete_failed', [error.message]);
     renderDeleteConfirmState();
     return;
   }

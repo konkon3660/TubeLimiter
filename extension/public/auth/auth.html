@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>TubeLimiter 로그인</title>
+  <title data-i18n="auth_page_title"></title>
   <link rel="stylesheet" href="/assets/common.css">
   <link rel="stylesheet" href="/assets/gamify.css">
   <style>
@@ -13,11 +13,12 @@
   <div class="header"><div style="position: relative; z-index: 1;">🎯 TubeLimiter</div></div>
 
   <div class="auth-box">
-    <input type="email" id="email" placeholder="이메일" autocomplete="email" />
-    <input type="password" id="password" placeholder="비밀번호 (6자 이상)" autocomplete="current-password" />
+    <input type="email" id="email" data-i18n-placeholder="auth_email_placeholder" placeholder="" autocomplete="email" />
+    <input type="password" id="password" data-i18n-placeholder="auth_password_placeholder" placeholder="" autocomplete="current-password" />
     <div class="auth-error" id="authError"></div>
-    <button id="submitButton" class="btn-primary">로그인</button>
-    <div class="auth-switch" id="switchModeLink">계정이 없으신가요? 회원가입</div>
+    <!-- 두 버튼 문구는 로그인/회원가입 모드에 따라 auth.js가 다시 채운다. -->
+    <button id="submitButton" class="btn-primary" data-i18n="auth_sign_in"></button>
+    <div class="auth-switch" id="switchModeLink" data-i18n="auth_switch_to_sign_up"></div>
   </div>
 
   <script src="/auth/auth.js" type="module"></script>

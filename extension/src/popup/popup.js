@@ -8,8 +8,13 @@ import { emergencyResetDate, DEFAULT_EMERGENCY_USES } from '../lib/dateRollover.
 import { resolveFocusStopTime } from '../lib/focusMode.js';
 import { EMERGENCY_GRANT_COOLDOWN_MS } from '../lib/emergency.js';
 import { isScheduleActive } from '../lib/schedule.js';
-import { staleSyncWarning } from '../lib/syncDiagnostics.js';
+import { staleSyncWarning, StaleSyncReason } from '../lib/syncDiagnostics.js';
 import { readDiagnostics } from '../lib/diagnosticsStore.js';
+import { applyI18n, pluralMessageKey, t, tCount } from '../lib/i18n.js';
+
+// HTML의 고정 문구부터 채우고 시작한다. 아래 렌더가 같은 엘리먼트를 다시 덮어쓰는 곳도 있지만,
+// 그 전에 한 번 채워둬야 네트워크를 기다리는 동안 라벨이 비어 보이지 않는다.
+applyI18n();
 
 const signedOutView = document.getElementById('signedOutView');
 const signedInView = document.getElementById('signedInView');
@@ -86,8 +91,8 @@ cancelFocusStopButton.addEventListener('click', async () => {
 });
 
 function formatMinutes(ms) {
-  if (!Number.isFinite(ms)) return '무제한';
-  return `${Math.floor(ms / 60000)}분`;
+  if (!Number.isFinite(ms)) return t('common_unlimited');
+  return tCount('minutes', Math.floor(ms / 60000));
 }
 
 function formatCountdown(ms) {
@@ -103,6 +108,14 @@ function formatMinuteOfDay(minutes) {
   const h = Math.floor(normalized / 60);
   const m = normalized % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+// 뱃지 문구는 사용자가 입력한 라벨(예약 차단)까지 들어갈 수 있어 innerHTML로 끼워 넣지 않는다.
+function setBadge(container, badgeClass, text) {
+  const badge = document.createElement('span');
+  badge.className = `status-badge ${badgeClass}`;
+  badge.textContent = text;
+  container.replaceChildren(badge);
 }
 
 function stopEmergencyCountdown() {
@@ -123,7 +136,7 @@ function startEmergencyCountdown(emergencyEndTime) {
       renderLocal();
       return;
     }
-    modeStatus.innerHTML = `<span class="status-badge status-active">긴급 시청 · ${formatCountdown(remainingMs)}</span>`;
+    setBadge(modeStatus, 'status-active', t('popup_mode_emergency', [formatCountdown(remainingMs)]));
   };
   tick();
   emergencyCountdownTimer = setInterval(tick, 1000);
@@ -136,7 +149,7 @@ function stopFocusCountdown() {
   }
 }
 
-function startFocusCountdown(endTime, label, badgeClass) {
+function startFocusCountdown(endTime, labelKey, badgeClass) {
   stopFocusCountdown();
   const tick = () => {
     const remainingMs = endTime - Date.now();
@@ -145,10 +158,18 @@ function startFocusCountdown(endTime, label, badgeClass) {
       renderLocal();
       return;
     }
-    modeStatus.innerHTML = `<span class="status-badge ${badgeClass}">${label} · ${formatCountdown(remainingMs)}</span>`;
+    setBadge(modeStatus, badgeClass, t(labelKey, [formatCountdown(remainingMs)]));
   };
   tick();
   focusCountdownTimer = setInterval(tick, 1000);
+}
+
+// 동기화 경고는 판정(lib/syncDiagnostics.js staleSyncWarning)이 사유만 돌려주고, 문구는 여기서
+// 고른다 — 그래야 그 판정이 chrome.i18n 없이 node:test에서 그대로 돌아간다.
+function formatSyncWarning(warning) {
+  if (!warning) return '';
+  if (warning.reason === StaleSyncReason.NEVER_SUCCEEDED) return t('popup_sync_warning_never');
+  return tCount('popup_sync_warning_stale', warning.hours);
 }
 
 // 로그인 상태 확인(supabase.auth.getUser())과 스트릭/XP 조회는 매번 네트워크를 탄다.
@@ -192,7 +213,9 @@ async function renderLocal() {
   const remaining = Number.isFinite(limitMs) ? Math.max(0, limitMs - todayUsage) : Infinity;
 
   document.getElementById('usageTime').textContent = formatMinutes(todayUsage);
-  document.getElementById('untilBlock').textContent = Number.isFinite(remaining) ? formatCountdown(remaining) : '무제한';
+  document.getElementById('untilBlock').textContent = Number.isFinite(remaining)
+    ? formatCountdown(remaining)
+    : t('common_unlimited');
 
   // Shorts는 전체 사용량과 같은 기준(로컬 + 다른 기기 몫)으로 보여준다 — 팝업 숫자와 실제
   // 차단 판정(service-worker.js getEffectiveTodayShortsUsage)이 어긋나면 "아직 남았는데 막혔다"가 된다.
@@ -203,7 +226,7 @@ async function renderLocal() {
   const shortsLimitMs = computeShortsLimit(settingsCache);
   // 한도를 안 걸었으면 "12분 / 무제한"이 아니라 그냥 사용량만 보여준다 (없는 한도를 강조할 이유가 없다).
   document.getElementById('shortsUsage').textContent = Number.isFinite(shortsLimitMs)
-    ? `${formatMinutes(todayShorts)} / ${formatMinutes(shortsLimitMs)}`
+    ? t('popup_usage_of_limit', [formatMinutes(todayShorts), formatMinutes(shortsLimitMs)])
     : formatMinutes(todayShorts);
 
   const progressCircle = document.getElementById('progressCircle');
@@ -211,10 +234,10 @@ async function renderLocal() {
     const percentage = Math.min(100, Math.max(0, (todayUsage / limitMs) * 100));
     const degrees = (percentage / 100) * 360;
     progressCircle.style.background = `conic-gradient(var(--primary-color) ${degrees}deg, var(--light-gray) ${degrees}deg)`;
-    progressCircle.title = `차단까지 ${formatCountdown(remaining)} 남음`;
+    progressCircle.title = t('popup_until_block_title', [formatCountdown(remaining)]);
   } else {
     progressCircle.style.background = 'var(--primary-color)';
-    progressCircle.title = '무제한';
+    progressCircle.title = t('common_unlimited');
   }
   // 남은 횟수는 이 기기 카운터가 아니라 "다른 기기가 이 버킷에서 쓴 몫"까지 뺀 값이다.
   // 백그라운드가 동기화할 때 서버 버킷 합계를 캐시해둔다(service-worker.js
@@ -229,7 +252,7 @@ async function renderLocal() {
   const emergencyLeft = emergencyBucket.emergencyUsesBucketDate === emergencyBucketStart
     ? remainingEmergencyUses(localEmergencyUses, emergencyBucket.emergencyUsesBucketReported || 0, emergencyBucket.emergencyUsesBucketRemote || 0)
     : localEmergencyUses;
-  document.getElementById('emergencyCount').textContent = `${emergencyLeft}회`;
+  document.getElementById('emergencyCount').textContent = tCount('times', emergencyLeft);
 
   const focusActive = !!(focusModeActive && focusModeEndTime > Date.now());
   const focusScheduled = !focusActive && !!(focusModeDelayEndTime && focusModeDelayEndTime > Date.now());
@@ -244,11 +267,11 @@ async function renderLocal() {
   // 다시 불리므로 이 토글도 그때그때 최신 상태를 반영한다).
   stopFocusModeButton.style.display = focusStopPending ? 'none' : '';
   cancelFocusStopButton.style.display = focusStopPending ? '' : 'none';
-  stopFocusModeButton.textContent = focusScheduled ? '집중 모드 예약 취소' : '집중 모드 종료';
+  stopFocusModeButton.textContent = focusScheduled ? t('action_cancel_focus_schedule') : t('action_stop_focus');
 
   if (emergencyModeActive && emergencyEndTime > Date.now()) {
     emergencyButton.disabled = true;
-    emergencyButton.textContent = '긴급 시청 사용 중';
+    emergencyButton.textContent = t('popup_emergency_in_use');
     // 지연 시작 대기 중이던 집중 모드 타이머가 살아있으면 두 인터벌이 같은 modeStatus를
     // 1초마다 번갈아 덮어쓴다 - 긴급 카운트다운을 켜기 전에 반드시 먼저 끈다.
     stopFocusCountdown();
@@ -266,52 +289,55 @@ async function renderLocal() {
 
     if (focusActive) {
       emergencyButton.disabled = true;
-      emergencyButton.textContent = '집중 모드 중 사용 불가';
+      emergencyButton.textContent = t('popup_emergency_blocked_focus');
     } else if (scheduleActive) {
       emergencyButton.disabled = true;
-      emergencyButton.textContent = '예약된 차단 중 사용 불가';
+      emergencyButton.textContent = t('popup_emergency_blocked_schedule');
     } else if (emergencyCooldownRemainingMs > 0) {
       emergencyButton.disabled = true;
-      emergencyButton.textContent = `잠시 후 다시 시도 (${Math.ceil(emergencyCooldownRemainingMs / 1000)}초)`;
+      emergencyButton.textContent = tCount('popup_emergency_cooldown', Math.ceil(emergencyCooldownRemainingMs / 1000));
     } else {
       emergencyButton.disabled = false;
-      emergencyButton.textContent = '긴급 시청 요청';
+      emergencyButton.textContent = t('action_request_emergency');
     }
 
     if (focusStopPending) {
       const stopAtMillis = resolveFocusStopTime(focusModeEndTime, focusStopRequestedAt);
-      startFocusCountdown(stopAtMillis, '집중 모드 종료 대기', 'status-warning');
+      startFocusCountdown(stopAtMillis, 'popup_mode_focus_stopping', 'status-warning');
     } else if (focusActive) {
-      startFocusCountdown(focusModeEndTime, '집중 모드', 'status-active');
+      startFocusCountdown(focusModeEndTime, 'popup_mode_focus', 'status-active');
     } else if (focusScheduled) {
-      startFocusCountdown(focusModeDelayEndTime, '집중 모드 대기 중', 'status-warning');
+      startFocusCountdown(focusModeDelayEndTime, 'popup_mode_focus_pending', 'status-warning');
     } else if (scheduleActive) {
       // 집중 모드와 달리 카운트다운이 아니라 "몇 시까지"라 실시간 타이머(startFocusCountdown)는
       // 필요 없다 - renderLocal 자체가 1초마다 다시 불리므로 자정을 넘겨도 자연히 갱신된다.
       stopFocusCountdown();
-      // 라벨은 사용자가 옵션 페이지에서 직접 입력한 값이라 innerHTML로 끼워 넣지 않는다.
-      const label = scheduleWindow?.label || '예약된 차단';
-      const badge = document.createElement('span');
-      badge.className = 'status-badge status-active';
-      badge.textContent = `${label} · ${formatMinuteOfDay(scheduleWindow.endMinute)}까지`;
-      modeStatus.replaceChildren(badge);
+      // 라벨은 사용자가 옵션 페이지에서 직접 입력한 값이라 textContent로만 넣는다(setBadge).
+      const label = scheduleWindow?.label || t('popup_mode_scheduled_default_label');
+      setBadge(
+        modeStatus,
+        'status-active',
+        t('popup_mode_scheduled_until', [label, formatMinuteOfDay(scheduleWindow.endMinute)])
+      );
     } else {
       stopFocusCountdown();
-      modeStatus.innerHTML = '<span class="status-badge status-inactive">비활성</span>';
+      setBadge(modeStatus, 'status-inactive', t('status_off'));
     }
   }
 
-  document.getElementById('consumingStatus').innerHTML = isTracking
-    ? '<span class="status-badge status-active">소모 중</span>'
-    : '<span class="status-badge status-inactive">대기 중</span>';
+  setBadge(
+    document.getElementById('consumingStatus'),
+    isTracking ? 'status-active' : 'status-inactive',
+    isTracking ? t('status_counting') : t('status_idle')
+  );
 
   // 동기화가 며칠째 실패해도 지금까지는 화면에 아무 흔적이 없었다(백그라운드가 조용히 return한다).
   // 로그인 상태에서 마지막 성공이 24시간을 넘겼을 때만 한 줄로 알린다 — 판정은 순수 함수에
-  // 맡기고(lib/syncDiagnostics.js staleSyncWarning) 여기선 표시만 한다. renderLocal이 1초마다
-  // 다시 불리므로 임계값을 넘는 순간 별도 트리거 없이 뜬다(안드로이드 홈 화면과 같은 방식).
+  // 맡기고(lib/syncDiagnostics.js staleSyncWarning) 여기선 문구를 붙여 표시만 한다. renderLocal이
+  // 1초마다 다시 불리므로 임계값을 넘는 순간 별도 트리거 없이 뜬다(안드로이드 홈 화면과 같은 방식).
   const { events, lastSuccessAtMillis } = await readDiagnostics();
   const syncWarning = staleSyncWarning(isSignedIn, lastSuccessAtMillis, events.length > 0, Date.now());
-  syncWarningEl.textContent = syncWarning || '';
+  syncWarningEl.textContent = formatSyncWarning(syncWarning);
   syncWarningEl.style.display = syncWarning ? '' : 'none';
 }
 
@@ -337,9 +363,15 @@ async function renderRemote() {
     const { data: streak } = await supabase.from('streaks').select('*').eq('user_id', user.id).maybeSingle();
     const xp = streak?.xp || 0;
     const { level, xpIntoLevel, xpForNextLevel } = getLevelProgress(xp);
+    const currentStreak = streak?.current_streak || 0;
 
-    document.getElementById('streakNumber').textContent = streak?.current_streak || 0;
-    document.getElementById('bestStreak').textContent = streak?.best_streak || 0;
+    document.getElementById('streakNumber').textContent = currentStreak;
+    // "N일 연속 · 최고 M일"은 어순도 단복수도 언어마다 다르므로 조각을 잇지 않고 한 줄을 통째로
+    // 만든다. 단복수는 위에 큼직하게 뜨는 현재 연속 일수로 가르고($1은 최고 기록 쪽이다).
+    document.getElementById('streakCaption').textContent = t(
+      pluralMessageKey('popup_streak_caption', currentStreak),
+      [String(streak?.best_streak || 0)]
+    );
     document.getElementById('levelNumber').textContent = level;
     document.getElementById('xpLabel').textContent = `${xpIntoLevel}/${xpForNextLevel} XP`;
     document.getElementById('xpBarFill').style.width = `${Math.min(100, (xpIntoLevel / xpForNextLevel) * 100)}%`;

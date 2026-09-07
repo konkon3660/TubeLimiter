@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ALARM_MILESTONE_MINUTES, createAlarmState, evaluateAlarms } from '../src/lib/alarmRules.js';
+import {
+  ALARM_KIND,
+  ALARM_MILESTONE_MINUTES,
+  SCHEDULE_SOON_LEAD_MINUTES,
+  createAlarmState,
+  evaluateAlarms
+} from '../src/lib/alarmRules.js';
 
 // android/app/src/main/java/com/tubelimiter/app/limit/AlarmRules.kt의 evaluateAlarms 대응.
 // 안드로이드는 예약 차단 10분 전 알림만 별도 함수로 빼놨지만(dedupe 키도 따로 저장),
@@ -42,8 +48,9 @@ test('N분 주기 알림은 간격에 정확히 도달할 때 발화한다', () 
   assert.deepEqual(kinds(justUnder), []);
 
   const atInterval = evaluate(createAlarmState(TODAY), { usedMs: 10 * MIN, intervalMinutes: 10, limitMs: Infinity });
-  assert.deepEqual(kinds(atInterval), ['interval']);
-  assert.equal(atInterval.notifications[0].message, '오늘 유튜브를 10분째 시청 중이에요.');
+  assert.deepEqual(kinds(atInterval), [ALARM_KIND.interval]);
+  // 문구가 아니라 "몇 분짜리 알림인가"만 돌려준다 — 문구는 service-worker.js가 chrome.i18n으로 붙인다.
+  assert.equal(atInterval.notifications[0].minutes, 10);
   assert.equal(atInterval.state.lastIntervalNotifyMs, 10 * MIN);
 });
 
@@ -67,7 +74,8 @@ test('남은 시간이 정확히 마일스톤에 닿으면 발화한다', () => 
   const result = evaluate(null, { usedMs: 30 * MIN, limitMs: 60 * MIN });
   assert.deepEqual(kinds(result), ['milestone']);
   assert.equal(result.notifications[0].minutes, 30);
-  assert.equal(result.notifications[0].message, '오늘 남은 유튜브 시청 시간이 30분입니다.');
+  assert.equal(result.notifications[0].kind, ALARM_KIND.milestone);
+  assert.equal(result.notifications[0].minutes, 30);
   assert.deepEqual(result.state.notifiedMilestones, [30]);
 });
 
@@ -114,8 +122,9 @@ test('예약 차단 10분 전 알림은 10분 이내일 때만, 하루 한 번�
   assert.deepEqual(kinds(evaluate(null, { minutesUntilScheduleStart: 0 })), []);
 
   const first = evaluate(null, { minutesUntilScheduleStart: 10 });
-  assert.deepEqual(kinds(first), ['scheduleSoon']);
-  assert.equal(first.notifications[0].message, '10분 후 예약된 차단이 시작됩니다.');
+  assert.deepEqual(kinds(first), [ALARM_KIND.scheduleSoon]);
+  // 실제 남은 분이 아니라 예고 기준값을 담는다 (문구가 "10분 후"로 고정이므로).
+  assert.equal(first.notifications[0].minutes, SCHEDULE_SOON_LEAD_MINUTES);
   assert.equal(first.state.scheduleStartNotified, true);
 
   assert.deepEqual(kinds(evaluate(first.state, { minutesUntilScheduleStart: 3 })), []);

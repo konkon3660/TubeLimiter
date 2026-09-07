@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "TubeLimiter",
+  "name": "__MSG_appName__",
   "version": "2.0.0",
-  "description": "유튜브 시청을 제한하고, 꾸준히 지킨 기록을 스트릭/XP/업적으로 보여주는 확장 프로그램",
+  "description": "__MSG_appDescription__",
+  "default_locale": "ko",
   "permissions": ["storage", "tabs", "scripting", "alarms", "notifications"],
   "host_permissions": ["*://*.youtube.com/*"],
   "content_security_policy": {

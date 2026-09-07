@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>TubeLimiter 설정</title>
+  <title data-i18n="options_page_title"></title>
   <link rel="stylesheet" href="/assets/common.css">
   <link rel="stylesheet" href="/assets/gamify.css">
   <style>
@@ -151,7 +151,7 @@
       background: rgba(239, 68, 68, 0.18);
     }
     #whitelistList:empty::after {
-      content: '등록된 화이트리스트가 없습니다.';
+      content: attr(data-empty);
       display: block;
       font-size: 0.85em;
       color: var(--gray);
@@ -228,7 +228,7 @@
       color: var(--dark-gray);
     }
     #scheduleList:empty::after {
-      content: '등록된 예약 차단이 없습니다.';
+      content: attr(data-empty);
       display: block;
       font-size: 0.85em;
       color: var(--gray);
@@ -357,144 +357,145 @@
   </style>
 </head>
 <body>
-  <div class="header"><div style="position: relative; z-index: 1;">⚙️ TubeLimiter 설정</div></div>
+  <div class="header"><div style="position: relative; z-index: 1;" data-i18n="options_header"></div></div>
 
   <div id="signedOutView" style="display:none;">
     <div class="auth-box">
-      <p>설정을 저장하려면 먼저 로그인하세요.</p>
-      <button id="openAuthButton" class="btn-primary">로그인 / 회원가입</button>
+      <p data-i18n="options_signed_out_desc"></p>
+      <button id="openAuthButton" class="btn-primary" data-i18n="action_sign_in_or_up"></button>
     </div>
   </div>
 
   <div id="signedInView" style="display:none;">
     <div class="control-section">
-      <h4>⏱️ 일일 시청 제한</h4>
+      <h4 data-i18n="options_section_daily_limit"></h4>
       <div class="field-row">
-        <label class="checkbox-row"><input type="checkbox" id="byDayToggle"> 요일별로 다르게 설정</label>
+        <label class="checkbox-row"><input type="checkbox" id="byDayToggle"> <span data-i18n="options_by_day_toggle"></span></label>
       </div>
       <div id="simpleLimitBlock" class="field-row">
-        <label for="dailyLimitInput">하루 제한(분, 0=무제한)</label>
+        <label for="dailyLimitInput" data-i18n="options_daily_limit_label"></label>
         <input type="number" id="dailyLimitInput" min="0" value="30">
       </div>
       <div id="byDayLimitBlock" style="display:none;">
-        <div class="day-limit-row" data-day="0"><label>일요일</label><input type="number" min="-1"></div>
-        <div class="day-limit-row" data-day="1"><label>월요일</label><input type="number" min="-1"></div>
-        <div class="day-limit-row" data-day="2"><label>화요일</label><input type="number" min="-1"></div>
-        <div class="day-limit-row" data-day="3"><label>수요일</label><input type="number" min="-1"></div>
-        <div class="day-limit-row" data-day="4"><label>목요일</label><input type="number" min="-1"></div>
-        <div class="day-limit-row" data-day="5"><label>금요일</label><input type="number" min="-1"></div>
-        <div class="day-limit-row" data-day="6"><label>토요일</label><input type="number" min="-1"></div>
-        <div class="input-hint">-1 = 그 요일은 무제한</div>
+        <div class="day-limit-row" data-day="0"><label data-i18n="weekday_sunday"></label><input type="number" min="-1"></div>
+        <div class="day-limit-row" data-day="1"><label data-i18n="weekday_monday"></label><input type="number" min="-1"></div>
+        <div class="day-limit-row" data-day="2"><label data-i18n="weekday_tuesday"></label><input type="number" min="-1"></div>
+        <div class="day-limit-row" data-day="3"><label data-i18n="weekday_wednesday"></label><input type="number" min="-1"></div>
+        <div class="day-limit-row" data-day="4"><label data-i18n="weekday_thursday"></label><input type="number" min="-1"></div>
+        <div class="day-limit-row" data-day="5"><label data-i18n="weekday_friday"></label><input type="number" min="-1"></div>
+        <div class="day-limit-row" data-day="6"><label data-i18n="weekday_saturday"></label><input type="number" min="-1"></div>
+        <div class="input-hint" data-i18n="options_by_day_hint"></div>
       </div>
       <div class="field-row" style="margin-top:14px;">
-        <label for="shortsLimitInput">Shorts 하루 제한(분, 0=제한 없음)</label>
+        <label for="shortsLimitInput" data-i18n="options_shorts_limit_label"></label>
         <input type="number" id="shortsLimitInput" min="0" value="0">
-        <div class="input-hint">위 전체 한도와 별개로 Shorts만 따로 제한합니다. 넘기면 Shorts 페이지만 막히고 일반 영상은 남은 전체 한도만큼 계속 볼 수 있어요. 긴급 시청으로는 뚫을 수 있습니다.</div>
+        <div class="input-hint" data-i18n="options_shorts_limit_hint"></div>
       </div>
-      <div id="limitLockHint" class="input-hint" style="display:none; margin-top:8px; color: var(--danger-color);">🔒 하드코어 모드가 켜져 있어 한도를 수정할 수 없습니다. 하드코어 모드를 끄면 수정할 수 있습니다.</div>
+      <div id="limitLockHint" class="input-hint" style="display:none; margin-top:8px; color: var(--danger-color);" data-i18n="options_limit_lock_hint"></div>
     </div>
 
     <div class="control-section">
-      <h4>🔥 하드코어 · Shorts</h4>
+      <h4 data-i18n="options_section_hardcore"></h4>
       <div id="hardcoreOffBlock" class="field-row">
-        <div class="input-hint">켜면 위 시청 한도가 잠기고, 스트릭 기능이 활성화됩니다. 끄려면 1시간을 기다려야 합니다.</div>
-        <button type="button" id="enableHardcoreButton" class="btn-primary" style="margin-top:8px; width:auto;">하드코어 모드 켜기</button>
+        <div class="input-hint" data-i18n="options_hardcore_off_hint"></div>
+        <button type="button" id="enableHardcoreButton" class="btn-primary" style="margin-top:8px; width:auto;" data-i18n="options_hardcore_enable"></button>
       </div>
       <div id="hardcoreOnBlock" class="field-row" style="display:none;">
-        <div class="input-hint">🔥 하드코어 모드 켜짐 · 한도 잠금 중</div>
-        <button type="button" id="requestHardcoreOffButton" class="btn-secondary" style="margin-top:8px; width:auto;">해제 예약 (1시간 후 꺼짐)</button>
+        <div class="input-hint" data-i18n="options_hardcore_on_hint"></div>
+        <button type="button" id="requestHardcoreOffButton" class="btn-secondary" style="margin-top:8px; width:auto;" data-i18n="options_hardcore_request_off"></button>
       </div>
       <div id="hardcorePendingBlock" class="field-row" style="display:none;">
-        <div class="input-hint" id="hardcorePendingText">⏳ 해제까지 남음</div>
-        <button type="button" id="cancelHardcoreOffButton" class="btn-secondary" style="margin-top:8px; width:auto;">예약 취소하고 계속 잠그기</button>
+        <!-- 실제 남은 시간은 options.js가 1초마다 다시 채운다. -->
+        <div class="input-hint" id="hardcorePendingText" data-i18n="options_hardcore_pending_label"></div>
+        <button type="button" id="cancelHardcoreOffButton" class="btn-secondary" style="margin-top:8px; width:auto;" data-i18n="options_hardcore_cancel_off"></button>
       </div>
       <div class="field-row">
-        <label class="checkbox-row"><input type="checkbox" id="alwaysBlockShortsToggle"> YouTube Shorts 항상 차단</label>
+        <label class="checkbox-row"><input type="checkbox" id="alwaysBlockShortsToggle"> <span data-i18n="options_always_block_shorts"></span></label>
       </div>
     </div>
 
     <div class="control-section">
-      <h4>⏰ 알람</h4>
+      <h4 data-i18n="options_section_alarms"></h4>
       <div class="field-row">
-        <label for="alarmIntervalInput">N분마다 알림(분, 0=끄기)</label>
+        <label for="alarmIntervalInput" data-i18n="options_alarm_interval_label"></label>
         <input type="number" id="alarmIntervalInput" min="0" value="0">
       </div>
-      <label class="checkbox-row"><input type="checkbox" id="alarmMilestonesToggle"> 남은 시간 알림 (30/10/5/1분 전)</label>
+      <label class="checkbox-row"><input type="checkbox" id="alarmMilestonesToggle"> <span data-i18n="options_alarm_milestones_label"></span></label>
     </div>
 
     <div class="control-section">
-      <h4>🆘 긴급 시청</h4>
+      <h4 data-i18n="options_section_emergency"></h4>
       <div class="field-row">
-        <label for="emergencyUsesInput">횟수</label>
+        <label for="emergencyUsesInput" data-i18n="options_emergency_uses_label"></label>
         <input type="number" id="emergencyUsesInput" min="0" value="3">
       </div>
       <div class="field-row">
-        <label for="emergencyResetSelect">초기화 주기</label>
+        <label for="emergencyResetSelect" data-i18n="options_emergency_reset_label"></label>
         <select id="emergencyResetSelect">
-          <option value="daily">매일</option>
-          <option value="weekly">매주</option>
-          <option value="monthly">매월</option>
+          <option value="daily" data-i18n="options_reset_daily"></option>
+          <option value="weekly" data-i18n="options_reset_weekly"></option>
+          <option value="monthly" data-i18n="options_reset_monthly"></option>
         </select>
       </div>
     </div>
 
     <div class="control-section wide-section">
-      <h4>📋 화이트리스트</h4>
-      <div id="whitelistList"></div>
+      <h4 data-i18n="options_section_whitelist"></h4>
+      <div id="whitelistList" data-i18n-empty="options_whitelist_empty"></div>
       <div class="whitelist-item">
-        <input type="text" id="whitelistInput" placeholder="URL 또는 채널 일부 문자열">
-        <button id="addWhitelistButton" class="btn-secondary">추가</button>
+        <input type="text" id="whitelistInput" data-i18n-placeholder="options_whitelist_placeholder" placeholder="">
+        <button id="addWhitelistButton" class="btn-secondary" data-i18n="action_add"></button>
       </div>
     </div>
 
     <div class="control-section wide-section">
-      <h4>🕒 예약 차단</h4>
-      <div class="input-hint" style="margin-bottom:10px;">정해진 요일·시간대엔 한도와 무관하게 자동으로 차단됩니다. 집중 모드처럼 긴급 시청으로 우회할 수 없어요.</div>
-      <div id="scheduleList"></div>
-      <button type="button" id="addScheduleButton" class="btn-secondary" style="width:auto;">+ 예약 추가</button>
+      <h4 data-i18n="options_section_schedule"></h4>
+      <div class="input-hint" style="margin-bottom:10px;" data-i18n="options_schedule_hint"></div>
+      <div id="scheduleList" data-i18n-empty="options_schedule_empty"></div>
+      <button type="button" id="addScheduleButton" class="btn-secondary" style="width:auto;" data-i18n="options_schedule_add"></button>
     </div>
 
     <!-- 동기화·인증 실패는 서비스워커 콘솔에만 남는데 MV3 서비스워커는 유휴 상태면 죽어서
          콘솔도 같이 날아간다. 그래서 최근 실패를 기기 안에 쌓아두고 여기서 그대로 보여준다.
          평소엔 볼 일이 없으니 <details>로 접어둔다. -->
     <details class="control-section wide-section diagnostics-section" id="diagnosticsSection">
-      <summary>🩺 동기화 상태 / 진단</summary>
-      <div class="input-hint" style="margin-top:10px;">최근 동기화 성공 시각과 실패 기록입니다. 이 브라우저 안에만 저장되고 어디로도 전송되지 않습니다. 계정을 특정할 수 있는 값(이메일 · 토큰 · 사용자 ID)은 기록에 담기지 않습니다.</div>
-      <div class="diagnostics-summary">최근 성공: <strong id="diagnosticsLastSuccess">확인 중...</strong></div>
+      <summary data-i18n="options_section_diagnostics"></summary>
+      <div class="input-hint" style="margin-top:10px;" data-i18n="options_diagnostics_hint"></div>
+      <div class="diagnostics-summary"><span data-i18n="options_diagnostics_last_success_label"></span> <strong id="diagnosticsLastSuccess" data-i18n="common_loading"></strong></div>
       <div id="diagnosticsList" class="diagnostics-list"></div>
       <div class="diagnostics-actions">
-        <button type="button" id="refreshDiagnosticsButton" class="btn-secondary" style="width:auto;">새로고침</button>
-        <button type="button" id="copyDiagnosticsButton" class="btn-secondary" style="width:auto;">복사</button>
-        <button type="button" id="clearDiagnosticsButton" class="btn-secondary" style="width:auto;">지우기</button>
+        <button type="button" id="refreshDiagnosticsButton" class="btn-secondary" style="width:auto;" data-i18n="action_refresh"></button>
+        <button type="button" id="copyDiagnosticsButton" class="btn-secondary" style="width:auto;" data-i18n="action_copy"></button>
+        <button type="button" id="clearDiagnosticsButton" class="btn-secondary" style="width:auto;" data-i18n="action_clear"></button>
       </div>
       <div id="diagnosticsStatus" class="input-hint" style="margin-top:8px;"></div>
     </details>
 
     <div class="save-bar">
-      <button id="saveButton" class="btn-primary">저장</button>
+      <button id="saveButton" class="btn-primary" data-i18n="action_save"></button>
       <div id="saveStatus" class="input-hint"></div>
-      <button id="signOutButton" class="btn-secondary">로그아웃</button>
+      <button id="signOutButton" class="btn-secondary" data-i18n="action_sign_out"></button>
     </div>
 
     <div class="control-section wide-section danger-section">
-      <h4>⚠️ 위험 구역</h4>
-      <div class="input-hint">계정을 삭제하면 아래 항목이 서버와 이 브라우저에서 모두 지워집니다. <strong>되돌릴 수 없습니다.</strong></div>
+      <h4 data-i18n="options_section_danger"></h4>
+      <div class="input-hint"><span data-i18n="options_danger_desc"></span> <strong data-i18n="options_danger_irreversible"></strong></div>
       <ul class="danger-list">
-        <li>계정 (로그인 정보)</li>
-        <li>사용 시간 기록</li>
-        <li>스트릭 · XP</li>
-        <li>뱃지</li>
-        <li>설정 (한도 · 화이트리스트 · 예약 차단 등)</li>
+        <li data-i18n="options_danger_item_account"></li>
+        <li data-i18n="options_danger_item_usage"></li>
+        <li data-i18n="options_danger_item_streak"></li>
+        <li data-i18n="options_danger_item_badges"></li>
+        <li data-i18n="options_danger_item_settings"></li>
       </ul>
-      <button type="button" id="deleteAccountButton" class="btn-danger" style="width:auto;">계정 삭제</button>
+      <button type="button" id="deleteAccountButton" class="btn-danger" style="width:auto;" data-i18n="options_delete_account"></button>
 
       <div id="deleteAccountConfirmBlock" class="field-row" style="display:none; margin-top:16px;">
-        <label for="deleteAccountConfirmInput">확인을 위해 아래 값을 그대로 입력하세요</label>
+        <label for="deleteAccountConfirmInput" data-i18n="options_delete_confirm_label"></label>
         <div class="danger-confirm-phrase" id="deleteAccountPhrase"></div>
         <input type="text" id="deleteAccountConfirmInput" autocomplete="off" spellcheck="false">
         <div class="danger-actions">
-          <button type="button" id="confirmDeleteAccountButton" class="btn-danger" style="width:auto;" disabled>영구 삭제</button>
-          <button type="button" id="cancelDeleteAccountButton" class="btn-secondary" style="width:auto;">취소</button>
+          <button type="button" id="confirmDeleteAccountButton" class="btn-danger" style="width:auto;" disabled data-i18n="options_delete_permanently"></button>
+          <button type="button" id="cancelDeleteAccountButton" class="btn-secondary" style="width:auto;" data-i18n="action_cancel"></button>
         </div>
       </div>
 
@@ -504,9 +505,9 @@
 
   <div id="accountDeletedView" style="display:none;">
     <div class="auth-box">
-      <p>✅ 계정이 삭제되었습니다.</p>
-      <div class="input-hint">계정, 사용 시간 기록, 스트릭 · XP, 뱃지, 설정이 모두 지워졌고 이 브라우저에 저장된 데이터도 함께 삭제했습니다. 다시 쓰시려면 새로 가입해주세요.</div>
-      <button id="deletedSignUpButton" class="btn-primary" style="margin-top:12px;">로그인 / 회원가입</button>
+      <p data-i18n="options_account_deleted_title"></p>
+      <div class="input-hint" data-i18n="options_account_deleted_hint"></div>
+      <button id="deletedSignUpButton" class="btn-primary" style="margin-top:12px;" data-i18n="action_sign_in_or_up"></button>
     </div>
   </div>
 

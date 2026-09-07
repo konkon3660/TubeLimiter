@@ -1,3 +1,8 @@
+import { t } from '../lib/i18n.js';
+
+// content script도 chrome.i18n을 쓸 수 있다(유튜브 페이지에 주입되지만 확장 컨텍스트다).
+// 오버레이 문구를 여기 하드코딩하지 않고 _locales에서 가져오는 이유다.
+
 function pauseAllVideos() {
   document.querySelectorAll('video').forEach((video) => {
     if (!video.paused) video.pause();
@@ -42,23 +47,29 @@ function applyBlockOverlay(reason) {
   document.body.appendChild(overlay);
   document.body.style.overflow = 'hidden';
 
-  const messages = {
-    focusMode: '집중 모드가 활성화되어 유튜브 시청이 제한되었습니다.',
-    scheduledBlock: '예약된 차단 시간이라 유튜브 시청이 제한되었습니다.',
-    manualBlock: '유튜브가 수동으로 차단되었습니다.',
-    alwaysBlockShorts: 'Shorts 항상 차단 설정으로 인해 시청이 제한되었습니다.',
+  // 차단 사유(lib/blockDecision.js의 BLOCK_REASON)를 문구 키로 옮긴다. 키를 변수로 조립하지
+  // 않고 표로 적어두는 이유는, 이 파일만 읽어도 어떤 문구가 쓰이는지 보이게 하기 위해서다
+  // (test/i18n.test.js도 이 리터럴을 보고 "쓰이지 않는 키"를 가려낸다).
+  const messageKeys = {
+    focusMode: 'block_reason_focus_mode',
+    scheduledBlock: 'block_reason_scheduled',
+    manualBlock: 'block_reason_manual',
+    alwaysBlockShorts: 'block_reason_always_shorts',
     // Shorts 한도는 전체 한도와 별개라, 문구도 "Shorts만 막혔다"는 걸 분명히 알려야 한다 —
     // 안 그러면 일반 영상은 멀쩡히 되는데 왜 여기만 막히는지 알 수 없다.
-    shortsLimit: 'Shorts 일일 한도를 다 써서 Shorts만 제한되었습니다. 일반 영상은 남은 한도만큼 볼 수 있어요.',
-    usageLimit: '일일 사용 시간 제한을 초과하여 유튜브 시청이 제한되었습니다.'
+    shortsLimit: 'block_reason_shorts_limit',
+    usageLimit: 'block_reason_usage_limit'
   };
-  const message = messages[reason] || '유튜브 시청이 제한되었습니다.';
+  const message = t(messageKeys[reason] || 'block_reason_default');
 
-  overlay.innerHTML = `
-    <h1>TubeLimiter</h1>
-    <p>${message}</p>
-    <p>오늘의 스트릭을 지켰는지는 내일 확인할 수 있어요.</p>
-  `;
+  // innerHTML 대신 DOM으로 짓는다 — 번역 문구가 마크업으로 해석될 여지를 남기지 않는다.
+  const heading = document.createElement('h1');
+  heading.textContent = 'TubeLimiter';
+  const reasonLine = document.createElement('p');
+  reasonLine.textContent = message;
+  const streakLine = document.createElement('p');
+  streakLine.textContent = t('block_streak_note');
+  overlay.replaceChildren(heading, reasonLine, streakLine);
 
   // 오버레이가 영상을 멈춰 세웠다는 사실을 백그라운드에 바로 알린다. video.pause()가 내는
   // pause 이벤트는 오버레이가 DOM에 붙은 "뒤에" 도착하므로 그것만으로는 보고가 나가지 않는다.
@@ -150,7 +161,7 @@ function showAlarmToast(message) {
   const container = getAlarmToastContainer();
   if (toast.parentElement !== container) container.appendChild(toast);
 
-  toast.textContent = `⏰ ${message}`;
+  toast.textContent = t('alarm_toast', [message]);
   toast.style.display = 'block';
 
   clearTimeout(alarmToastTimer);
