@@ -9,6 +9,9 @@ import { EMERGENCY_GRANT_COOLDOWN_MS, EMERGENCY_DURATION_MS, emergencyOverlapMs 
 import { usageDeltaSinceSync, combinedUsedMillis } from '../lib/usageMerge.js';
 import { isScheduleActive, minutesUntilNextScheduleStart } from '../lib/schedule.js';
 import { focusStateBeforeTransition } from '../lib/focusTransition.js';
+import { resolveBlockDecision, resolveTabBlock, isWhitelistedUrl, isShortsUrl } from '../lib/blockDecision.js';
+import { evaluateAlarms } from '../lib/alarmRules.js';
+import { planDateRollover, planEmergencyReset } from '../lib/dateRollover.js';
 
 const MAX_ELAPSED_MS = 10 * 60 * 1000; // 비정상적으로 큰 elapsed 값 방어
 const DEFAULT_DAILY_LIMIT_MS = 30 * 60 * 1000;
@@ -54,8 +57,6 @@ let settingsCache = {
   hardcore_disable_requested_at: null,
   scheduled_blocks: []
 };
-
-const ALARM_MILESTONE_MINUTES = [30, 10, 5, 1];
 
 async function loadSettingsCache() {
   const local = await getStorage(['settingsCache']);
@@ -335,30 +336,20 @@ async function checkDateRolloverInner() {
   const today = getTodayDate();
   const { local_current_date } = await getStorage(['local_current_date']);
 
-  if (!local_current_date) {
-    await setStorage({ local_current_date: today });
-    return;
-  }
-  if (local_current_date === today) return;
+  // 어떤 날짜들을 정산해야 하는지는 순수 판정에 맡기고(lib/dateRollover.js), 여기선
+  // 그 결과대로 Supabase에 반영하고 기준점을 옮기는 일만 한다.
+  const plan = planDateRollover(local_current_date, today);
 
-  // 시계가 되돌아간 경우(시스템 시각 조정, DST 등) local_current_date가 today보다
-  // 미래일 수 있음 - 앞으로만 증가하는 루프라 이 경우 today를 영영 못 만나 무한루프에
-  // 빠진다. 롤오버 처리 없이 그냥 today로 재동기화한다.
-  if (local_current_date > today) {
-    await setStorage({ local_current_date: today });
+  if (plan.dates.length === 0) {
+    if (plan.nextStoredDate) await setStorage({ local_current_date: plan.nextStoredDate });
     return;
   }
 
-  // 브라우저를 며칠 안 켰어도 그 사이 날짜들을 하루씩 순회하며 처리한다.
-  // 접속 안 한 날은 사용량 0이라 한도 이내 = 성공으로 취급 (스트릭이 부당하게 끊기지 않게).
   const { usage_history } = await getStorage(['usage_history']);
   const emergencyHistory = await getEmergencyHistory();
   const user = await getCurrentUser();
 
-  let date = local_current_date;
-  let daysProcessed = 0;
-  const MAX_ROLLOVER_DAYS = 400; // 저장소 손상 등으로 date가 비정상일 때 무한루프 방지
-  while (date !== today && daysProcessed < MAX_ROLLOVER_DAYS) {
+  for (const date of plan.dates) {
     const usageMs = (usage_history || {})[date] || 0;
     const limitMs = computeLimitForDate(settingsCache, date);
     const emergency = emergencyEntryFor(emergencyHistory, date);
@@ -376,12 +367,9 @@ async function checkDateRolloverInner() {
         console.error('[TubeLimiter] rollover failed:', e);
       }
     }
-
-    date = addDaysToDate(date, 1);
-    daysProcessed += 1;
   }
 
-  await setStorage({ local_current_date: today });
+  await setStorage({ local_current_date: plan.nextStoredDate });
 }
 
 // --- 하드코어 모드 해제 쿨다운 ---
@@ -505,19 +493,20 @@ async function getEffectiveTodayUsage(localUsage) {
 // --- 긴급 시청 횟수 리셋 ---
 
 async function checkAndResetEmergencyUses() {
-  const today = getTodayDate();
   const { last_emergency_date } = await getStorage(['last_emergency_date']);
-  const { resetFrequency } = settingsCache.emergency_config || { resetFrequency: 'daily' };
 
-  let currentResetDate = today;
-  if (resetFrequency === 'weekly') currentResetDate = getWeekStartDate();
-  if (resetFrequency === 'monthly') currentResetDate = getMonthStartDate();
+  const plan = planEmergencyReset({
+    lastResetDate: last_emergency_date,
+    frequency: settingsCache.emergency_config?.resetFrequency,
+    dailyUses: settingsCache.emergency_config?.dailyUses,
+    today: getTodayDate(),
+    weekStart: getWeekStartDate(),
+    monthStart: getMonthStartDate()
+  });
 
-  if (last_emergency_date !== currentResetDate) {
-    const initialUses = settingsCache.emergency_config?.dailyUses ?? 3;
-    await setStorage({ emergency_uses_today: initialUses, last_emergency_date: currentResetDate });
-    notifyUiUpdate();
-  }
+  if (!plan.shouldReset) return;
+  await setStorage({ emergency_uses_today: plan.uses, last_emergency_date: plan.resetDate });
+  notifyUiUpdate();
 }
 
 // --- 알람 (N분마다 / 남은 시간 마일스톤) ---
@@ -543,57 +532,32 @@ function notify(id, title, message) {
   }
 }
 
+// 주기/예약 알림 id는 매번 고유해야 한다. 같은 id로 create()하면 크롬이 기존 알림을
+// "업데이트"만 하고 토스트 배너를 다시 띄우지 않아, 하루 첫 알림 말고는 안 보일 수 있다.
+// (마일스톤은 분 단위로 한 번씩만 뜨므로 고정 id로 충분하다.)
+function alarmNotificationId(notification) {
+  if (notification.kind === 'milestone') return `tube-limiter-milestone-${notification.minutes}`;
+  if (notification.kind === 'scheduleSoon') return `tube-limiter-schedule-soon-${Date.now()}`;
+  return `tube-limiter-interval-${Date.now()}`;
+}
+
 async function checkAlarms(currentUsage, limitMs) {
-  const today = getTodayDate();
   const { alarm_state } = await getStorage(['alarm_state']);
-  const state = alarm_state && alarm_state.date === today
-    ? alarm_state
-    : { date: today, lastIntervalNotifyMs: 0, notifiedMilestones: [], scheduleStartNotified: false };
 
-  let changed = false;
+  // "무엇을 띄울지 / 오늘 이미 띄웠는지"는 순수 판정(lib/alarmRules.js)에 맡기고,
+  // 여기선 실제 알림 발화와 장부 저장만 한다.
+  const { state, changed, notifications } = evaluateAlarms(alarm_state, {
+    date: getTodayDate(),
+    usedMs: currentUsage,
+    limitMs,
+    intervalMinutes: settingsCache.alarm_interval_minutes || 0,
+    milestonesEnabled: settingsCache.alarm_milestones_enabled !== false,
+    // 이미 활성 중이거나 예약이 없으면 null이라 예약 알림은 자연히 조용해진다.
+    minutesUntilScheduleStart: minutesUntilNextScheduleStart(new Date(), settingsCache.scheduled_blocks || [])
+  });
 
-  const intervalMin = settingsCache.alarm_interval_minutes || 0;
-  if (intervalMin > 0) {
-    const intervalMs = intervalMin * 60 * 1000;
-    if (currentUsage - state.lastIntervalNotifyMs >= intervalMs) {
-      state.lastIntervalNotifyMs = Math.floor(currentUsage / intervalMs) * intervalMs;
-      changed = true;
-      // id를 매번 고유하게 줘야 한다. 같은 id로 create()하면 크롬이 기존 알림을
-      // "업데이트"만 하고 토스트 배너를 다시 띄우지 않아, 하루 첫 알림 말고는 안 보일 수 있다.
-      notify(
-        `tube-limiter-interval-${Date.now()}`,
-        'TubeLimiter',
-        `오늘 유튜브를 ${Math.floor(currentUsage / 60000)}분째 시청 중이에요.`
-      );
-    }
-  }
-
-  if (settingsCache.alarm_milestones_enabled !== false && Number.isFinite(limitMs)) {
-    const remaining = limitMs - currentUsage;
-    for (const minutes of ALARM_MILESTONE_MINUTES) {
-      if (remaining > 0 && remaining <= minutes * 60 * 1000 && !state.notifiedMilestones.includes(minutes)) {
-        state.notifiedMilestones.push(minutes);
-        changed = true;
-        notify(
-          `tube-limiter-milestone-${minutes}`,
-          'TubeLimiter',
-          `오늘 남은 유튜브 시청 시간이 ${minutes}분입니다.`
-        );
-      }
-    }
-  }
-
-  // 예약 차단 시작 10분 전 알림. 이미 활성 중이거나 예약이 없으면 null이라 자연히 조용하다.
-  // 하루 한 번만 알리면 충분하므로(집중 모드 마일스톤과 같은 스타일) 날짜별로 한 번만 dedupe.
-  const minutesUntilSchedule = minutesUntilNextScheduleStart(new Date(), settingsCache.scheduled_blocks || []);
-  if (minutesUntilSchedule !== null && minutesUntilSchedule > 0 && minutesUntilSchedule <= 10 && !state.scheduleStartNotified) {
-    state.scheduleStartNotified = true;
-    changed = true;
-    notify(
-      `tube-limiter-schedule-soon-${Date.now()}`,
-      'TubeLimiter',
-      '10분 후 예약된 차단이 시작됩니다.'
-    );
+  for (const notification of notifications) {
+    notify(alarmNotificationId(notification), 'TubeLimiter', notification.message);
   }
 
   if (changed) await setStorage({ alarm_state: state });
@@ -643,7 +607,6 @@ async function checkUsageAndBlock() {
 
   const limitMs = computeLimitForDate(settingsCache, getTodayDate());
   const currentUsage = await getEffectiveTodayUsage(await getTodayUsage());
-  const usageLimitExceeded = currentUsage >= limitMs;
 
   await checkAlarms(currentUsage, limitMs);
 
@@ -666,32 +629,22 @@ async function checkUsageAndBlock() {
     );
   }
 
-  // 우선순위 (위가 이길수록 강함): 집중 모드 > 예약 차단 > 긴급 시청(우회) > 수동 차단 > 사용 한도.
-  // 집중 모드와 예약 차단은 "한도와 무관하게" 무조건 차단하는 게 핵심이므로 긴급 시청으로
-  // 우회할 수 없다 - requestEmergency 핸들러에서도 이 두 상태일 땐 애초에 발급을 거부한다.
-  let shouldBlockGlobally = false;
-  let blockReason = '';
+  // 우선순위(집중 모드 > 예약 차단 > 긴급 시청 > 수동 차단 > 사용 한도)와 탭별 예외 규칙은
+  // 전부 lib/blockDecision.js에 있다 (안드로이드 BlockDecision.kt와 같은 규칙).
+  // 여기선 그 판정 결과를 storage/탭에 반영하는 일만 한다.
+  const blockInputs = {
+    usedMs: currentUsage,
+    limitMs,
+    focusModeActive,
+    scheduleBlockActive,
+    emergencyModeActive,
+    manuallyBlocked: isManuallyBlocked
+  };
+  const decision = resolveBlockDecision(blockInputs);
 
-  if (focusModeActive) {
-    shouldBlockGlobally = true;
-    blockReason = 'focusMode';
-  } else if (scheduleBlockActive) {
-    shouldBlockGlobally = true;
-    blockReason = 'scheduledBlock';
-  } else if (emergencyModeActive) {
-    shouldBlockGlobally = false;
-  } else if (isManuallyBlocked) {
-    shouldBlockGlobally = true;
-    blockReason = 'manualBlock';
-  } else if (usageLimitExceeded) {
-    shouldBlockGlobally = true;
-    blockReason = 'usageLimit';
-  }
-
-  const displayBlockState = focusModeActive || scheduleBlockActive || isManuallyBlocked || (usageLimitExceeded && !emergencyModeActive);
-  if (displayBlockState !== isYoutubeBlocked) {
-    isYoutubeBlocked = displayBlockState;
-    await setStorage({ isYoutubeBlocked: displayBlockState });
+  if (decision.displayBlocked !== isYoutubeBlocked) {
+    isYoutubeBlocked = decision.displayBlocked;
+    await setStorage({ isYoutubeBlocked: decision.displayBlocked });
   }
 
   const whitelist = settingsCache.whitelist || [];
@@ -699,30 +652,12 @@ async function checkUsageAndBlock() {
 
   const tabs = await chrome.tabs.query({ url: '*://*.youtube.com/*' });
   for (const tab of tabs) {
-    const isWhitelisted = tab.url && whitelist.some((entry) => tab.url.includes(entry));
-    const isShortsTab = tab.url && tab.url.includes('youtube.com/shorts');
-
-    let shouldBlockTab = shouldBlockGlobally;
-    let finalReason = blockReason;
-
-    // 집중 모드/예약 차단은 화이트리스트도 무시한다 (진짜 커밋먼트 장치가 되려면 예외 통로가
-    // 없어야 함) - 그래서 whitelist 체크보다 먼저 온다.
-    if (focusModeActive) {
-      shouldBlockTab = true;
-      finalReason = 'focusMode';
-    } else if (scheduleBlockActive) {
-      shouldBlockTab = true;
-      finalReason = 'scheduledBlock';
-    } else if (emergencyModeActive) {
-      shouldBlockTab = false;
-    } else if (isWhitelisted) {
-      shouldBlockTab = false;
-    } else if (alwaysBlockShorts && isShortsTab) {
-      shouldBlockTab = true;
-      finalReason = 'alwaysBlockShorts';
-    }
-
-    await sendBlockMessage(tab.id, shouldBlockTab, finalReason);
+    const tabDecision = resolveTabBlock(blockInputs, {
+      isWhitelisted: isWhitelistedUrl(tab.url, whitelist),
+      isShortsTab: isShortsUrl(tab.url),
+      alwaysBlockShorts
+    });
+    await sendBlockMessage(tab.id, tabDecision.shouldBlock, tabDecision.reason);
   }
 
   notifyUiUpdate();
