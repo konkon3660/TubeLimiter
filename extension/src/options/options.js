@@ -1,6 +1,16 @@
 import { setStorage } from '../lib/storage.js';
 import { supabase, getCurrentUser } from '../lib/supabaseClient.js';
 import { HARDCORE_DISABLE_COOLDOWN_MS } from '../lib/hardcore.js';
+import {
+  buildDiagnosticsReport,
+  diagnosticKindLabel,
+  formatDiagnosticTime
+} from '../lib/syncDiagnostics.js';
+import {
+  DIAGNOSTIC_STORAGE_KEYS,
+  clearDiagnostics,
+  readDiagnostics
+} from '../lib/diagnosticsStore.js';
 
 const signedOutView = document.getElementById('signedOutView');
 const signedInView = document.getElementById('signedInView');
@@ -14,8 +24,13 @@ document.getElementById('signOutButton').addEventListener('click', async () => {
   await supabase.auth.signOut();
   // 로그아웃하면 서버 버킷 합계는 더 이상 이 기기 것이 아니다. 남겨두면 다른 기기가 쓴 몫만큼
   // 남은 긴급 시청 횟수가 깎인 채로 굳는다 — 로그아웃 상태는 로컬 값만으로 동작해야 한다.
+  //
+  // 진단 기록도 지운 계정과의 통신 기록이다. 남겨두면 이미 로그아웃한 계정의 실패 목록이 계속
+  // 보이고, "마지막 성공" 시각이 다음 계정의 24시간 판정에 그대로 끼어든다
+  // (안드로이드 AppState.clearAccountData가 같은 이유로 같이 지운다).
   await chrome.storage.local.remove([
-    'emergencyUsesBucketDate', 'emergencyUsesBucketRemote', 'emergencyUsesBucketReported'
+    'emergencyUsesBucketDate', 'emergencyUsesBucketRemote', 'emergencyUsesBucketReported',
+    ...DIAGNOSTIC_STORAGE_KEYS
   ]);
   window.location.reload();
 });
@@ -368,6 +383,92 @@ document.getElementById('saveButton').addEventListener('click', async () => {
   setTimeout(() => (statusEl.textContent = ''), 2000);
 });
 
+// --- 동기화 상태 / 진단 ---
+// 백그라운드가 남긴 실패 링버퍼(lib/diagnosticsStore.js)를 그대로 보여준다. 여기 뜨는 값은
+// 시각·종류·짧은 코드·반복 횟수뿐이라 복사해서 남에게 보내도 계정이 특정되지 않는다
+// (무엇을 걸러내는지는 lib/syncDiagnostics.js 맨 위 주석 참고).
+
+const diagnosticsLastSuccessEl = document.getElementById('diagnosticsLastSuccess');
+const diagnosticsListEl = document.getElementById('diagnosticsList');
+const diagnosticsStatusEl = document.getElementById('diagnosticsStatus');
+
+let diagnosticsSnapshot = { events: [], lastSuccessAtMillis: null };
+
+function renderDiagnosticsRow(event) {
+  const row = document.createElement('div');
+  row.className = 'diagnostics-row';
+
+  const time = document.createElement('span');
+  time.className = 'diag-time';
+  time.textContent = formatDiagnosticTime(event.atMillis);
+
+  const kind = document.createElement('span');
+  kind.className = 'diag-kind';
+  kind.textContent = diagnosticKindLabel(event.kind);
+
+  // 코드는 오류 메시지에서 뽑아낸 값이라 innerHTML로 끼워 넣지 않는다(화이트리스트 렌더와 같은 원칙).
+  const code = document.createElement('span');
+  code.className = 'diag-code';
+  code.textContent = event.code;
+
+  row.append(time, kind, code);
+
+  if (event.count > 1) {
+    const count = document.createElement('span');
+    count.className = 'diag-count';
+    count.textContent = `x${event.count}`;
+    row.appendChild(count);
+  }
+  return row;
+}
+
+async function renderDiagnostics() {
+  diagnosticsSnapshot = await readDiagnostics();
+  const { events, lastSuccessAtMillis } = diagnosticsSnapshot;
+
+  diagnosticsLastSuccessEl.textContent =
+    lastSuccessAtMillis === null ? '없음' : formatDiagnosticTime(lastSuccessAtMillis);
+
+  diagnosticsListEl.replaceChildren();
+  if (events.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'diagnostics-empty';
+    empty.textContent = '기록된 실패가 없습니다.';
+    diagnosticsListEl.appendChild(empty);
+    return;
+  }
+  events.forEach((event) => diagnosticsListEl.appendChild(renderDiagnosticsRow(event)));
+}
+
+document.getElementById('refreshDiagnosticsButton').addEventListener('click', async () => {
+  await renderDiagnostics();
+  diagnosticsStatusEl.textContent = '';
+});
+
+document.getElementById('copyDiagnosticsButton').addEventListener('click', async () => {
+  // 방금 실패가 더 쌓였을 수 있으니 화면에 그려둔 값이 아니라 저장소를 다시 읽고 복사한다.
+  await renderDiagnostics();
+  const report = buildDiagnosticsReport(
+    diagnosticsSnapshot.lastSuccessAtMillis, diagnosticsSnapshot.events
+  );
+  try {
+    await navigator.clipboard.writeText(report);
+    diagnosticsStatusEl.textContent = '복사했습니다.';
+  } catch {
+    // 클립보드 권한이 막혀 있으면(포커스 없음 등) 조용히 실패한다 — 이 기능이 진단 도구인데
+    // 여기서까지 소리 없이 넘어가면 곤란하다.
+    diagnosticsStatusEl.textContent = '복사에 실패했습니다. 목록을 직접 선택해 복사해주세요.';
+  }
+  setTimeout(() => (diagnosticsStatusEl.textContent = ''), 3000);
+});
+
+document.getElementById('clearDiagnosticsButton').addEventListener('click', async () => {
+  await clearDiagnostics();
+  await renderDiagnostics();
+  diagnosticsStatusEl.textContent = '기록을 지웠습니다.';
+  setTimeout(() => (diagnosticsStatusEl.textContent = ''), 3000);
+});
+
 // --- 계정 삭제(위험 구역) ---
 // 되돌릴 수 없는 동작이라 두 단계로 막는다: confirm 한 번 + 본인 이메일 직접 입력.
 // 순서도 중요하다 — 서버(Edge Function) 삭제가 성공했을 때만 로그아웃하고 로컬을 비운다.
@@ -445,7 +546,8 @@ confirmDeleteAccountButton.addEventListener('click', async () => {
   // 서버 세션은 이미 죽었으니 네트워크를 타지 않는 로컬 로그아웃만 한다.
   await supabase.auth.signOut({ scope: 'local' });
   // chrome.storage.local엔 이 확장이 쓰는 값(설정 캐시 · 사용/긴급 기록 · 집중/차단 상태 ·
-  // 알람 상태 · 동기화 마커 · Supabase 세션)만 들어 있어서 통째로 비우는 게 가장 확실하다.
+  // 알람 상태 · 동기화 마커 · 진단 기록 · Supabase 세션)만 들어 있어서 통째로 비우는 게 가장 확실하다.
+  // 진단 기록도 지운 계정과의 통신 기록이라 여기서 같이 사라져야 한다(로그아웃 쪽과 같은 이유).
   await chrome.storage.local.clear();
   // 다른 설정 변경과 같은 경로로 백그라운드에 알린다. 이미 지운 뒤라 실패해도 되돌릴 게 없다.
   await chrome.runtime.sendMessage({ action: 'settingsUpdated' }).catch(() => {});
@@ -473,6 +575,8 @@ async function init() {
   deleteConfirmPhrase = user.email || DELETE_FALLBACK_PHRASE;
   deleteAccountPhraseEl.textContent = deleteConfirmPhrase;
   renderDeleteConfirmState();
+
+  await renderDiagnostics();
 
   const { data } = await supabase.from('settings').select('*').eq('user_id', user.id).maybeSingle();
   fillForm(

@@ -252,6 +252,41 @@
     .save-bar #saveStatus { margin: 0; }
     .save-bar #signOutButton { width: auto; margin: 0 0 0 auto; padding: 10px 20px; }
 
+    /* 진단: 평소엔 접혀 있고, 펼치면 실패 목록이 등폭 글꼴로 한 줄씩 보인다.
+       <details>라 .control-section의 h4 스타일을 못 쓰므로 summary에 같은 모양을 준다. */
+    #signedInView .diagnostics-section > summary {
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 1.02em;
+      color: var(--dark-gray);
+      list-style-position: inside;
+    }
+    .diagnostics-summary { margin-top: 12px; font-size: 0.92em; color: var(--dark-gray); }
+    .diagnostics-list {
+      margin-top: 10px;
+      max-height: 260px;
+      overflow-y: auto;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      background: var(--card-bg);
+    }
+    .diagnostics-list:empty { display: none; }
+    .diagnostics-row {
+      display: flex;
+      gap: 10px;
+      align-items: baseline;
+      padding: 7px 10px;
+      font-size: 0.85em;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .diagnostics-row:last-child { border-bottom: none; }
+    .diagnostics-row .diag-time { font-family: monospace; color: var(--gray); white-space: nowrap; }
+    .diagnostics-row .diag-kind { font-weight: 600; white-space: nowrap; }
+    .diagnostics-row .diag-code { font-family: monospace; color: var(--dark-gray); word-break: break-all; }
+    .diagnostics-row .diag-count { margin-left: auto; color: var(--warning-color); white-space: nowrap; }
+    .diagnostics-empty { padding: 10px; font-size: 0.88em; color: var(--gray); }
+    .diagnostics-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
     /* 위험 구역: 실수로 누르기 어렵도록 본문과 확실히 구분되게 칠한다 */
     #signedInView .danger-section {
       border-color: rgba(239, 68, 68, 0.35);
@@ -418,6 +453,22 @@
       <div id="scheduleList"></div>
       <button type="button" id="addScheduleButton" class="btn-secondary" style="width:auto;">+ 예약 추가</button>
     </div>
+
+    <!-- 동기화·인증 실패는 서비스워커 콘솔에만 남는데 MV3 서비스워커는 유휴 상태면 죽어서
+         콘솔도 같이 날아간다. 그래서 최근 실패를 기기 안에 쌓아두고 여기서 그대로 보여준다.
+         평소엔 볼 일이 없으니 <details>로 접어둔다. -->
+    <details class="control-section wide-section diagnostics-section" id="diagnosticsSection">
+      <summary>🩺 동기화 상태 / 진단</summary>
+      <div class="input-hint" style="margin-top:10px;">최근 동기화 성공 시각과 실패 기록입니다. 이 브라우저 안에만 저장되고 어디로도 전송되지 않습니다. 계정을 특정할 수 있는 값(이메일 · 토큰 · 사용자 ID)은 기록에 담기지 않습니다.</div>
+      <div class="diagnostics-summary">최근 성공: <strong id="diagnosticsLastSuccess">확인 중...</strong></div>
+      <div id="diagnosticsList" class="diagnostics-list"></div>
+      <div class="diagnostics-actions">
+        <button type="button" id="refreshDiagnosticsButton" class="btn-secondary" style="width:auto;">새로고침</button>
+        <button type="button" id="copyDiagnosticsButton" class="btn-secondary" style="width:auto;">복사</button>
+        <button type="button" id="clearDiagnosticsButton" class="btn-secondary" style="width:auto;">지우기</button>
+      </div>
+      <div id="diagnosticsStatus" class="input-hint" style="margin-top:8px;"></div>
+    </details>
 
     <div class="save-bar">
       <button id="saveButton" class="btn-primary">저장</button>

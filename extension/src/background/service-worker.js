@@ -1,6 +1,8 @@
 import { getStorage, setStorage } from '../lib/storage.js';
 import { getTodayDate, getWeekStartDate, getMonthStartDate, addDaysToDate } from '../lib/time.js';
-import { supabase, getCurrentUser } from '../lib/supabaseClient.js';
+// 백그라운드는 getCurrentUser() 대신 아래 getActiveUser()를 쓴다 — "로그아웃"과 "세션 갱신 실패"를
+// 구별해서 후자만 진단에 남기기 위해서다.
+import { supabase } from '../lib/supabaseClient.js';
 import { applyDayRollover } from '../lib/gamification.js';
 import { computeLimitForDate, computeShortsLimit } from '../lib/limits.js';
 import { HARDCORE_DISABLE_COOLDOWN_MS } from '../lib/hardcore.js';
@@ -30,6 +32,8 @@ import {
   DEFAULT_EMERGENCY_USES
 } from '../lib/dateRollover.js';
 import { planLimitHistoryUpdate } from '../lib/limitHistory.js';
+import { DiagnosticKind, summarizeFailure } from '../lib/syncDiagnostics.js';
+import { recordDiagnosticFailure, recordSyncSuccess } from '../lib/diagnosticsStore.js';
 
 const MAX_ELAPSED_MS = 10 * 60 * 1000; // 비정상적으로 큰 elapsed 값 방어
 const DEFAULT_DAILY_LIMIT_MS = 30 * 60 * 1000;
@@ -93,6 +97,45 @@ async function loadSettingsCache() {
   if (local.settingsCache) settingsCache = { ...settingsCache, ...local.settingsCache };
 }
 
+// --- 진단 기록 ---
+//
+// MV3 서비스워커는 유휴 상태면 죽고 그때 콘솔도 같이 날아간다. console.error만 남기던 실패는
+// 사실상 흔적이 없어서, 며칠째 동기화가 막혀도 알 방법이 없었다. 아래 헬퍼로 실패를
+// chrome.storage 링버퍼에 남긴다(lib/syncDiagnostics.js, 안드로이드 SyncDiagnostics.kt와 같은 규칙).
+//
+// 콘솔 출력은 그대로 둔다 — devtools를 열어둔 개발 중에는 여전히 그쪽이 빠르다.
+
+/**
+ * 예외/오류 객체는 반드시 summarizeFailure를 거쳐 **이름 + 상태 코드**로만 줄여 저장한다.
+ * 서버가 돌려준 문구를 그대로 넣으면 조건에 걸린 이메일이나 user_id가 진단 화면에 뜨고,
+ * 사용자가 그걸 그대로 복사해 남에게 보내게 된다. step은 우리가 직접 붙이는 고정 문자열이라 안전하다.
+ */
+function recordFailure(kind, step, error) {
+  return recordDiagnosticFailure(kind, `${step}/${summarizeFailure(error)}`);
+}
+
+/**
+ * 로그인한 사용자, 없으면 null.
+ *
+ * supabaseClient의 getCurrentUser()는 세션이 없을 때도 갱신에 실패했을 때도 똑같이 null을 돌려줘서, 토큰 갱신이
+ * 며칠째 막힌 상태가 "그냥 로그아웃"과 구별되지 않는다. 세션 자체가 없으면(=진짜 로그아웃)
+ * 조용히 넘어가고, 세션은 있는데 사용자를 못 얻은 경우에만 진단에 남긴다 —
+ * 안드로이드 SyncRepository.activeUserIdOrNull()과 같은 판정이다.
+ */
+async function getActiveUser() {
+  const { data, error } = await supabase.auth.getUser();
+  if (!error && data?.user) return data.user;
+
+  // getSession()은 로컬 세션만 읽으므로(만료됐으면 갱신 시도) 여기서 네트워크가 한 번 더 나가지 않는다.
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) {
+    await recordFailure(DiagnosticKind.AUTH, 'session_refresh', sessionError);
+  } else if (sessionData?.session) {
+    await recordFailure(DiagnosticKind.AUTH, 'get_user', error);
+  }
+  return null;
+}
+
 let lastSettingsRefreshAt = 0;
 const SETTINGS_REFRESH_INTERVAL_MS = 30 * 1000;
 
@@ -100,10 +143,17 @@ async function refreshSettingsFromSupabase(force = false) {
   if (!force && Date.now() - lastSettingsRefreshAt < SETTINGS_REFRESH_INTERVAL_MS) return;
   lastSettingsRefreshAt = Date.now();
 
-  const user = await getCurrentUser();
+  const user = await getActiveUser();
   if (!user) return;
   const { data, error } = await supabase.from('settings').select('*').eq('user_id', user.id).maybeSingle();
-  if (error || !data) return;
+  if (error) {
+    console.error('[TubeLimiter] 설정 동기화 실패:', error);
+    await recordFailure(DiagnosticKind.SYNC_SETTINGS, 'pull', error);
+    return;
+  }
+  // 왕복 자체는 성공했으므로 행이 아직 없어도(가입 직후) 성공으로 친다.
+  await recordSyncSuccess();
+  if (!data) return;
   settingsCache = { ...settingsCache, ...data };
   await setStorage({ settingsCache });
 }
@@ -427,7 +477,7 @@ async function checkDateRolloverInner() {
 
   const { usage_history } = await getStorage(['usage_history']);
   const emergencyHistory = await getEmergencyHistory();
-  const user = await getCurrentUser();
+  const user = await getActiveUser();
 
   for (const date of plan.dates) {
     const usageMs = (usage_history || {})[date] || 0;
@@ -443,8 +493,12 @@ async function checkDateRolloverInner() {
           emergencyMs: emergency.ms,
           emergencyUses: emergency.uses
         });
+        await recordSyncSuccess();
       } catch (e) {
         console.error('[TubeLimiter] rollover failed:', e);
+        // 스트릭/XP/뱃지 push는 자정에 딱 한 번 도는 경로라 실패하면 그날 기록이 통째로
+        // 서버에 안 올라간다. 다음 기회도 하루 뒤라 콘솔만으로는 절대 못 잡는다.
+        await recordFailure(DiagnosticKind.SYNC_STREAK, 'rollover', e);
       }
     }
   }
@@ -464,21 +518,31 @@ async function checkHardcoreDisableCooldown() {
   const requestedAt = new Date(settingsCache.hardcore_disable_requested_at).getTime();
   if (Date.now() < requestedAt + HARDCORE_DISABLE_COOLDOWN_MS) return;
 
-  const user = await getCurrentUser();
+  const user = await getActiveUser();
   if (!user) return;
 
   const updated = { hardcore_mode: false, hardcore_disable_requested_at: null };
   const { error } = await supabase.from('settings').update(updated).eq('user_id', user.id);
   if (error) {
     console.error('[TubeLimiter] 하드코어 모드 해제 반영 실패:', error);
+    // 사용자는 이미 24시간을 기다렸는데 해제가 조용히 안 되는 상태다. 화면엔 "곧 해제됩니다"만
+    // 계속 뜨므로, 남겨두지 않으면 왜 안 풀리는지 알 단서가 없다.
+    await recordFailure(DiagnosticKind.SYNC_SETTINGS, 'hardcore_disable', error);
     return;
   }
+  await recordSyncSuccess();
   settingsCache = { ...settingsCache, ...updated };
   await setStorage({ settingsCache });
 
   // 완벽한 날 연속 기록도 같은 성격의 진행 중 기록이라 함께 리셋한다 (누적 perfect_days와
   // best_perfect_streak은 지난 성과라 보존).
-  await supabase.from('streaks').update({ current_streak: 0, current_perfect_streak: 0 }).eq('user_id', user.id);
+  const { error: streakError } = await supabase
+    .from('streaks')
+    .update({ current_streak: 0, current_perfect_streak: 0 })
+    .eq('user_id', user.id);
+  // 여기가 조용히 실패하면 "끄면 연속 기록이 초기화된다"는 경고가 허언이 되는데, 지금까지는
+  // 반환값을 아예 안 봐서 실패해도 아무 데도 안 남았다.
+  if (streakError) await recordFailure(DiagnosticKind.SYNC_STREAK, 'hardcore_reset', streakError);
 
   notifyUiUpdate();
 }
@@ -518,7 +582,7 @@ async function syncUsageToSupabaseInner(force = false) {
   if (!force && Date.now() - lastDailyUsageSyncAt < DAILY_USAGE_SYNC_INTERVAL_MS) return;
   lastDailyUsageSyncAt = Date.now();
 
-  const user = await getCurrentUser();
+  const user = await getActiveUser();
   if (!user) return;
 
   const today = getTodayDate();
@@ -558,8 +622,12 @@ async function syncUsageToSupabaseInner(force = false) {
   });
   if (error) {
     console.error('[TubeLimiter] daily_usage 동기화 실패:', error);
+    // 30초마다 도는 경로라 같은 실패가 하루 2880번 난다 — 링버퍼가 같은 (종류, 코드)를
+    // 합산해주므로 한 줄에 횟수만 올라간다(appendDiagnosticEvent 참고).
+    await recordFailure(DiagnosticKind.SYNC_USAGE, 'rpc', error);
     return;
   }
+  await recordSyncSuccess();
 
   const row = Array.isArray(data) ? data[0] : data;
   const remoteTodayUses = row?.emergency_uses ?? localEmergencyUses;
@@ -603,6 +671,9 @@ async function refreshEmergencyUsesBucket(user, today, emergencyHistory, syncedT
       .lte('date', today);
     if (error) {
       console.error('[TubeLimiter] 긴급 시청 횟수 합계 조회 실패:', error);
+      // 실패하면 캐시를 그대로 두고 조용히 빠져나가므로(잔여 횟수가 흔들리지 않게), 계속
+      // 실패해도 화면상으로는 아무 일도 없는 것처럼 보인다. 그래서 더더욱 기록이 필요하다.
+      await recordFailure(DiagnosticKind.EMERGENCY_FETCH, 'select', error);
       return;
     }
     remoteBucketUses = (data || []).reduce((sum, r) => sum + (r.emergency_uses || 0), 0);

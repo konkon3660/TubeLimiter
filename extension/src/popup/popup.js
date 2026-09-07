@@ -8,9 +8,16 @@ import { emergencyResetDate, DEFAULT_EMERGENCY_USES } from '../lib/dateRollover.
 import { resolveFocusStopTime } from '../lib/focusMode.js';
 import { EMERGENCY_GRANT_COOLDOWN_MS } from '../lib/emergency.js';
 import { isScheduleActive } from '../lib/schedule.js';
+import { staleSyncWarning } from '../lib/syncDiagnostics.js';
+import { readDiagnostics } from '../lib/diagnosticsStore.js';
 
 const signedOutView = document.getElementById('signedOutView');
 const signedInView = document.getElementById('signedInView');
+const syncWarningEl = document.getElementById('syncWarning');
+
+// 로그인 여부는 네트워크를 타는 renderRemote에서만 확인한다(renderLocal은 1초마다 돈다).
+// 확인 전에는 false — 로그아웃 상태에서는 애초에 동기화 경고를 띄우지 않으므로 안전한 기본값이다.
+let isSignedIn = false;
 
 document.getElementById('openAuthButton').addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('auth/auth.html') });
@@ -297,16 +304,27 @@ async function renderLocal() {
   document.getElementById('consumingStatus').innerHTML = isTracking
     ? '<span class="status-badge status-active">소모 중</span>'
     : '<span class="status-badge status-inactive">대기 중</span>';
+
+  // 동기화가 며칠째 실패해도 지금까지는 화면에 아무 흔적이 없었다(백그라운드가 조용히 return한다).
+  // 로그인 상태에서 마지막 성공이 24시간을 넘겼을 때만 한 줄로 알린다 — 판정은 순수 함수에
+  // 맡기고(lib/syncDiagnostics.js staleSyncWarning) 여기선 표시만 한다. renderLocal이 1초마다
+  // 다시 불리므로 임계값을 넘는 순간 별도 트리거 없이 뜬다(안드로이드 홈 화면과 같은 방식).
+  const { events, lastSuccessAtMillis } = await readDiagnostics();
+  const syncWarning = staleSyncWarning(isSignedIn, lastSuccessAtMillis, events.length > 0, Date.now());
+  syncWarningEl.textContent = syncWarning || '';
+  syncWarningEl.style.display = syncWarning ? '' : 'none';
 }
 
 // 로그인 여부 + 스트릭/XP는 네트워크를 타므로 팝업 열 때, 액션 직후, updateUI 알림 때만 조회한다.
 async function renderRemote() {
   const user = await getCurrentUser();
   if (!user) {
+    isSignedIn = false;
     signedOutView.style.display = '';
     signedInView.style.display = 'none';
     return;
   }
+  isSignedIn = true;
   signedOutView.style.display = 'none';
   signedInView.style.display = '';
 

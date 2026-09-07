@@ -6,6 +6,21 @@
   <link rel="stylesheet" href="/assets/common.css">
   <link rel="stylesheet" href="/assets/popup_animations.css">
   <link rel="stylesheet" href="/assets/gamify.css">
+  <style>
+    /* 동기화 지연 경고. 공용 CSS(assets/common.css)에 넣지 않고 여기 둔 이유는 이 한 줄이
+       팝업 전용이기 때문이다. 경고색(빨강)이 아니라 주의색(주황)에 옅은 배경 — 사용자가
+       지금 뭘 잘못한 게 아니라 그냥 알려주는 것이라 시선을 뺏지 않아야 한다. */
+    .sync-warning {
+      margin: 0 0 10px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      background: rgba(245, 158, 11, 0.08);
+      color: var(--warning-color);
+      font-size: 0.82em;
+      line-height: 1.45;
+    }
+  </style>
 </head>
 <body>
   <div class="header"><div style="position: relative; z-index: 1;">🎯 TubeLimiter</div></div>
@@ -24,6 +39,10 @@
     </div>
 
     <div id="status" class="tab-content active">
+      <!-- 로그인했는데 마지막 동기화 성공이 24시간을 넘겼을 때만 뜨는 한 줄. 겁주지 않고
+           사실만 말한다 — 그냥 오프라인이었을 수도 있다. 판정은 lib/syncDiagnostics.js. -->
+      <div id="syncWarning" class="sync-warning" style="display:none;"></div>
+
       <div id="streakSection" style="display:none;">
         <div class="streak-hero">
           <div class="streak-number" id="streakNumber">0</div>
