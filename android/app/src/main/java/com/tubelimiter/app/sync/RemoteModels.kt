@@ -67,7 +67,22 @@ data class RemoteDailyUsageTotal(
     @SerialName("usage_ms") val usageMs: Long = 0L,
     @SerialName("shorts_ms") val shortsMs: Long = 0L,
     @SerialName("emergency_ms") val emergencyMs: Long = 0L,
+    /** 그날 긴급 시청을 쓴 횟수의 계정 전체 합계. 시간과 달리 예전에는 서버로 올라가지 않아
+     * 기기를 바꾸면 허용 횟수가 되살아났다(우회 구멍). */
+    @SerialName("emergency_uses") val emergencyUses: Int = 0,
 )
+
+/**
+ * `daily_usage`에서 날짜별 긴급 시청 횟수만 읽어오는 행. 주간/월간 리셋일 때 버킷 합계를
+ * 내려면 RPC가 돌려주는 오늘 행 하나로는 부족해서 범위를 통째로 select 한다.
+ */
+@Serializable
+data class RemoteEmergencyUsesRow(
+    @SerialName("date") val date: String,
+    @SerialName("emergency_uses") val emergencyUses: Int = 0,
+)
+
+val EMERGENCY_USES_COLUMNS = listOf("date", "emergency_uses")
 
 val SETTINGS_COLUMNS = listOf(
     "daily_limit_ms",

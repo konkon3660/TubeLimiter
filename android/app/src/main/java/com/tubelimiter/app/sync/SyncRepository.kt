@@ -97,6 +97,7 @@ class SyncRepository(
         usageDeltaMs: Long,
         shortsDeltaMs: Long = 0L,
         emergencyDeltaMs: Long = 0L,
+        emergencyUsesDelta: Int = 0,
     ): RemoteDailyUsageTotal? {
         if (auth.currentUserIdOrNull() == null) return null
         return runCatching {
@@ -105,10 +106,36 @@ class SyncRepository(
                 put("p_usage_delta_ms", usageDeltaMs)
                 put("p_shorts_delta_ms", shortsDeltaMs)
                 put("p_emergency_delta_ms", emergencyDeltaMs)
+                put("p_emergency_uses_delta", emergencyUsesDelta)
             }
             postgrest.rpc("increment_daily_usage", params).decodeSingle<RemoteDailyUsageTotal>()
         }.getOrElse {
             Log.w(TAG, "daily_usage sync failed", it)
+            null
+        }
+    }
+
+    /**
+     * [startDateKey] 이후 각 날짜의 긴급 시청 횟수(계정 전체 합계). 주간/월간 리셋에서는 버킷이
+     * 여러 날에 걸쳐 있어 [syncDailyUsage]가 돌려주는 오늘 행만으로는 합계를 알 수 없다.
+     *
+     * 실패하거나 로그아웃이면 null — 호출자는 마지막으로 성공한 값을 그대로 두고, 결국 로컬
+     * 횟수만으로 계속 동작한다(합산은 어디까지나 보너스).
+     */
+    suspend fun fetchEmergencyUsesSince(startDateKey: String): Map<String, Int>? {
+        val userId = auth.currentUserIdOrNull() ?: return null
+        return runCatching {
+            postgrest["daily_usage"]
+                .select(Columns.list(EMERGENCY_USES_COLUMNS)) {
+                    filter {
+                        eq("user_id", userId)
+                        gte("date", startDateKey)
+                    }
+                }
+                .decodeList<RemoteEmergencyUsesRow>()
+                .associate { it.date to it.emergencyUses }
+        }.getOrElse {
+            Log.w(TAG, "emergency_uses fetch failed", it)
             null
         }
     }

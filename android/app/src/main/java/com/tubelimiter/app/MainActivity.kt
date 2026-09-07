@@ -47,6 +47,7 @@ import com.tubelimiter.app.data.Settings
 import com.tubelimiter.app.limit.BlockInputs
 import com.tubelimiter.app.limit.blockReason
 import com.tubelimiter.app.limit.computeLimitMillis
+import com.tubelimiter.app.limit.effectiveEmergencyRemaining
 import com.tubelimiter.app.limit.hardcoreCooldownRemainingMillis
 import com.tubelimiter.app.limit.isScheduleActive
 import com.tubelimiter.app.limit.minutesToMillis
@@ -302,7 +303,12 @@ fun AppRoot() {
                 focusDelayDurationMinutes = state.focusDelayDurationMinutes,
                 focusStopRequestedAtMillis = state.focusStopRequestedAtMillis,
                 manuallyBlocked = state.manuallyBlocked,
-                emergencyRemaining = state.emergencyRemaining ?: settings.emergencyAllowance,
+                // 홈 화면의 "긴급 시청 남음"도 계정 합계 기준 — 다른 기기가 쓴 몫이 빠진다.
+                emergencyRemaining = effectiveEmergencyRemaining(
+                    state.emergencyRemaining,
+                    settings.emergencyAllowance,
+                    state.cachedOtherDeviceEmergencyUses(),
+                ),
                 monitoringEnabled = settings.monitoringEnabled,
                 hardcoreMode = settings.hardcoreMode,
                 streak = state.streak,

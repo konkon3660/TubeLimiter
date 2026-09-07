@@ -29,8 +29,11 @@ import com.tubelimiter.app.limit.BlockInputs
 import com.tubelimiter.app.limit.EMERGENCY_DURATION_MILLIS
 import com.tubelimiter.app.limit.blockReason
 import com.tubelimiter.app.limit.computeLimitMillis
+import com.tubelimiter.app.limit.effectiveEmergencyRemaining
+import com.tubelimiter.app.limit.emergencyBucketDateKeys
 import com.tubelimiter.app.limit.emergencyGrantCooldownRemainingMillis
 import com.tubelimiter.app.limit.emergencyOverlapMillis
+import com.tubelimiter.app.limit.emergencyResetKey
 import com.tubelimiter.app.limit.evaluateAlarms
 import com.tubelimiter.app.limit.isUnlimited
 import com.tubelimiter.app.limit.minutesToMillis
@@ -41,6 +44,8 @@ import com.tubelimiter.app.limit.resolveFocusStopTime
 import com.tubelimiter.app.limit.shouldDisableHardcore
 import com.tubelimiter.app.sync.SyncRepository
 import com.tubelimiter.app.sync.combinedUsedMillis
+import com.tubelimiter.app.sync.emergencyUsesDeltaSinceSync
+import com.tubelimiter.app.sync.otherDeviceEmergencyUses
 import com.tubelimiter.app.sync.usageDeltaSinceSync
 import com.tubelimiter.app.usage.UsageStatsReader
 import com.tubelimiter.app.usage.effectiveDate
@@ -170,7 +175,7 @@ class UsageMonitorService : Service() {
         expireEmergency(now)
         val scheduleWindow = checkScheduleTransition(settings, now)
         checkScheduleUpcomingNudge(settings, now, todayKey)
-        refreshDailyUsageSync(now, todayKey, snapshot.usedMillis)
+        refreshDailyUsageSync(now, today, todayKey, snapshot.usedMillis, settings)
 
         // Re-read after the edits above so the block decision sees current state.
         val state = stateStore.state.first()
@@ -204,7 +209,13 @@ class UsageMonitorService : Service() {
                         reason = reason,
                         usedMillis = effectiveUsedMillis,
                         limitMillis = limitMillis,
-                        emergencyRemaining = state.emergencyRemaining ?: settings.emergencyAllowance,
+                        // 다른 기기가 쓴 몫까지 반영된 잔여 횟수 — 오버레이 문구와 실제 승인
+                        // 판정(consumeEmergency)이 갈라지지 않게 같은 규칙을 쓴다.
+                        emergencyRemaining = effectiveEmergencyRemaining(
+                            state.emergencyRemaining,
+                            settings.emergencyAllowance,
+                            state.cachedOtherDeviceEmergencyUses(),
+                        ),
                     ),
                 ) { grantEmergency() }
             } else {
@@ -220,8 +231,17 @@ class UsageMonitorService : Service() {
      * Same 30s throttle as the settings pull. Reports usage this device hasn't told the
      * server about yet and stores back the combined total so [tick] can fold other devices'
      * usage into the block decision.
+     *
+     * 긴급 시청 횟수도 같은 델타 패턴으로 실어 보낸다. 버킷 합계 조회까지 여기 얹은 건
+     * 배터리와 요청 수 때문 — 유튜브가 떠 있으면 tick은 5초마다 돌지만 이 경로는 30초에 한 번뿐이다.
      */
-    private suspend fun refreshDailyUsageSync(now: Long, todayKey: String, localUsedMillis: Long) {
+    private suspend fun refreshDailyUsageSync(
+        now: Long,
+        today: LocalDate,
+        todayKey: String,
+        localUsedMillis: Long,
+        settings: Settings,
+    ) {
         if (now - lastDailyUsageSyncAt < DAILY_USAGE_SYNC_INTERVAL_MILLIS) return
         lastDailyUsageSyncAt = now
 
@@ -234,13 +254,62 @@ class UsageMonitorService : Service() {
             state.dailyUsageEmergencySyncedMillis,
             todayKey,
         )
-        val total = sync.syncDailyUsage(todayKey, delta, emergencyDeltaMs = emergencyDelta) ?: return
+        val localUsesToday = state.emergencyUsesOn(todayKey)
+        val usesDelta = emergencyUsesDeltaSinceSync(
+            localUsesToday,
+            state.dailyUsageSyncDate,
+            state.dailyUsageEmergencyUsesSynced,
+            todayKey,
+        )
+        val total = sync.syncDailyUsage(
+            todayKey,
+            delta,
+            emergencyDeltaMs = emergencyDelta,
+            emergencyUsesDelta = usesDelta,
+        ) ?: return
         stateStore.recordDailyUsageSync(
             todayKey,
             syncedMillis = localUsedMillis,
             combinedMillis = total.usageMs,
             emergencySyncedMillis = localEmergencyMillis,
+            emergencyUsesSynced = localUsesToday,
         )
+        refreshEmergencyUsesBucket(settings, today, todayKey, state, localUsesToday, total.emergencyUses)
+    }
+
+    /**
+     * 이번 리셋 버킷에서 **다른 기기가** 쓴 긴급 시청 횟수를 갱신한다.
+     *
+     * 리셋 주기가 daily면 방금 RPC가 돌려준 오늘 행 합계로 충분하다. weekly/monthly는 버킷이
+     * 여러 날에 걸쳐 있어 오늘 행만 보면 틀리므로, 버킷 시작일 이후 행들을 한 번 더 읽어 합산한다.
+     * 조회가 실패하면 아무것도 쓰지 않고 빠진다 — 마지막으로 성공했던 값이 남고, 그마저 없으면
+     * 로컬 횟수만으로 판정한다.
+     */
+    private suspend fun refreshEmergencyUsesBucket(
+        settings: Settings,
+        today: LocalDate,
+        todayKey: String,
+        state: RuntimeState,
+        localUsesToday: Int,
+        remoteUsesToday: Int,
+    ) {
+        val frequency = settings.emergencyResetFrequency
+        val bucketKeys = emergencyBucketDateKeys(frequency, today)
+        val remoteByDate = if (bucketKeys.size <= 1) {
+            mapOf(todayKey to remoteUsesToday)
+        } else {
+            sync.fetchEmergencyUsesSince(bucketKeys.first()) ?: return
+        }
+
+        val otherDevices = otherDeviceEmergencyUses(
+            bucketDateKeys = bucketKeys,
+            localUsesByDate = state.emergencyUsesByDate(),
+            remoteUsesByDate = remoteByDate,
+            todayKey = todayKey,
+            // 방금 보고를 마쳤으므로 이 기기가 서버에 올린 오늘치는 곧 로컬 값과 같다.
+            syncedTodayUses = localUsesToday,
+        )
+        stateStore.recordEmergencyUsesFromOtherDevices(emergencyResetKey(frequency, today), otherDevices)
     }
 
     /**
@@ -321,7 +390,7 @@ class UsageMonitorService : Service() {
 
     private suspend fun resetEmergencyAllowanceIfDue(settings: Settings, today: LocalDate) {
         val state = stateStore.state.first()
-        val key = com.tubelimiter.app.limit.emergencyResetKey(settings.emergencyResetFrequency, today)
+        val key = emergencyResetKey(settings.emergencyResetFrequency, today)
         if (state.emergencyResetKey == key) return
         stateStore.resetEmergencyAllowance(key, settings.emergencyAllowance)
     }
@@ -440,7 +509,15 @@ class UsageMonitorService : Service() {
                 stateStore.recordEmergencyUse(today.toString(), retained)
                 withContext(Dispatchers.Main) { overlay.hide() }
             } else {
-                nudge("남은 긴급 시청 횟수가 없습니다.")
+                // 로컬 카운트다운은 남아 있는데 막혔다면, 이번 버킷 몫을 다른 기기가 이미 썼다는 뜻.
+                val spentElsewhere = (state.emergencyRemaining ?: settings.emergencyAllowance) > 0
+                nudge(
+                    if (spentElsewhere) {
+                        "다른 기기에서 이미 다 써서 남은 긴급 시청 횟수가 없습니다."
+                    } else {
+                        "남은 긴급 시청 횟수가 없습니다."
+                    },
+                )
             }
         }
     }

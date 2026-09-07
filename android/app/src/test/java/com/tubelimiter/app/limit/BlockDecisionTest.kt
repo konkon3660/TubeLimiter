@@ -119,6 +119,83 @@ class BlockDecisionTest {
     }
 
     @Test
+    fun `the bucket start date is what the reset key is built from`() {
+        val wednesday = LocalDate.of(2026, 9, 2)
+        EmergencyResetFrequency.entries.forEach { frequency ->
+            assertEquals(
+                emergencyResetKey(frequency, wednesday),
+                emergencyBucketStartDate(frequency, wednesday).toString(),
+            )
+        }
+    }
+
+    @Test
+    fun `a weekly bucket rolls over between Sunday and Monday`() {
+        val sunday = LocalDate.of(2026, 9, 6)
+        val monday = LocalDate.of(2026, 9, 7)
+        // 일요일은 아직 지난 월요일에 시작한 버킷 안이고, 월요일부터 새 버킷이다.
+        assertEquals(LocalDate.of(2026, 8, 31), emergencyBucketStartDate(EmergencyResetFrequency.WEEKLY, sunday))
+        assertEquals(monday, emergencyBucketStartDate(EmergencyResetFrequency.WEEKLY, monday))
+    }
+
+    @Test
+    fun `a monthly bucket rolls over between the last and the first`() {
+        val lastOfAugust = LocalDate.of(2026, 8, 31)
+        val firstOfSeptember = LocalDate.of(2026, 9, 1)
+        assertEquals(
+            LocalDate.of(2026, 8, 1),
+            emergencyBucketStartDate(EmergencyResetFrequency.MONTHLY, lastOfAugust),
+        )
+        assertEquals(
+            firstOfSeptember,
+            emergencyBucketStartDate(EmergencyResetFrequency.MONTHLY, firstOfSeptember),
+        )
+    }
+
+    @Test
+    fun `bucket date keys run from the bucket start through today`() {
+        val wednesday = LocalDate.of(2026, 9, 2)
+
+        // 일간이면 오늘 하나 - 서버 행도 하나만 보면 된다.
+        assertEquals(listOf("2026-09-02"), emergencyBucketDateKeys(EmergencyResetFrequency.DAILY, wednesday))
+        assertEquals(
+            listOf("2026-08-31", "2026-09-01", "2026-09-02"),
+            emergencyBucketDateKeys(EmergencyResetFrequency.WEEKLY, wednesday),
+        )
+        assertEquals(
+            listOf("2026-09-01", "2026-09-02"),
+            emergencyBucketDateKeys(EmergencyResetFrequency.MONTHLY, wednesday),
+        )
+    }
+
+    @Test
+    fun `the first day of a bucket lists only itself`() {
+        val monday = LocalDate.of(2026, 9, 7)
+        assertEquals(listOf("2026-09-07"), emergencyBucketDateKeys(EmergencyResetFrequency.WEEKLY, monday))
+        val firstOfSeptember = LocalDate.of(2026, 9, 1)
+        assertEquals(listOf("2026-09-01"), emergencyBucketDateKeys(EmergencyResetFrequency.MONTHLY, firstOfSeptember))
+    }
+
+    @Test
+    fun `remaining uses fall back to the local count when nothing came from the server`() {
+        // 오프라인/로그아웃: 다른 기기 몫이 0이라 기존 로컬 전용 동작 그대로여야 한다.
+        assertEquals(3, effectiveEmergencyRemaining(localRemaining = null, allowance = 3, otherDeviceUses = 0))
+        assertEquals(1, effectiveEmergencyRemaining(localRemaining = 1, allowance = 3, otherDeviceUses = 0))
+    }
+
+    @Test
+    fun `other devices' uses come off the remaining count`() {
+        assertEquals(1, effectiveEmergencyRemaining(localRemaining = 3, allowance = 3, otherDeviceUses = 2))
+        // PC에서 3회를 다 쓴 뒤 폰에서 처음 여는 상황 - 로컬은 3회가 남았다고 보지만 실제로는 0회.
+        assertEquals(0, effectiveEmergencyRemaining(localRemaining = null, allowance = 3, otherDeviceUses = 3))
+    }
+
+    @Test
+    fun `remaining uses never go negative`() {
+        assertEquals(0, effectiveEmergencyRemaining(localRemaining = 1, allowance = 3, otherDeviceUses = 5))
+    }
+
+    @Test
     fun `hardcore stays on until the cooldown elapses`() {
         val requestedAt = 1_000_000L
         assertEquals(false, shouldDisableHardcore(requestedAt, requestedAt))

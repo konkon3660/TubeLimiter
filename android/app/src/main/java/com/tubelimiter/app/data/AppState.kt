@@ -47,10 +47,16 @@ private val KEY_EMERGENCY_REMAINING = intPreferencesKey("emergency_remaining")
 private val KEY_EMERGENCY_RESET_KEY = stringPreferencesKey("emergency_reset_key")
 private val KEY_LAST_EMERGENCY_GRANTED_AT = longPreferencesKey("last_emergency_granted_at")
 
+/** 이번 버킷에서 **다른 기기가** 쓴 긴급 시청 횟수와, 그 값이 속한 버킷 키. 버킷 키를 같이
+ * 두지 않으면 리셋이 지나도 옛 제한이 남아 허용 횟수를 깎는다. */
+private val KEY_EMERGENCY_USES_OTHER_DEVICES = intPreferencesKey("emergency_uses_other_devices")
+private val KEY_EMERGENCY_USES_OTHER_DEVICES_KEY = stringPreferencesKey("emergency_uses_other_devices_key")
+
 private val KEY_DAILY_USAGE_SYNC_DATE = stringPreferencesKey("daily_usage_sync_date")
 private val KEY_DAILY_USAGE_SYNCED_MILLIS = longPreferencesKey("daily_usage_synced_millis")
 private val KEY_DAILY_USAGE_COMBINED_MILLIS = longPreferencesKey("daily_usage_combined_millis")
 private val KEY_DAILY_USAGE_EMERGENCY_SYNCED_MILLIS = longPreferencesKey("daily_usage_emergency_synced_millis")
+private val KEY_DAILY_USAGE_EMERGENCY_USES_SYNCED = intPreferencesKey("daily_usage_emergency_uses_synced")
 
 /** Whether a scheduled-block window was active the last time it was checked, so `tick()` can
  * detect the start/end transition (survives process death, unlike an in-memory flag). */
@@ -84,6 +90,9 @@ data class RuntimeState(
     val emergencyResetKey: String? = null,
     /** When the last emergency pass was granted, for the extra 15s anti-mash cooldown. */
     val lastEmergencyGrantedAtMillis: Long? = null,
+    /** 다른 기기가 이번 버킷에 쓴 긴급 시청 횟수 (마지막 동기화 성공 시점 기준)와 그 버킷 키. */
+    val emergencyUsesOtherDevices: Int = 0,
+    val emergencyUsesOtherDevicesKey: String? = null,
     /** Date this device last told the server about its usage, and how much it reported. */
     val dailyUsageSyncDate: String? = null,
     val dailyUsageSyncedMillis: Long = 0L,
@@ -91,6 +100,8 @@ data class RuntimeState(
     val dailyUsageCombinedMillis: Long = 0L,
     /** How much emergency-pass time this device already reported for [dailyUsageSyncDate]. */
     val dailyUsageEmergencySyncedMillis: Long = 0L,
+    /** 같은 날짜에 대해 이 기기가 이미 보고한 긴급 시청 **횟수**. */
+    val dailyUsageEmergencyUsesSynced: Int = 0,
     val scheduleBlockWasActive: Boolean = false,
     val scheduleStartNotifiedDate: String? = null,
 ) {
@@ -103,6 +114,20 @@ data class RuntimeState(
     fun emergencyMillisOn(dateKey: String): Long = emergencyMillisHistory[dateKey] ?: 0L
 
     fun emergencyUsesOn(dateKey: String): Int = (emergencyUseHistory[dateKey] ?: 0L).toInt()
+
+    /**
+     * 지금 유효한 "다른 기기 몫". 저장된 버킷 키가 현재 허용 횟수 버킷([emergencyResetKey])과
+     * 어긋나면 — 리셋이 지났거나 리셋 주기 설정이 바뀐 경우 — 0으로 본다.
+     */
+    fun cachedOtherDeviceEmergencyUses(): Int =
+        if (emergencyUsesOtherDevicesKey != null && emergencyUsesOtherDevicesKey == emergencyResetKey) {
+            emergencyUsesOtherDevices
+        } else {
+            0
+        }
+
+    /** 날짜별 로컬 긴급 시청 횟수 — 버킷 합계를 낼 때 [com.tubelimiter.app.sync.combinedEmergencyUses]에 넘긴다. */
+    fun emergencyUsesByDate(): Map<String, Int> = emergencyUseHistory.mapValues { it.value.toInt() }
 }
 
 class AppState(private val context: Context) {
@@ -142,10 +167,13 @@ class AppState(private val context: Context) {
         emergencyRemaining = this[KEY_EMERGENCY_REMAINING],
         emergencyResetKey = this[KEY_EMERGENCY_RESET_KEY],
         lastEmergencyGrantedAtMillis = this[KEY_LAST_EMERGENCY_GRANTED_AT],
+        emergencyUsesOtherDevices = this[KEY_EMERGENCY_USES_OTHER_DEVICES] ?: 0,
+        emergencyUsesOtherDevicesKey = this[KEY_EMERGENCY_USES_OTHER_DEVICES_KEY],
         dailyUsageSyncDate = this[KEY_DAILY_USAGE_SYNC_DATE],
         dailyUsageSyncedMillis = this[KEY_DAILY_USAGE_SYNCED_MILLIS] ?: 0L,
         dailyUsageCombinedMillis = this[KEY_DAILY_USAGE_COMBINED_MILLIS] ?: 0L,
         dailyUsageEmergencySyncedMillis = this[KEY_DAILY_USAGE_EMERGENCY_SYNCED_MILLIS] ?: 0L,
+        dailyUsageEmergencyUsesSynced = this[KEY_DAILY_USAGE_EMERGENCY_USES_SYNCED] ?: 0,
         scheduleBlockWasActive = this[KEY_SCHEDULE_BLOCK_WAS_ACTIVE] ?: false,
         scheduleStartNotifiedDate = this[KEY_SCHEDULE_START_NOTIFIED_DATE],
     )
@@ -277,12 +305,23 @@ class AppState(private val context: Context) {
      * and the anti-mash cooldown (see [RuntimeState.focusActiveAt] and
      * [com.tubelimiter.app.limit.emergencyGrantCooldownRemainingMillis]) - this only guards the
      * use-count allowance itself.
+     *
+     * 판정 기준은 로컬 카운트다운이 아니라 **계정 합계**다: 다른 기기가 이번 버킷에 쓴 몫도
+     * 같은 edit 안에서 읽어 빼므로, PC에서 3회를 다 쓴 뒤 폰에서 다시 3회를 쓰는 우회가 막힌다.
+     * 다른 기기 몫은 마지막 동기화 성공 때 저장된 값이라, 오프라인/로그아웃이면 0 → 기존
+     * 로컬 전용 동작 그대로다.
      */
     suspend fun consumeEmergency(nowMillis: Long, endMillis: Long): Boolean {
         var granted = false
         context.dataStore.edit { prefs ->
             val remaining = prefs[KEY_EMERGENCY_REMAINING] ?: 0
-            if (remaining <= 0) return@edit
+            // 저장된 버킷 키가 지금 허용 횟수 버킷과 다르면(리셋 이후) 그 값은 이미 지난 버킷 것.
+            val otherDevices = if (prefs[KEY_EMERGENCY_USES_OTHER_DEVICES_KEY] == prefs[KEY_EMERGENCY_RESET_KEY]) {
+                prefs[KEY_EMERGENCY_USES_OTHER_DEVICES] ?: 0
+            } else {
+                0
+            }
+            if (remaining - otherDevices <= 0) return@edit
             prefs[KEY_EMERGENCY_REMAINING] = remaining - 1
             prefs[KEY_EMERGENCY_END] = endMillis
             prefs[KEY_LAST_EMERGENCY_GRANTED_AT] = nowMillis
@@ -304,11 +343,22 @@ class AppState(private val context: Context) {
         syncedMillis: Long,
         combinedMillis: Long,
         emergencySyncedMillis: Long = 0L,
+        emergencyUsesSynced: Int = 0,
     ) = edit { prefs ->
         prefs[KEY_DAILY_USAGE_SYNC_DATE] = dateKey
         prefs[KEY_DAILY_USAGE_SYNCED_MILLIS] = syncedMillis
         prefs[KEY_DAILY_USAGE_COMBINED_MILLIS] = combinedMillis
         prefs[KEY_DAILY_USAGE_EMERGENCY_SYNCED_MILLIS] = emergencySyncedMillis
+        prefs[KEY_DAILY_USAGE_EMERGENCY_USES_SYNCED] = emergencyUsesSynced
+    }
+
+    /**
+     * 다른 기기가 [resetKey] 버킷에서 쓴 긴급 시청 횟수를 캐시한다. 동기화가 성공했을 때만
+     * 갱신되고, [consumeEmergency]와 화면 표시가 이 값을 뺀 잔여 횟수를 쓴다.
+     */
+    suspend fun recordEmergencyUsesFromOtherDevices(resetKey: String, uses: Int) = edit { prefs ->
+        prefs[KEY_EMERGENCY_USES_OTHER_DEVICES_KEY] = resetKey
+        prefs[KEY_EMERGENCY_USES_OTHER_DEVICES] = uses.coerceAtLeast(0)
     }
 
     suspend fun setScheduleBlockWasActive(active: Boolean) = edit { it[KEY_SCHEDULE_BLOCK_WAS_ACTIVE] = active }
@@ -347,6 +397,13 @@ class AppState(private val context: Context) {
         prefs.remove(KEY_DAILY_USAGE_SYNCED_MILLIS)
         prefs.remove(KEY_DAILY_USAGE_COMBINED_MILLIS)
         prefs.remove(KEY_DAILY_USAGE_EMERGENCY_SYNCED_MILLIS)
+        prefs.remove(KEY_DAILY_USAGE_EMERGENCY_USES_SYNCED)
+
+        // 다른 기기 몫도 지운 계정에서 온 값이다 — 계정 행이 cascade로 사라진 마당에 남겨두면
+        // 존재하지 않는 기기 때문에 횟수가 깎인다. 이 기기 자신의 카운트다운
+        // (KEY_EMERGENCY_REMAINING)은 위 주석대로 그대로 두므로 탈퇴가 우회로가 되지는 않는다.
+        prefs.remove(KEY_EMERGENCY_USES_OTHER_DEVICES)
+        prefs.remove(KEY_EMERGENCY_USES_OTHER_DEVICES_KEY)
     }
 
     private suspend fun edit(block: (MutablePreferences) -> Unit) {

@@ -344,4 +344,22 @@ class RemoteModelsTest {
         val payload = StreakRecord().toRemoteJson("user-1")
         assertTrue(payload["last_result_date"] is kotlinx.serialization.json.JsonNull)
     }
+
+    @Test
+    fun `increment_daily_usage returns the use count alongside the millisecond totals`() {
+        val decoded = json.decodeFromString<RemoteDailyUsageTotal>(
+            """{"usage_ms":1800000,"shorts_ms":0,"emergency_ms":300000,"emergency_uses":2}""",
+        )
+        assertEquals(1_800_000L, decoded.usageMs)
+        assertEquals(300_000L, decoded.emergencyMs)
+        assertEquals(2, decoded.emergencyUses)
+    }
+
+    @Test
+    fun `a bucket row keeps its date so weekly and monthly totals can be summed`() {
+        val rows = json.decodeFromString<List<RemoteEmergencyUsesRow>>(
+            """[{"date":"2026-08-31","emergency_uses":1},{"date":"2026-09-02","emergency_uses":2}]""",
+        )
+        assertEquals(mapOf("2026-08-31" to 1, "2026-09-02" to 2), rows.associate { it.date to it.emergencyUses })
+    }
 }
