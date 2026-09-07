@@ -1,0 +1,264 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- app_name is deliberately not translated: the product name is the same everywhere. -->
+
+    <string name="app_header_title">🎯 TubeLimiter</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_dashboard">Stats</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Compact durations, so they still fit the notification and the block overlay. -->
+    <string name="duration_seconds">%1$ds</string>
+    <string name="duration_minutes">%1$dm</string>
+    <string name="duration_hours_minutes">%1$dh %2$dm</string>
+
+    <plurals name="count_days">
+        <item quantity="one">%1$d day</item>
+        <item quantity="other">%1$d days</item>
+    </plurals>
+    <string name="count_days_compact">%1$dd</string>
+    <string name="count_minutes">%1$d min</string>
+    <string name="count_times">×%1$d</string>
+    <string name="unlimited">No limit</string>
+    <string name="cancel">Cancel</string>
+
+    <string name="onboarding_title">Permissions</string>
+    <string name="onboarding_intro">Allow these four, in order, and TubeLimiter can measure and block YouTube.</string>
+    <string name="onboarding_status_granted">Done</string>
+    <string name="onboarding_status_missing">Not yet</string>
+    <string name="onboarding_action_open_settings">Open settings</string>
+    <string name="onboarding_action_request">Allow</string>
+    <string name="permission_usage_access_title">Usage access</string>
+    <string name="permission_usage_access_rationale">Needed to measure how long you spend in the YouTube app. You turn TubeLimiter on yourself in the system settings screen.</string>
+    <string name="permission_overlay_title">Display over other apps</string>
+    <string name="permission_overlay_rationale">Needed to show the block screen once you pass your limit.</string>
+    <string name="permission_battery_title">Unrestricted battery</string>
+    <string name="permission_battery_rationale">Needed so battery saver doesn\'t stop the app from counting.</string>
+    <string name="permission_notifications_title">Notifications</string>
+    <string name="permission_notifications_rationale">The monitoring service has to show one notification to keep running in the background.</string>
+    <string name="permission_settings_unavailable">Couldn\'t open that settings screen.</string>
+
+    <string name="auth_title_sign_in">Sign in</string>
+    <string name="auth_title_sign_up">Sign up</string>
+    <string name="auth_subtitle">Use the same account as the Chrome extension and your settings and history carry over.</string>
+    <string name="auth_field_email">Email</string>
+    <string name="auth_field_password">Password</string>
+    <string name="auth_switch_to_sign_up">No account yet? Sign up</string>
+    <string name="auth_switch_to_sign_in">Already have an account? Sign in</string>
+    <string name="auth_later">Not now</string>
+    <string name="auth_notice_confirmation_sent">We sent you a confirmation email. Follow the link in it, then sign in.</string>
+    <string name="auth_error_empty_email">Enter your email address.</string>
+    <string name="auth_error_malformed_email">That doesn\'t look like an email address.</string>
+    <string name="auth_error_short_password">Passwords need at least %1$d characters.</string>
+    <string name="auth_error_generic">Something went wrong with that request.</string>
+    <string name="auth_error_invalid_credentials">That email and password don\'t match.</string>
+    <string name="auth_error_email_not_confirmed">Follow the link in your confirmation email first.</string>
+    <string name="auth_error_already_registered">That email is already registered. Sign in instead.</string>
+    <string name="auth_error_rate_limited">That\'s a lot of requests. Try again in a moment.</string>
+    <string name="auth_error_network">Can\'t reach the network right now.</string>
+    <string name="auth_error_session_expired">Your session expired. Sign in again, then retry.</string>
+    <string name="auth_error_delete_unavailable">Account deletion isn\'t available right now. Try again shortly.</string>
+    <string name="auth_error_not_signed_in">You\'re not signed in.</string>
+
+    <string name="block_reason_focus_mode">Focus mode is on</string>
+    <string name="block_reason_scheduled">This is a scheduled block</string>
+    <string name="block_reason_manual">You blocked this yourself</string>
+    <string name="block_reason_usage_limit">Today\'s limit is used up</string>
+
+    <string name="block_overlay_used_only">%1$s watched</string>
+    <string name="block_overlay_used_of_limit">%1$s watched · %2$s limit</string>
+    <string name="block_overlay_focus_mode">It opens again when focus mode ends.</string>
+    <string name="block_overlay_scheduled">It opens again when the scheduled window ends.</string>
+    <string name="block_overlay_manual">You can lift this from the app.</string>
+    <plurals name="block_overlay_emergency">
+        <item quantity="one">5 more min · %1$d pass left</item>
+        <item quantity="other">5 more min · %1$d passes left</item>
+    </plurals>
+    <string name="block_overlay_go_home">Home</string>
+
+    <string name="home_sync_warning_never">Nothing has synced yet. Settings &gt; Sync status has the details.</string>
+    <plurals name="home_sync_warning_stale">
+        <item quantity="one">Nothing has synced for %1$d hour. Settings &gt; Sync status has the details.</item>
+        <item quantity="other">Nothing has synced for %1$d hours. Settings &gt; Sync status has the details.</item>
+    </plurals>
+    <plurals name="home_streak_subtitle">
+        <item quantity="one">day in a row · best %1$d</item>
+        <item quantity="other">days in a row · best %1$d</item>
+    </plurals>
+    <string name="home_level_line">%1$s Lv.%2$d · %3$d/%4$d XP</string>
+    <string name="home_ring_label">Until block</string>
+    <string name="home_stat_used_today">Watched today</string>
+    <string name="home_stat_emergency_left">Emergency passes left</string>
+    <string name="home_badge_monitoring">Monitoring</string>
+    <string name="home_badge_monitoring_on">On</string>
+    <string name="home_badge_mode">Mode</string>
+    <string name="home_badge_off">Off</string>
+    <string name="home_mode_inactive">Off</string>
+    <string name="home_mode_focus_stop_pending">Focus mode ending · stops in %1$s</string>
+    <string name="home_mode_focus_active">Focus mode · %1$s left</string>
+    <string name="home_mode_focus_scheduled">Focus mode queued · starts in %1$s</string>
+    <string name="home_mode_schedule_window">%1$s · until %2$s</string>
+    <string name="home_focus_title">Focus mode</string>
+    <string name="home_focus_intro">Blocks YouTube right away for a set time, whatever your limit says.</string>
+    <string name="home_focus_stops_in">Stops in %1$s</string>
+    <string name="home_focus_stop_pending_note">Stop requested. There\'s a short wait first, so it can\'t be switched off on impulse.</string>
+    <string name="home_focus_cancel_stop">Keep it running</string>
+    <string name="home_focus_remaining">%1$s left</string>
+    <string name="home_focus_stop">End focus mode</string>
+    <string name="home_focus_scheduled_note">Starts in %1$s, runs for %2$d min</string>
+    <string name="home_focus_cancel_schedule">Cancel</string>
+    <string name="home_focus_delay_label">Delay (min)</string>
+    <string name="home_focus_duration_label">Length (min)</string>
+    <string name="home_focus_start">Start focus mode</string>
+    <string name="home_manual_block_title">Manual block</string>
+    <string name="home_manual_block_on">Blocking, whatever the limit says</string>
+    <string name="home_monitoring_title">Background monitoring</string>
+    <string name="home_monitoring_on">On — keeps counting after you close the app</string>
+    <string name="home_monitoring_off">Off — nothing gets blocked</string>
+
+    <string name="dashboard_hardcore_hint">Streaks and XP only build up while hardcore mode is on.</string>
+    <string name="dashboard_level_line">%1$s %2$s · Lv.%3$d</string>
+    <string name="dashboard_xp_progress">%1$d / %2$d XP</string>
+    <string name="dashboard_stat_streak">Streak</string>
+    <string name="dashboard_stat_best">Best</string>
+    <string name="dashboard_stat_success">Clear</string>
+    <string name="dashboard_stat_perfect">Perfect</string>
+    <string name="dashboard_badges">Badges</string>
+    <string name="dashboard_perfect_badges">Perfect days (no emergency passes)</string>
+    <string name="dashboard_heatmap_title">Last 28 days</string>
+    <string name="dashboard_chart_title">Watch time</string>
+    <string name="dashboard_chart_mode_time">Time</string>
+    <string name="dashboard_chart_mode_percent" formatted="false">% of limit</string>
+    <string name="dashboard_chart_peak_percent">Peak %1$d%%</string>
+    <string name="dashboard_chart_peak_duration">Peak %1$s</string>
+    <string name="dashboard_hourly_title">Time of day</string>
+    <string name="dashboard_hour_start">00:00</string>
+    <string name="dashboard_hour_end">23:00</string>
+
+    <string name="level_tier_legend">Legend</string>
+    <string name="level_tier_master">Master</string>
+    <string name="level_tier_skilled">Skilled</string>
+    <string name="level_tier_trainee">Trainee</string>
+    <string name="level_tier_seed">Seedling</string>
+
+    <string name="settings_account">Account</string>
+    <string name="settings_account_loading">Checking…</string>
+    <string name="settings_account_synced">Your history is shared with the Chrome extension.</string>
+    <string name="settings_sign_out">Sign out</string>
+    <string name="settings_account_signed_out">Blocking works without an account. Sign in to share one with the extension.</string>
+    <string name="settings_sign_in">Sign in or sign up</string>
+    <string name="settings_limit_mode">Limit style</string>
+    <string name="settings_limit_mode_daily">Same every day</string>
+    <string name="settings_limit_mode_by_day">By weekday</string>
+    <string name="settings_daily_limit">Daily limit</string>
+    <string name="settings_by_day_limit">Limit per weekday</string>
+    <string name="settings_minutes_entry_daily">Custom minutes (0 = no limit)</string>
+    <string name="settings_minutes_entry_by_day">Custom minutes (-1 = no limit)</string>
+    <string name="settings_emergency">Emergency passes</string>
+    <string name="settings_emergency_intro">Opens YouTube for five minutes while you\'re blocked.</string>
+    <plurals name="settings_emergency_allowance">
+        <item quantity="one">%1$d pass</item>
+        <item quantity="other">%1$d passes</item>
+    </plurals>
+    <string name="settings_emergency_entry">Custom count</string>
+    <string name="settings_emergency_reset_daily">Daily</string>
+    <string name="settings_emergency_reset_weekly">Weekly</string>
+    <string name="settings_emergency_reset_monthly">Monthly</string>
+    <string name="settings_alarms">Alerts</string>
+    <string name="settings_alarm_interval_question">How often should we check in?</string>
+    <string name="settings_alarm_interval_off">Off</string>
+    <string name="settings_alarm_interval_entry">Custom minutes (0 = off)</string>
+    <string name="settings_alarm_milestones">Alert at 30, 10, 5 and 1 minutes left</string>
+    <string name="settings_hardcore">Hardcore mode</string>
+    <string name="settings_hardcore_intro">Turning this on locks your limits, and streaks and XP only build while it\'s on. Turning it off takes an hour to apply and resets your streak to zero.</string>
+    <string name="settings_hardcore_enable">Turn on</string>
+    <string name="settings_hardcore_cooldown">Turns off in %1$s.</string>
+    <string name="settings_hardcore_cancel">Keep it on</string>
+    <string name="settings_hardcore_disable">Request turn-off</string>
+    <string name="settings_schedule">Scheduled blocks</string>
+    <string name="settings_schedule_intro">Blocks automatically on the days and hours you pick, whatever your limit says. Like focus mode, an emergency pass won\'t get around it.</string>
+    <string name="settings_schedule_default_label">Nights</string>
+    <string name="settings_schedule_add">+ Add a window</string>
+    <string name="settings_schedule_label">Label</string>
+    <string name="settings_schedule_start">From</string>
+    <string name="settings_schedule_end">To</string>
+    <string name="settings_schedule_remove">Remove</string>
+    <string name="settings_diagnostics_title">Sync status</string>
+    <string name="settings_diagnostics_never">never</string>
+    <string name="settings_diagnostics_summary_ok">Last success %1$s · no failures</string>
+    <plurals name="settings_diagnostics_summary_failures">
+        <item quantity="one">Last success %1$s · %2$d failure</item>
+        <item quantity="other">Last success %1$s · %2$d failures</item>
+    </plurals>
+    <string name="settings_diagnostics_privacy">Kept on this device and never sent anywhere. Emails, account IDs and tokens are never recorded.</string>
+    <string name="settings_diagnostics_empty">No failures recorded.</string>
+    <string name="settings_diagnostics_copy">Copy</string>
+    <string name="settings_diagnostics_clear">Clear all</string>
+    <string name="settings_diagnostics_clip_label">TubeLimiter diagnostics</string>
+    <string name="settings_diagnostics_copied">Diagnostics copied.</string>
+    <string name="diagnostic_kind_sync_settings">Settings sync</string>
+    <string name="diagnostic_kind_sync_streak">Streaks and badges</string>
+    <string name="diagnostic_kind_sync_usage">Usage reporting</string>
+    <string name="diagnostic_kind_emergency_fetch">Emergency-pass lookup</string>
+    <string name="diagnostic_kind_auth">Sign-in session</string>
+    <string name="diagnostic_kind_monitor">Monitor loop</string>
+    <string name="settings_delete_account">Delete account</string>
+    <string name="settings_delete_account_warning">This erases your account and everything stored on the server. There\'s no undo.</string>
+    <string name="settings_delete_account_in_flight">Deleting…</string>
+    <string name="settings_delete_dialog_title">Delete your account?</string>
+    <string name="settings_delete_dialog_items">All of this goes:\n• Your account\n• Watch-time history\n• Streak and XP\n• Badges\n• Settings</string>
+    <string name="settings_delete_dialog_note">There is no undo, and the same account will no longer work in the Chrome extension. The copy stored on this device is wiped too.</string>
+    <string name="settings_delete_dialog_confirm">Delete forever</string>
+    <string name="settings_account_deleted">Your account has been deleted.</string>
+
+    <string-array name="day_labels_short">
+        <item>Sun</item>
+        <item>Mon</item>
+        <item>Tue</item>
+        <item>Wed</item>
+        <item>Thu</item>
+        <item>Fri</item>
+        <item>Sat</item>
+    </string-array>
+
+    <string name="notification_channel_ongoing_name">Usage monitoring</string>
+    <string name="notification_channel_ongoing_description">Shown while your YouTube time is being measured.</string>
+    <string name="notification_channel_nudge_name">Alerts</string>
+    <string name="notification_channel_nudge_description">Time-left alerts, focus mode starting and ending, and so on.</string>
+
+    <string name="notification_ongoing_starting">Monitoring</string>
+    <string name="notification_ongoing_blocked">Blocked · %1$s watched today</string>
+    <string name="notification_ongoing_unlimited">%1$s watched today · no limit</string>
+    <string name="notification_ongoing_with_limit">%1$s watched today · %2$s left</string>
+
+    <plurals name="nudge_streak_milestone">
+        <item quantity="one">%1$d day in a row. Badge unlocked.</item>
+        <item quantity="other">%1$d days in a row. Badge unlocked.</item>
+    </plurals>
+    <plurals name="nudge_perfect_milestone">
+        <item quantity="one">%1$d day in a row with no emergency pass. Perfect-day badge unlocked.</item>
+        <item quantity="other">%1$d days in a row with no emergency pass. Perfect-day badge unlocked.</item>
+    </plurals>
+    <string name="nudge_hardcore_released">Hardcore mode is off. Your streak has been reset.</string>
+    <string name="nudge_focus_started">Focus mode has started.</string>
+    <string name="nudge_focus_ended">Focus mode has ended.</string>
+    <string name="nudge_schedule_started">A scheduled block has started.</string>
+    <string name="nudge_schedule_ended">The scheduled block has ended.</string>
+    <string name="nudge_schedule_upcoming">A scheduled block starts in 10 minutes.</string>
+    <string name="nudge_emergency_blocked_focus">Emergency passes don\'t apply during focus mode.</string>
+    <string name="nudge_emergency_blocked_schedule">Emergency passes don\'t apply during a scheduled block.</string>
+    <plurals name="nudge_emergency_cooldown">
+        <item quantity="one">Try again in %1$d second.</item>
+        <item quantity="other">Try again in %1$d seconds.</item>
+    </plurals>
+    <string name="nudge_emergency_none_left_elsewhere">Another device already used them all — no emergency passes left.</string>
+    <string name="nudge_emergency_none_left">No emergency passes left.</string>
+    <plurals name="alarm_watching_minutes">
+        <item quantity="one">You\'ve been on YouTube for %1$d minute today.</item>
+        <item quantity="other">You\'ve been on YouTube for %1$d minutes today.</item>
+    </plurals>
+    <plurals name="alarm_remaining_minutes">
+        <item quantity="one">%1$d minute of watch time left today.</item>
+        <item quantity="other">%1$d minutes of watch time left today.</item>
+    </plurals>
+</resources>

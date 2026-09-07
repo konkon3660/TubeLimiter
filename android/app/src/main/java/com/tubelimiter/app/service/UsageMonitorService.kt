@@ -27,6 +27,7 @@ import com.tubelimiter.app.data.Settings
 import com.tubelimiter.app.diagnostics.DiagnosticKind
 import com.tubelimiter.app.diagnostics.summarizeFailure
 import com.tubelimiter.app.gamification.applyDayRollover
+import com.tubelimiter.app.limit.AlarmMessage
 import com.tubelimiter.app.limit.BlockInputs
 import com.tubelimiter.app.limit.EMERGENCY_DURATION_MILLIS
 import com.tubelimiter.app.limit.ScheduleWindow
@@ -109,7 +110,12 @@ class UsageMonitorService : Service() {
         sync = SyncRepository(AuthRepository(this), settingsStore, stateStore)
 
         createChannels()
-        startForegroundCompat(ongoingNotification("감시 중", progressPercent = null))
+        startForegroundCompat(
+            ongoingNotification(
+                getString(R.string.notification_ongoing_starting),
+                progressPercent = null,
+            ),
+        )
         scope.launch { monitorLoop() }
     }
 
@@ -372,10 +378,10 @@ class UsageMonitorService : Service() {
                 )
                 sync.pushStreak(record, unlockedKeys)
                 result.unlockedMilestones.forEach {
-                    nudge("${it}일 연속 달성! 뱃지를 얻었어요.")
+                    nudge(resources.getQuantityString(R.plurals.nudge_streak_milestone, it, it))
                 }
                 result.unlockedPerfectMilestones.forEach {
-                    nudge("긴급 시청 없이 ${it}일 연속! 완벽한 날 뱃지를 얻었어요.")
+                    nudge(resources.getQuantityString(R.plurals.nudge_perfect_milestone, it, it))
                 }
             }
             cursor = cursor.plusDays(1)
@@ -398,7 +404,7 @@ class UsageMonitorService : Service() {
         settingsStore.setHardcoreMode(false)
         // The settings screen warns that dropping hardcore resets the streak; honour it.
         stateStore.resetCurrentStreak()
-        nudge("하드코어 모드가 해제되었습니다. 연속 기록이 초기화됐어요.")
+        nudge(getString(R.string.nudge_hardcore_released))
     }
 
     private suspend fun resetEmergencyAllowanceIfDue(settings: Settings, today: LocalDate) {
@@ -415,7 +421,7 @@ class UsageMonitorService : Service() {
         val delayEnd = state.focusDelayEndMillis
         if (!state.focusActiveAt(now) && delayEnd != null && now >= delayEnd) {
             stateStore.startFocus(now + minutesToMillis(state.focusDelayDurationMinutes))
-            nudge("집중 모드가 시작되었습니다.")
+            nudge(getString(R.string.nudge_focus_started))
             return
         }
 
@@ -425,7 +431,7 @@ class UsageMonitorService : Service() {
         val stopAt = resolveFocusStopTime(state.focusEndMillis, state.focusStopRequestedAtMillis)
         if (stopAt != null && now >= stopAt) {
             stateStore.clearFocus()
-            nudge("집중 모드가 종료되었습니다.")
+            nudge(getString(R.string.nudge_focus_ended))
         }
     }
 
@@ -447,7 +453,11 @@ class UsageMonitorService : Service() {
         val state = stateStore.state.first()
         if (active != state.scheduleBlockWasActive) {
             stateStore.setScheduleBlockWasActive(active)
-            nudge(if (active) "예약된 차단 시간이 시작되었습니다." else "예약된 차단 시간이 종료되었습니다.")
+            nudge(
+                getString(
+                    if (active) R.string.nudge_schedule_started else R.string.nudge_schedule_ended,
+                ),
+            )
         }
         return activeWindow
     }
@@ -460,7 +470,7 @@ class UsageMonitorService : Service() {
         val state = stateStore.state.first()
         if (state.scheduleStartNotifiedDate == todayKey) return
         stateStore.setScheduleStartNotifiedDate(todayKey)
-        nudge("10분 후 예약된 차단이 시작됩니다.")
+        nudge(getString(R.string.nudge_schedule_upcoming))
     }
 
     private suspend fun runAlarms(
@@ -480,7 +490,22 @@ class UsageMonitorService : Service() {
         )
         if (!outcome.changed) return
         stateStore.saveAlarmState(outcome.state)
-        outcome.messages.forEach { nudge(it) }
+        outcome.messages.forEach { nudge(nudgeText(it)) }
+    }
+
+    /** [AlarmMessage] carries the numbers; the wording (and its plural) lives in the resources. */
+    private fun nudgeText(message: AlarmMessage): String = when (message) {
+        is AlarmMessage.WatchedMinutes -> resources.getQuantityString(
+            R.plurals.alarm_watching_minutes,
+            message.minutes.toInt(),
+            message.minutes,
+        )
+
+        is AlarmMessage.RemainingMinutes -> resources.getQuantityString(
+            R.plurals.alarm_remaining_minutes,
+            message.minutes,
+            message.minutes,
+        )
     }
 
     private fun grantEmergency() {
@@ -492,7 +517,7 @@ class UsageMonitorService : Service() {
             // valve for usage-limit blocks) must not be able to cut that short. Usage-limit and
             // manual blocks are unaffected: this check only fires while focus mode is active.
             if (state.focusActiveAt(now)) {
-                nudge("집중 모드 중에는 긴급 시청을 쓸 수 없어요.")
+                nudge(getString(R.string.nudge_emergency_blocked_focus))
                 return@launch
             }
 
@@ -500,7 +525,7 @@ class UsageMonitorService : Service() {
             // that blocks regardless of the limit, so it gets the same emergency-grant gate.
             val settings = settingsStore.settings.first()
             if (isScheduleActive(now, settings.scheduleWindows) != null) {
-                nudge("예약된 차단 시간에는 긴급 시청을 쓸 수 없어요.")
+                nudge(getString(R.string.nudge_emergency_blocked_schedule))
                 return@launch
             }
 
@@ -508,8 +533,8 @@ class UsageMonitorService : Service() {
             // consumeEmergency performs below.
             val cooldownRemaining = emergencyGrantCooldownRemainingMillis(state.lastEmergencyGrantedAtMillis, now)
             if (cooldownRemaining > 0) {
-                val seconds = (cooldownRemaining / 1000L) + 1
-                nudge("${seconds}초 후 다시 시도해주세요.")
+                val seconds = ((cooldownRemaining / 1000L) + 1).toInt()
+                nudge(resources.getQuantityString(R.plurals.nudge_emergency_cooldown, seconds, seconds))
                 return@launch
             }
 
@@ -525,11 +550,13 @@ class UsageMonitorService : Service() {
                 // 로컬 카운트다운은 남아 있는데 막혔다면, 이번 버킷 몫을 다른 기기가 이미 썼다는 뜻.
                 val spentElsewhere = (state.emergencyRemaining ?: settings.emergencyAllowance) > 0
                 nudge(
-                    if (spentElsewhere) {
-                        "다른 기기에서 이미 다 써서 남은 긴급 시청 횟수가 없습니다."
-                    } else {
-                        "남은 긴급 시청 횟수가 없습니다."
-                    },
+                    getString(
+                        if (spentElsewhere) {
+                            R.string.nudge_emergency_none_left_elsewhere
+                        } else {
+                            R.string.nudge_emergency_none_left
+                        },
+                    ),
                 )
             }
         }
@@ -542,16 +569,26 @@ class UsageMonitorService : Service() {
         val progressPercent: Int?
         when {
             blocked -> {
-                text = "차단 중 · 오늘 ${formatDuration(usedMillis)} 사용"
+                text = getString(
+                    R.string.notification_ongoing_blocked,
+                    formatDuration(this, usedMillis),
+                )
                 progressPercent = 100
             }
             isUnlimited(limitMillis) -> {
-                text = "오늘 ${formatDuration(usedMillis)} 사용 · 한도 없음"
+                text = getString(
+                    R.string.notification_ongoing_unlimited,
+                    formatDuration(this, usedMillis),
+                )
                 progressPercent = null
             }
             else -> {
                 val remaining = (limitMillis - usedMillis).coerceAtLeast(0L)
-                text = "오늘 ${formatDuration(usedMillis)} 사용 · ${formatDuration(remaining)} 남음"
+                text = getString(
+                    R.string.notification_ongoing_with_limit,
+                    formatDuration(this, usedMillis),
+                    formatDuration(this, remaining),
+                )
                 progressPercent = ((usedMillis.toFloat() / limitMillis) * 100).toInt().coerceIn(0, 100)
             }
         }
@@ -605,12 +642,18 @@ class UsageMonitorService : Service() {
     private fun createChannels() {
         val manager = notificationManager() ?: return
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_ONGOING, "사용시간 감시", NotificationManager.IMPORTANCE_LOW)
-                .apply { description = "유튜브 사용시간을 재는 동안 표시됩니다." },
+            NotificationChannel(
+                CHANNEL_ONGOING,
+                getString(R.string.notification_channel_ongoing_name),
+                NotificationManager.IMPORTANCE_LOW,
+            ).apply { description = getString(R.string.notification_channel_ongoing_description) },
         )
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_NUDGE, "알림", NotificationManager.IMPORTANCE_DEFAULT)
-                .apply { description = "남은 시간 알림, 집중 모드 시작·종료 등." },
+            NotificationChannel(
+                CHANNEL_NUDGE,
+                getString(R.string.notification_channel_nudge_name),
+                NotificationManager.IMPORTANCE_DEFAULT,
+            ).apply { description = getString(R.string.notification_channel_nudge_description) },
         )
     }
 

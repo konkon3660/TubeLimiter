@@ -1,5 +1,6 @@
 package com.tubelimiter.app.gamification
 
+import com.tubelimiter.app.R
 import com.tubelimiter.app.limit.isUnlimited
 
 val STREAK_MILESTONES = listOf(3, 7, 14, 30, 60, 100, 365)
@@ -32,14 +33,15 @@ fun unusedTimeXpBonus(usedMillis: Long, limitMillis: Long): Int {
     return (unused / (UNUSED_MINUTES_PER_XP * 60_000L)).toInt()
 }
 
-data class LevelTier(val key: String, val title: String, val emoji: String)
+/** [key] is the extension's stable identifier; [titleRes] is what the dashboard shows. */
+data class LevelTier(val key: String, val titleRes: Int, val emoji: String)
 
 private val LEVEL_TIERS = listOf(
-    50 to LevelTier("legend", "전설", "👑"),
-    20 to LevelTier("master", "마스터", "⭐"),
-    10 to LevelTier("skilled", "숙련자", "🔥"),
-    5 to LevelTier("trainee", "수련생", "🌿"),
-    1 to LevelTier("seed", "새싹", "🌱"),
+    50 to LevelTier("legend", R.string.level_tier_legend, "👑"),
+    20 to LevelTier("master", R.string.level_tier_master, "⭐"),
+    10 to LevelTier("skilled", R.string.level_tier_skilled, "🔥"),
+    5 to LevelTier("trainee", R.string.level_tier_trainee, "🌿"),
+    1 to LevelTier("seed", R.string.level_tier_seed, "🌱"),
 )
 
 fun levelTier(level: Int): LevelTier =

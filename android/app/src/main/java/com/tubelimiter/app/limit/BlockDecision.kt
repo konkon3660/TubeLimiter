@@ -1,5 +1,6 @@
 package com.tubelimiter.app.limit
 
+import com.tubelimiter.app.R
 import com.tubelimiter.app.usage.monthStartDate
 import com.tubelimiter.app.usage.weekStartDate
 import java.time.LocalDate
@@ -66,11 +67,16 @@ fun BlockInputs.blockReason(): BlockReason? = when {
     else -> null
 }
 
-fun BlockReason.message(): String = when (this) {
-    BlockReason.FOCUS_MODE -> "집중 모드가 켜져 있어요"
-    BlockReason.SCHEDULED -> "예약된 차단 시간이에요"
-    BlockReason.MANUAL -> "직접 차단해 둔 상태예요"
-    BlockReason.USAGE_LIMIT -> "오늘 한도를 다 썼어요"
+/**
+ * String resource for the one-line reason, shared by the home screen's mode badge and the
+ * block overlay's title. A resource id rather than the text itself so this stays a pure
+ * function the unit tests can reach.
+ */
+fun BlockReason.messageRes(): Int = when (this) {
+    BlockReason.FOCUS_MODE -> R.string.block_reason_focus_mode
+    BlockReason.SCHEDULED -> R.string.block_reason_scheduled
+    BlockReason.MANUAL -> R.string.block_reason_manual
+    BlockReason.USAGE_LIMIT -> R.string.block_reason_usage_limit
 }
 
 /**

@@ -35,17 +35,22 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.tubelimiter.app.R
+import com.tubelimiter.app.diagnostics.SyncWarning
 import com.tubelimiter.app.gamification.StreakRecord
 import com.tubelimiter.app.gamification.levelProgress
 import com.tubelimiter.app.gamification.levelTier
 import com.tubelimiter.app.limit.BlockReason
 import com.tubelimiter.app.limit.ScheduleWindow
 import com.tubelimiter.app.limit.isUnlimited
-import com.tubelimiter.app.limit.message
+import com.tubelimiter.app.limit.messageRes
 import com.tubelimiter.app.limit.resolveFocusStopTime
 import com.tubelimiter.app.usage.formatCountdown
 import com.tubelimiter.app.usage.formatDuration
@@ -67,9 +72,9 @@ fun HomeScreen(
     /** Currently-active scheduled-block window, if any (read-only here - only the settings
      * screen can add/edit/remove windows, by design, so this stays a real commitment device). */
     scheduleWindow: ScheduleWindow?,
-    /** 동기화가 오래 실패했을 때 띄울 한 줄, 아니면 null
-     * ([com.tubelimiter.app.diagnostics.staleSyncWarning]가 판정한다). */
-    syncWarning: String?,
+    /** 동기화가 오래 실패했을 때 띄울 경고, 아니면 null
+     * ([com.tubelimiter.app.diagnostics.staleSyncWarning]가 판정하고, 문구는 여기서 붙인다). */
+    syncWarning: SyncWarning?,
     nowMillis: Long,
     onStartFocus: (delayMinutes: Int, durationMinutes: Int) -> Unit,
     onStopFocus: () -> Unit,
@@ -118,14 +123,18 @@ fun HomeScreen(
             onCancelFocusStop = onCancelFocusStop,
         )
         ToggleCard(
-            title = "직접 차단",
-            subtitle = if (manuallyBlocked) "한도와 무관하게 차단 중" else "꺼짐",
+            title = stringResource(R.string.home_manual_block_title),
+            subtitle = stringResource(
+                if (manuallyBlocked) R.string.home_manual_block_on else R.string.home_badge_off,
+            ),
             checked = manuallyBlocked,
             onChange = onManualBlockChange,
         )
         ToggleCard(
-            title = "백그라운드 감시",
-            subtitle = if (monitoringEnabled) "켜짐 — 앱을 닫아도 계속 잽니다" else "꺼짐 — 차단되지 않습니다",
+            title = stringResource(R.string.home_monitoring_title),
+            subtitle = stringResource(
+                if (monitoringEnabled) R.string.home_monitoring_on else R.string.home_monitoring_off,
+            ),
             checked = monitoringEnabled,
             onChange = onMonitoringChange,
         )
@@ -140,7 +149,15 @@ fun HomeScreen(
  * 같은 색을 써서 이 화면 안에서 새로운 시각 언어를 만들지 않는다.
  */
 @Composable
-private fun SyncWarningBanner(message: String) {
+private fun SyncWarningBanner(warning: SyncWarning) {
+    val message = when (warning) {
+        SyncWarning.NeverSucceeded -> stringResource(R.string.home_sync_warning_never)
+        is SyncWarning.StaleFor -> pluralStringResource(
+            R.plurals.home_sync_warning_stale,
+            warning.hours.toInt(),
+            warning.hours,
+        )
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -178,7 +195,13 @@ private fun StreakHeroCard(streak: StreakRecord) {
                 color = MaterialTheme.colorScheme.primary,
             )
             Text(
-                text = "일 연속 성공 · 최고 ${streak.bestStreak}일",
+                // 큰 숫자는 위에 따로 서 있고, 이 줄은 그 뒤를 잇는 꼬리다. 영어는 하루/여러 날에서
+                // 갈리므로 plurals의 quantity는 현재 연속 일수, 인자는 최고 기록.
+                text = pluralStringResource(
+                    R.plurals.home_streak_subtitle,
+                    streak.currentStreak,
+                    streak.bestStreak,
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -196,7 +219,13 @@ private fun StreakHeroCard(streak: StreakRecord) {
                     .clip(RoundedCornerShape(6.dp)),
             )
             Text(
-                text = "${tier.emoji} Lv.${progress.level} · ${progress.xpIntoLevel}/${progress.xpForNextLevel} XP",
+                text = stringResource(
+                    R.string.home_level_line,
+                    tier.emoji,
+                    progress.level,
+                    progress.xpIntoLevel,
+                    progress.xpForNextLevel,
+                ),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -207,6 +236,7 @@ private fun StreakHeroCard(streak: StreakRecord) {
 /** Ring + quick stats — the app's take on the popup's `.progress-circle-small` + `.quick-stats-grid`. */
 @Composable
 private fun UsageRingCard(usedMillis: Long, limitMillis: Long, emergencyRemaining: Int) {
+    val context = LocalContext.current
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(20.dp),
@@ -219,12 +249,22 @@ private fun UsageRingCard(usedMillis: Long, limitMillis: Long, emergencyRemainin
 
             UsageRing(
                 fraction = fraction,
-                centerValue = if (unlimited) "무제한" else formatCountdown(remaining),
-                centerLabel = "차단까지",
+                centerValue = if (unlimited) {
+                    stringResource(R.string.unlimited)
+                } else {
+                    formatCountdown(remaining)
+                },
+                centerLabel = stringResource(R.string.home_ring_label),
             )
 
-            StatRow("오늘 사용", formatDuration(usedMillis))
-            StatRow("긴급 시청 남음", "${emergencyRemaining}회")
+            StatRow(
+                label = stringResource(R.string.home_stat_used_today),
+                value = formatDuration(context, usedMillis),
+            )
+            StatRow(
+                label = stringResource(R.string.home_stat_emergency_left),
+                value = stringResource(R.string.count_times, emergencyRemaining),
+            )
         }
     }
 }
@@ -306,18 +346,36 @@ private fun ModeBadgesCard(
     scheduleWindow: ScheduleWindow?,
     nowMillis: Long,
 ) {
+    val context = LocalContext.current
     val modeLabel = when {
         // Focus mode keeps message priority over a scheduled block when both happen to be true
         // (same tier by design - see BlockDecision.kt's blockReason()).
         stopPending -> {
             val stopAt = resolveFocusStopTime(focusEndMillis, focusStopRequestedAtMillis) ?: nowMillis
-            "집중 모드 종료 대기 · ${formatDuration((stopAt - nowMillis).coerceAtLeast(0L))} 후 종료"
+            stringResource(
+                R.string.home_mode_focus_stop_pending,
+                formatDuration(context, (stopAt - nowMillis).coerceAtLeast(0L)),
+            )
         }
-        active -> "집중 모드 · ${formatDuration((focusEndMillis!! - nowMillis).coerceAtLeast(0L))} 남음"
-        scheduled -> "집중 모드 대기 중 · ${formatDuration((focusDelayEndMillis!! - nowMillis).coerceAtLeast(0L))} 뒤 시작"
-        scheduleWindow != null -> "${scheduleWindow.label} · ${formatMinuteOfDay(scheduleWindow.endMinute)}까지"
-        blockReason != null -> blockReason.message()
-        else -> "비활성"
+
+        active -> stringResource(
+            R.string.home_mode_focus_active,
+            formatDuration(context, (focusEndMillis!! - nowMillis).coerceAtLeast(0L)),
+        )
+
+        scheduled -> stringResource(
+            R.string.home_mode_focus_scheduled,
+            formatDuration(context, (focusDelayEndMillis!! - nowMillis).coerceAtLeast(0L)),
+        )
+
+        scheduleWindow != null -> stringResource(
+            R.string.home_mode_schedule_window,
+            scheduleWindow.label,
+            formatMinuteOfDay(scheduleWindow.endMinute),
+        )
+
+        blockReason != null -> stringResource(blockReason.messageRes())
+        else -> stringResource(R.string.home_mode_inactive)
     }
     val modeTone = when {
         stopPending -> BadgeTone.WARNING
@@ -333,8 +391,14 @@ private fun ModeBadgesCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            BadgeRow("감시", if (monitoringEnabled) "감시 중" else "꺼짐", if (monitoringEnabled) BadgeTone.ACTIVE else BadgeTone.INACTIVE)
-            BadgeRow("모드", modeLabel, modeTone)
+            BadgeRow(
+                label = stringResource(R.string.home_badge_monitoring),
+                value = stringResource(
+                    if (monitoringEnabled) R.string.home_badge_monitoring_on else R.string.home_badge_off,
+                ),
+                tone = if (monitoringEnabled) BadgeTone.ACTIVE else BadgeTone.INACTIVE,
+            )
+            BadgeRow(stringResource(R.string.home_badge_mode), modeLabel, modeTone)
         }
     }
 }
@@ -361,19 +425,22 @@ private fun BadgeRow(label: String, value: String, tone: BadgeTone) {
             style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.SemiBold,
         )
-        StatusBadge(value, tone)
+        // The mode badge carries a whole sentence ("Focus mode queued · starts in 25m"), which
+        // runs longer in some languages than in others; bound it to what's left of the row so it
+        // wraps rather than running off the card. fill = false keeps short badges hugging.
+        StatusBadge(value, tone, Modifier.weight(1f, fill = false))
     }
 }
 
 @Composable
-private fun StatusBadge(text: String, tone: BadgeTone) {
+private fun StatusBadge(text: String, tone: BadgeTone, modifier: Modifier = Modifier) {
     val (bg, fg) = when (tone) {
         BadgeTone.ACTIVE -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f) to MaterialTheme.colorScheme.secondary
         BadgeTone.WARNING -> Color(0xFFF59E0B).copy(alpha = 0.15f) to Color(0xFFB45309)
         BadgeTone.INACTIVE -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f) to MaterialTheme.colorScheme.onSurfaceVariant
     }
     Box(
-        modifier = Modifier
+        modifier = modifier
             .clip(RoundedCornerShape(10.dp))
             .background(bg)
             .padding(horizontal = 10.dp, vertical = 4.dp),
@@ -382,7 +449,7 @@ private fun StatusBadge(text: String, tone: BadgeTone) {
     }
 }
 
-/** Mirrors the popup's 집중 모드 control: a delay(분) + 지속(분) pair, not just presets. */
+/** Mirrors the popup's 집중 모드 control: a delay + duration pair in minutes, not just presets. */
 @Composable
 private fun FocusCard(
     active: Boolean,
@@ -399,13 +466,18 @@ private fun FocusCard(
 ) {
     var delayText by rememberSaveable { mutableStateOf("0") }
     var durationText by rememberSaveable { mutableStateOf("30") }
+    val context = LocalContext.current
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("집중 모드", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(
+                text = stringResource(R.string.home_focus_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
             when {
                 // Checked before the plain `active` branch since a pending stop is also active.
                 // Mirrors the extension popup's "종료 대기 중" state: the request already fired
@@ -414,22 +486,30 @@ private fun FocusCard(
                 stopPending -> {
                     val stopAt = resolveFocusStopTime(focusEndMillis, focusStopRequestedAtMillis) ?: nowMillis
                     Text(
-                        text = "${formatDuration((stopAt - nowMillis).coerceAtLeast(0L))} 후 종료",
+                        text = stringResource(
+                            R.string.home_focus_stops_in,
+                            formatDuration(context, (stopAt - nowMillis).coerceAtLeast(0L)),
+                        ),
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
                     )
                     Text(
-                        text = "종료를 요청했어요. 충동적으로 끄지 못하도록 잠시 기다립니다.",
+                        text = stringResource(R.string.home_focus_stop_pending_note),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    OutlinedButton(onClick = onCancelFocusStop) { Text("종료 예약 취소") }
+                    OutlinedButton(onClick = onCancelFocusStop) {
+                        Text(stringResource(R.string.home_focus_cancel_stop))
+                    }
                 }
 
                 active -> {
                     Text(
-                        text = "${formatDuration((focusEndMillis!! - nowMillis).coerceAtLeast(0L))} 남음",
+                        text = stringResource(
+                            R.string.home_focus_remaining,
+                            formatDuration(context, (focusEndMillis!! - nowMillis).coerceAtLeast(0L)),
+                        ),
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
@@ -437,17 +517,25 @@ private fun FocusCard(
                     OutlinedButton(
                         onClick = onStopFocus,
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                    ) { Text("집중 모드 종료") }
+                    ) { Text(stringResource(R.string.home_focus_stop)) }
                 }
 
                 scheduled -> {
-                    Text("${formatDuration((focusDelayEndMillis!! - nowMillis).coerceAtLeast(0L))} 뒤 ${focusDelayDurationMinutes}분간 시작")
-                    OutlinedButton(onClick = onStopFocus) { Text("예약 취소") }
+                    Text(
+                        stringResource(
+                            R.string.home_focus_scheduled_note,
+                            formatDuration(context, (focusDelayEndMillis!! - nowMillis).coerceAtLeast(0L)),
+                            focusDelayDurationMinutes,
+                        ),
+                    )
+                    OutlinedButton(onClick = onStopFocus) {
+                        Text(stringResource(R.string.home_focus_cancel_schedule))
+                    }
                 }
 
                 else -> {
                     Text(
-                        text = "한도와 무관하게 정해진 시간 동안 즉시 차단합니다.",
+                        text = stringResource(R.string.home_focus_intro),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -458,7 +546,7 @@ private fun FocusCard(
                         OutlinedTextField(
                             value = delayText,
                             onValueChange = { if (it.length <= 4 && it.all(Char::isDigit)) delayText = it },
-                            label = { Text("지연(분)") },
+                            label = { Text(stringResource(R.string.home_focus_delay_label)) },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             singleLine = true,
                             modifier = Modifier.weight(1f),
@@ -466,7 +554,7 @@ private fun FocusCard(
                         OutlinedTextField(
                             value = durationText,
                             onValueChange = { if (it.length <= 4 && it.all(Char::isDigit)) durationText = it },
-                            label = { Text("지속(분)") },
+                            label = { Text(stringResource(R.string.home_focus_duration_label)) },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             singleLine = true,
                             modifier = Modifier.weight(1f),
@@ -479,7 +567,7 @@ private fun FocusCard(
                             onStartFocus(delay, duration)
                         },
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text("집중 모드 시작") }
+                    ) { Text(stringResource(R.string.home_focus_start)) }
                 }
             }
         }

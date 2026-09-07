@@ -28,9 +28,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.tubelimiter.app.R
 import com.tubelimiter.app.data.CHART_RANGE_PRESETS_DAYS
 import com.tubelimiter.app.gamification.PERFECT_MILESTONES
 import com.tubelimiter.app.gamification.STREAK_MILESTONES
@@ -79,7 +83,7 @@ fun DashboardScreen(
         } else {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "연속 기록과 XP는 하드코어 모드가 켜져 있을 때만 쌓입니다.",
+                    text = stringResource(R.string.dashboard_hardcore_hint),
                     modifier = Modifier.padding(20.dp),
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -101,7 +105,15 @@ private fun StreakCard(streak: StreakRecord) {
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("${tier.emoji} ${tier.title} · Lv.${progress.level}", style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = stringResource(
+                    R.string.dashboard_level_line,
+                    tier.emoji,
+                    stringResource(tier.titleRes),
+                    progress.level,
+                ),
+                style = MaterialTheme.typography.titleMedium,
+            )
             LinearProgressIndicator(
                 progress = {
                     if (progress.xpForNextLevel == 0) {
@@ -113,7 +125,11 @@ private fun StreakCard(streak: StreakRecord) {
                 modifier = Modifier.fillMaxWidth(),
             )
             Text(
-                text = "${progress.xpIntoLevel} / ${progress.xpForNextLevel} XP",
+                text = stringResource(
+                    R.string.dashboard_xp_progress,
+                    progress.xpIntoLevel,
+                    progress.xpForNextLevel,
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -121,23 +137,52 @@ private fun StreakCard(streak: StreakRecord) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Stat("연속", "${streak.currentStreak}일")
-                Stat("최고", "${streak.bestStreak}일")
-                Stat("성공", "${streak.totalSuccessDays}일")
-                Stat("완벽", "${streak.perfectDays}일")
+                // Four to a row, and "365 days" is a good deal wider than "365일" — an even
+                // share each, so a long value wraps inside its column instead of shoving the
+                // last stat off the card.
+                Stat(
+                    stringResource(R.string.dashboard_stat_streak),
+                    dayCount(streak.currentStreak),
+                    Modifier.weight(1f),
+                )
+                Stat(
+                    stringResource(R.string.dashboard_stat_best),
+                    dayCount(streak.bestStreak),
+                    Modifier.weight(1f),
+                )
+                Stat(
+                    stringResource(R.string.dashboard_stat_success),
+                    dayCount(streak.totalSuccessDays),
+                    Modifier.weight(1f),
+                )
+                Stat(
+                    stringResource(R.string.dashboard_stat_perfect),
+                    dayCount(streak.perfectDays),
+                    Modifier.weight(1f),
+                )
             }
         }
     }
 }
 
+/** "N일" / "N days" — a plural, since English splits at one and Korean doesn't. */
 @Composable
-private fun Stat(label: String, value: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+private fun dayCount(days: Int): String = pluralStringResource(R.plurals.count_days, days, days)
+
+@Composable
+private fun Stat(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            value,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+        )
         Text(
             label,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
     }
 }
@@ -149,7 +194,7 @@ private fun BadgeCard(achievements: Set<String>) {
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("뱃지", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.dashboard_badges), style = MaterialTheme.typography.titleSmall)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -162,7 +207,8 @@ private fun BadgeCard(achievements: Set<String>) {
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Text(
-                            text = "${days}일",
+                            // 일곱 개가 한 줄에 들어가야 하므로 짧은 쪽을 쓴다.
+                            text = stringResource(R.string.count_days_compact, days),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -170,7 +216,7 @@ private fun BadgeCard(achievements: Set<String>) {
                 }
             }
             // 긴급 시청을 한 번도 안 쓴 날만 세는 별도 뱃지 줄.
-            Text("완벽한 날 (긴급 시청 0회)", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.dashboard_perfect_badges), style = MaterialTheme.typography.titleSmall)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -183,7 +229,7 @@ private fun BadgeCard(achievements: Set<String>) {
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Text(
-                            text = "${days}일",
+                            text = stringResource(R.string.count_days_compact, days),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -213,7 +259,7 @@ private fun HeatmapCard(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("최근 28일", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.dashboard_heatmap_title), style = MaterialTheme.typography.titleSmall)
             lastNDates(today, HEATMAP_DAYS).chunked(7).forEach { week ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -255,6 +301,7 @@ private fun ChartCard(
 ) {
     var showPercent by remember { mutableStateOf(false) }
 
+    val context = LocalContext.current
     val dates = lastNDates(today, rangeDays)
     val barColor = MaterialTheme.colorScheme.primary
     val overLimitColor = Color(0xFFEF4444)
@@ -264,14 +311,14 @@ private fun ChartCard(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("사용시간 추이", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.dashboard_chart_title), style = MaterialTheme.typography.titleSmall)
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CHART_RANGE_PRESETS_DAYS.forEach { days ->
                     FilterChip(
                         selected = rangeDays == days,
                         onClick = { onRangeChange(days) },
-                        label = { Text("${days}일") },
+                        label = { Text(stringResource(R.string.count_days_compact, days)) },
                     )
                 }
             }
@@ -279,12 +326,12 @@ private fun ChartCard(
                 FilterChip(
                     selected = !showPercent,
                     onClick = { showPercent = false },
-                    label = { Text("사용 시간") },
+                    label = { Text(stringResource(R.string.dashboard_chart_mode_time)) },
                 )
                 FilterChip(
                     selected = showPercent,
                     onClick = { showPercent = true },
-                    label = { Text("한도 대비 %") },
+                    label = { Text(stringResource(R.string.dashboard_chart_mode_percent)) },
                 )
             }
 
@@ -328,7 +375,7 @@ private fun ChartCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        text = "최대 ${peak.toInt()}%",
+                        text = stringResource(R.string.dashboard_chart_peak_percent, peak.toInt()),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.End,
@@ -365,7 +412,10 @@ private fun ChartCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        text = "최대 ${formatDuration(peak)}",
+                        text = stringResource(
+                            R.string.dashboard_chart_peak_duration,
+                            formatDuration(context, peak),
+                        ),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.End,
@@ -399,13 +449,14 @@ private fun HourlyPatternCard(
     }
     val peak = hourTotals.maxOrNull()?.coerceAtLeast(1L) ?: 1L
     val barColor = MaterialTheme.colorScheme.secondary
+    val context = LocalContext.current
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("시간대별 사용 패턴", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.dashboard_hourly_title), style = MaterialTheme.typography.titleSmall)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -428,17 +479,20 @@ private fun HourlyPatternCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    text = "0시",
+                    text = stringResource(R.string.dashboard_hour_start),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    text = "최대 ${formatDuration(peak)}",
+                    text = stringResource(
+                        R.string.dashboard_chart_peak_duration,
+                        formatDuration(context, peak),
+                    ),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    text = "23시",
+                    text = stringResource(R.string.dashboard_hour_end),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.End,

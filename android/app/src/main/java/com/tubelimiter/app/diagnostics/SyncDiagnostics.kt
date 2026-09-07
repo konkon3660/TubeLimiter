@@ -1,5 +1,6 @@
 package com.tubelimiter.app.diagnostics
 
+import com.tubelimiter.app.R
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -66,7 +67,7 @@ private val POSTGREST_CODE_PATTERN = Regex("""PGRST[0-9]{3}""")
 
 private val TIME_FORMATTER = DateTimeFormatter.ofPattern("MM-dd HH:mm")
 
-/** 어느 경로가 실패했는지. 화면 표시용 한글 이름은 [diagnosticKindLabel]에 있다. */
+/** 어느 경로가 실패했는지. 화면에 뜨는 이름은 [diagnosticKindLabelRes]에 있다. */
 object DiagnosticKind {
     const val SYNC_SETTINGS = "sync_settings"
     const val SYNC_STREAK = "sync_streak"
@@ -76,14 +77,18 @@ object DiagnosticKind {
     const val MONITOR = "monitor"
 }
 
-fun diagnosticKindLabel(kind: String): String = when (kind) {
-    DiagnosticKind.SYNC_SETTINGS -> "설정 동기화"
-    DiagnosticKind.SYNC_STREAK -> "연속 기록 / 뱃지"
-    DiagnosticKind.SYNC_USAGE -> "사용시간 보고"
-    DiagnosticKind.EMERGENCY_FETCH -> "긴급 횟수 조회"
-    DiagnosticKind.AUTH -> "로그인 세션"
-    DiagnosticKind.MONITOR -> "감시 루프"
-    else -> kind
+/**
+ * String resource for a kind, or null for one this build does not know — the caller then shows
+ * the raw stored key, which is what an event written by a newer version would carry.
+ */
+fun diagnosticKindLabelRes(kind: String): Int? = when (kind) {
+    DiagnosticKind.SYNC_SETTINGS -> R.string.diagnostic_kind_sync_settings
+    DiagnosticKind.SYNC_STREAK -> R.string.diagnostic_kind_sync_streak
+    DiagnosticKind.SYNC_USAGE -> R.string.diagnostic_kind_sync_usage
+    DiagnosticKind.EMERGENCY_FETCH -> R.string.diagnostic_kind_emergency_fetch
+    DiagnosticKind.AUTH -> R.string.diagnostic_kind_auth
+    DiagnosticKind.MONITOR -> R.string.diagnostic_kind_monitor
+    else -> null
 }
 
 /**
@@ -196,20 +201,36 @@ fun formatDiagnosticTime(millis: Long, zone: ZoneId = ZoneId.systemDefault()): S
 /**
  * 클립보드로 나가는 텍스트. 여기 들어가는 값은 시각·종류·코드·횟수뿐이라, 어디에 붙여넣어도
  * 계정을 특정할 수 있는 정보가 따라나가지 않는다.
+ *
+ * 화면 문구와 달리 **번역하지 않는다.** 이건 사용자가 읽는 글이 아니라 버그 리포트에 붙여넣는
+ * 로그이고, 받는 쪽이 한국어를 읽는다는 보장이 없다. 리소스를 쓰지 않는 덕에 함수도 순수하게
+ * 남아 유닛 테스트가 그대로 검증한다 — 종류(`kind`)는 원래부터 저장된 키 그대로 나간다.
  */
 fun buildDiagnosticsReport(
     lastSuccessAtMillis: Long?,
     events: List<DiagnosticEvent>,
     zone: ZoneId = ZoneId.systemDefault(),
 ): String {
-    val lastSuccess = lastSuccessAtMillis?.let { formatDiagnosticTime(it, zone) } ?: "없음"
-    val header = "TubeLimiter 동기화 진단\n최근 성공: $lastSuccess"
-    if (events.isEmpty()) return "$header\n최근 실패: 없음"
+    val lastSuccess = lastSuccessAtMillis?.let { formatDiagnosticTime(it, zone) } ?: "none"
+    val header = "TubeLimiter sync diagnostics\nLast success: $lastSuccess"
+    if (events.isEmpty()) return "$header\nRecent failures: none"
     val lines = events.joinToString("\n") { event ->
         val repeat = if (event.count > 1) " x${event.count}" else ""
         "${formatDiagnosticTime(event.atMillis, zone)} ${event.kind} ${event.code}$repeat"
     }
-    return "$header\n최근 실패 ${events.size}건\n$lines"
+    return "$header\nRecent failures: ${events.size}\n$lines"
+}
+
+/**
+ * 홈 화면 경고의 내용. 문구가 아니라 판정 결과만 담는 건 [staleSyncWarning]을 순수하게 두어
+ * 유닛 테스트가 임계값을 그대로 검증할 수 있게 하려는 것 — 문구는 화면에서 붙인다.
+ */
+sealed interface SyncWarning {
+    /** 로그인한 뒤 한 번도 성공하지 못했고, 실패는 실제로 기록된 상태. */
+    data object NeverSucceeded : SyncWarning
+
+    /** 마지막 성공 이후 [hours]시간이 지났다. */
+    data class StaleFor(val hours: Long) : SyncWarning
 }
 
 /**
@@ -226,17 +247,12 @@ fun staleSyncWarning(
     hasRecordedFailure: Boolean,
     nowMillis: Long,
     thresholdMillis: Long = SYNC_STALE_THRESHOLD_MILLIS,
-): String? {
+): SyncWarning? {
     if (!signedIn) return null
     if (lastSuccessAtMillis == null) {
-        return if (hasRecordedFailure) {
-            "아직 한 번도 동기화에 성공하지 못했어요. 설정 > 동기화 상태에서 확인할 수 있어요."
-        } else {
-            null
-        }
+        return if (hasRecordedFailure) SyncWarning.NeverSucceeded else null
     }
     val elapsed = nowMillis - lastSuccessAtMillis
     if (elapsed < thresholdMillis) return null
-    val hours = elapsed / (60L * 60 * 1000)
-    return "동기화가 ${hours}시간째 되지 않고 있어요. 설정 > 동기화 상태에서 확인할 수 있어요."
+    return SyncWarning.StaleFor(hours = elapsed / (60L * 60 * 1000))
 }

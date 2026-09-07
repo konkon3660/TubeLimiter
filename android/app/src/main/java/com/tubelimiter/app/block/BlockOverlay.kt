@@ -14,10 +14,13 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.tubelimiter.app.R
 import com.tubelimiter.app.limit.BlockReason
 import com.tubelimiter.app.limit.isUnlimited
-import com.tubelimiter.app.limit.message
-import com.tubelimiter.app.usage.formatDuration
+import com.tubelimiter.app.limit.messageRes
+import com.tubelimiter.app.usage.DurationParts
+import com.tubelimiter.app.usage.durationParts
+import com.tubelimiter.app.usage.format
 
 private const val TAG = "BlockOverlay"
 
@@ -28,38 +31,68 @@ data class BlockContent(
     val emergencyRemaining: Int,
 )
 
+/** Which of the overlay's second lines applies. */
+internal enum class BlockSubtitle { USED_ONLY, USED_OF_LIMIT, FOCUS_MODE, SCHEDULED, MANUAL }
+
 /**
- * Everything the overlay actually draws. `usedMillis` climbs on every poll but only reaches
- * the screen through a coarse duration string, so two contents a tick apart almost always
- * render identically - which is why the redraw guard compares this and not [BlockContent].
+ * Everything the overlay actually draws, as identities rather than as text: string resources
+ * cannot be resolved without a Context, and this has to stay comparable from a unit test.
+ *
+ * `usedMillis` climbs on every poll but only reaches the screen through a coarse duration
+ * ([DurationParts] drops the seconds above a minute), so two contents a tick apart almost
+ * always render identically - which is why the redraw guard compares this and not
+ * [BlockContent].
  */
 internal data class BlockRender(
-    val title: String,
-    val subtitle: String,
-    val emergencyLabel: String?,
+    val reason: BlockReason,
+    val subtitle: BlockSubtitle,
+    val used: DurationParts?,
+    val limit: DurationParts?,
+    /** Remaining emergency passes, or null when no emergency button is offered at all. */
+    val emergencyRemaining: Int?,
 )
 
-internal fun BlockContent.render(): BlockRender = BlockRender(
-    title = reason.message(),
-    subtitle = subtitle(),
-    emergencyLabel = if (reason == BlockReason.USAGE_LIMIT && emergencyRemaining > 0) {
-        "긴급 시청 5분 (${emergencyRemaining}회 남음)"
-    } else {
-        null
-    },
+internal fun BlockContent.render(): BlockRender = when (reason) {
+    BlockReason.FOCUS_MODE -> reasonOnly(BlockSubtitle.FOCUS_MODE)
+    BlockReason.SCHEDULED -> reasonOnly(BlockSubtitle.SCHEDULED)
+    BlockReason.MANUAL -> reasonOnly(BlockSubtitle.MANUAL)
+    BlockReason.USAGE_LIMIT -> {
+        val unlimited = isUnlimited(limitMillis)
+        BlockRender(
+            reason = reason,
+            subtitle = if (unlimited) BlockSubtitle.USED_ONLY else BlockSubtitle.USED_OF_LIMIT,
+            used = durationParts(usedMillis),
+            limit = if (unlimited) null else durationParts(limitMillis),
+            emergencyRemaining = emergencyRemaining.takeIf { it > 0 },
+        )
+    }
+}
+
+private fun BlockContent.reasonOnly(subtitle: BlockSubtitle) = BlockRender(
+    reason = reason,
+    subtitle = subtitle,
+    used = null,
+    limit = null,
+    emergencyRemaining = null,
 )
 
-private fun BlockContent.subtitle(): String = when (reason) {
-    BlockReason.USAGE_LIMIT ->
-        if (isUnlimited(limitMillis)) {
-            "사용 ${formatDuration(usedMillis)}"
-        } else {
-            "사용 ${formatDuration(usedMillis)} / 한도 ${formatDuration(limitMillis)}"
-        }
+private fun BlockRender.subtitleText(context: Context): String = when (subtitle) {
+    BlockSubtitle.USED_ONLY ->
+        context.getString(R.string.block_overlay_used_only, used?.format(context).orEmpty())
 
-    BlockReason.FOCUS_MODE -> "집중 모드가 끝나면 다시 열립니다."
-    BlockReason.SCHEDULED -> "예약된 시간이 끝나면 다시 열립니다."
-    BlockReason.MANUAL -> "앱에서 차단을 풀 수 있어요."
+    BlockSubtitle.USED_OF_LIMIT -> context.getString(
+        R.string.block_overlay_used_of_limit,
+        used?.format(context).orEmpty(),
+        limit?.format(context).orEmpty(),
+    )
+
+    BlockSubtitle.FOCUS_MODE -> context.getString(R.string.block_overlay_focus_mode)
+    BlockSubtitle.SCHEDULED -> context.getString(R.string.block_overlay_scheduled)
+    BlockSubtitle.MANUAL -> context.getString(R.string.block_overlay_manual)
+}
+
+private fun BlockRender.emergencyLabel(context: Context): String? = emergencyRemaining?.let { left ->
+    context.resources.getQuantityString(R.plurals.block_overlay_emergency, left, left)
 }
 
 /** Full-screen blocker drawn over the YouTube app. */
@@ -116,20 +149,27 @@ class BlockOverlay(private val context: Context) {
             setBackgroundColor(Color.parseColor("#0F172A"))
             setPadding(pad, pad, pad, pad)
 
-            addView(text(render.title, sizeSp = 26f, color = Color.WHITE, bold = true))
             addView(
                 text(
-                    render.subtitle,
+                    context.getString(render.reason.messageRes()),
+                    sizeSp = 26f,
+                    color = Color.WHITE,
+                    bold = true,
+                ),
+            )
+            addView(
+                text(
+                    render.subtitleText(context),
                     sizeSp = 16f,
                     color = Color.parseColor("#94A3B8"),
                     topMarginDp = 12,
                 ),
             )
 
-            render.emergencyLabel?.let { label ->
+            render.emergencyLabel(context)?.let { label ->
                 addView(button(label, topMarginDp = 28) { onEmergency() })
             }
-            addView(button("홈으로", topMarginDp = 12) { goHome() })
+            addView(button(context.getString(R.string.block_overlay_go_home), topMarginDp = 12) { goHome() })
         }
     }
 

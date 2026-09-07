@@ -214,7 +214,7 @@ class SyncDiagnosticsTest {
     @Test
     fun `an empty report still says when the last success was`() {
         val report = buildDiagnosticsReport(lastSuccessAtMillis = null, events = emptyList(), zone = SEOUL)
-        assertTrue(report.contains("없음"))
+        assertTrue(report.contains("none"))
     }
 
     @Test
@@ -255,8 +255,7 @@ class SyncDiagnosticsTest {
             hasRecordedFailure = true,
             nowMillis = 30 * HOUR,
         )
-        assertNotNull(warning)
-        assertTrue(warning!!.contains("30시간"))
+        assertEquals(SyncWarning.StaleFor(hours = 30), warning)
     }
 
     @Test

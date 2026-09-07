@@ -9,9 +9,23 @@ data class AlarmState(
     val notifiedMilestones: Set<Int> = emptySet(),
 )
 
+/**
+ * A nudge that is due, as data rather than text: the notification only exists on a device, but
+ * the "did we already say this today" bookkeeping around it is what the unit tests exercise,
+ * and unit tests cannot reach Android resources. The service turns these into strings
+ * ([com.tubelimiter.app.service.UsageMonitorService.nudgeText]).
+ */
+sealed interface AlarmMessage {
+    /** The recurring "you have been watching for a while" interval nudge. */
+    data class WatchedMinutes(val minutes: Long) : AlarmMessage
+
+    /** One of [ALARM_MILESTONE_MINUTES], crossed on the way down. */
+    data class RemainingMinutes(val minutes: Int) : AlarmMessage
+}
+
 data class AlarmOutcome(
     val state: AlarmState,
-    val messages: List<String>,
+    val messages: List<AlarmMessage>,
 ) {
     val changed: Boolean get() = messages.isNotEmpty()
 }
@@ -30,14 +44,14 @@ fun evaluateAlarms(
 ): AlarmOutcome {
     // A state from an earlier day carries stale bookkeeping, so start the day fresh.
     var state = previous?.takeIf { it.dateKey == todayKey } ?: AlarmState(todayKey)
-    val messages = mutableListOf<String>()
+    val messages = mutableListOf<AlarmMessage>()
 
     if (intervalMinutes > 0) {
         val intervalMillis = minutesToMillis(intervalMinutes)
         if (usedMillis - state.lastIntervalNotifyMillis >= intervalMillis) {
             // Snap to the interval boundary so a long gap does not queue up a burst.
             state = state.copy(lastIntervalNotifyMillis = (usedMillis / intervalMillis) * intervalMillis)
-            messages += "오늘 유튜브를 ${usedMillis / 60_000}분째 보고 있어요."
+            messages += AlarmMessage.WatchedMinutes(usedMillis / 60_000)
         }
     }
 
@@ -50,7 +64,7 @@ fun evaluateAlarms(
         }
         if (due.isNotEmpty()) {
             state = state.copy(notifiedMilestones = state.notifiedMilestones + due)
-            due.forEach { messages += "오늘 남은 시청 시간이 ${it}분입니다." }
+            due.forEach { messages += AlarmMessage.RemainingMinutes(it) }
         }
     }
 

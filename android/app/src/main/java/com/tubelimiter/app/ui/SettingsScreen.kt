@@ -32,13 +32,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringArrayResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.tubelimiter.app.R
 import com.tubelimiter.app.data.Settings
 import com.tubelimiter.app.diagnostics.DiagnosticEvent
-import com.tubelimiter.app.diagnostics.diagnosticKindLabel
+import com.tubelimiter.app.diagnostics.diagnosticKindLabelRes
 import com.tubelimiter.app.diagnostics.formatDiagnosticTime
 import com.tubelimiter.app.limit.EmergencyResetFrequency
 import com.tubelimiter.app.limit.LIMIT_PRESETS_MINUTES
@@ -47,7 +52,6 @@ import com.tubelimiter.app.limit.ScheduleWindow
 import com.tubelimiter.app.limit.UNLIMITED_MINUTES
 import com.tubelimiter.app.usage.formatDuration
 
-private val DAY_LABELS = listOf("일", "월", "화", "수", "목", "금", "토")
 private val ALARM_INTERVAL_PRESETS = listOf(0, 10, 30, 60)
 private val EMERGENCY_ALLOWANCE_PRESETS = listOf(0, 1, 3, 5)
 
@@ -92,6 +96,8 @@ fun SettingsScreen(
     val limitsLocked = settings.hardcoreMode
     var confirmDeleteAccount by remember { mutableStateOf(false) }
     var diagnosticsExpanded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val dayLabels = stringArrayResource(R.array.day_labels_short)
 
     Column(
         modifier = modifier
@@ -100,59 +106,62 @@ fun SettingsScreen(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        SettingsCard("계정") {
+        SettingsCard(stringResource(R.string.settings_account)) {
             when {
-                accountLoading -> Text("확인 중…", style = MaterialTheme.typography.bodyMedium)
+                accountLoading -> Text(
+                    stringResource(R.string.settings_account_loading),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
 
                 accountEmail != null -> {
                     Text(accountEmail, style = MaterialTheme.typography.bodyMedium)
                     Text(
-                        "크롬 확장과 기록이 이어집니다.",
+                        stringResource(R.string.settings_account_synced),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    OutlinedButton(onClick = onSignOut) { Text("로그아웃") }
+                    OutlinedButton(onClick = onSignOut) { Text(stringResource(R.string.settings_sign_out)) }
                 }
 
                 else -> {
                     Text(
-                        "로그인하지 않아도 차단은 동작합니다. 로그인하면 확장과 계정을 공유합니다.",
+                        stringResource(R.string.settings_account_signed_out),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    OutlinedButton(onClick = onSignInClick) { Text("로그인 / 회원가입") }
+                    OutlinedButton(onClick = onSignInClick) { Text(stringResource(R.string.settings_sign_in)) }
                 }
             }
         }
 
-        SettingsCard("한도 방식") {
+        SettingsCard(stringResource(R.string.settings_limit_mode)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = settings.limit.frequency == LimitFrequency.DAILY,
                     onClick = { onFrequencyChange(LimitFrequency.DAILY) },
                     enabled = !limitsLocked,
-                    label = { Text("매일 같음") },
+                    label = { Text(stringResource(R.string.settings_limit_mode_daily)) },
                 )
                 FilterChip(
                     selected = settings.limit.frequency == LimitFrequency.BY_DAY,
                     onClick = { onFrequencyChange(LimitFrequency.BY_DAY) },
                     enabled = !limitsLocked,
-                    label = { Text("요일별") },
+                    label = { Text(stringResource(R.string.settings_limit_mode_by_day)) },
                 )
             }
         }
 
         if (settings.limit.frequency == LimitFrequency.DAILY) {
-            SettingsCard("하루 한도") {
+            SettingsCard(stringResource(R.string.settings_daily_limit)) {
                 ChipRow(
                     options = withCurrent(LIMIT_PRESETS_MINUTES, settings.limit.dailyLimitMinutes),
                     selected = settings.limit.dailyLimitMinutes,
                     enabled = !limitsLocked,
-                    label = { "${it}분" },
+                    label = { stringResource(R.string.count_minutes, it) },
                     onSelect = onDailyLimitChange,
                 )
                 NumberEntryField(
-                    label = "직접 입력(분, 0=무제한)",
+                    label = stringResource(R.string.settings_minutes_entry_daily),
                     value = settings.limit.dailyLimitMinutes,
                     minValue = 0,
                     enabled = !limitsLocked,
@@ -161,8 +170,8 @@ fun SettingsScreen(
                 )
             }
         } else {
-            SettingsCard("요일별 한도") {
-                DAY_LABELS.forEachIndexed { index, label ->
+            SettingsCard(stringResource(R.string.settings_by_day_limit)) {
+                dayLabels.forEachIndexed { index, label ->
                     val minutes = settings.limit.byDayMinutes.getOrElse(index) { 0 }
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Row(
@@ -183,14 +192,20 @@ fun SettingsScreen(
                                             onClick = { onByDayChange(index, option) },
                                             enabled = !limitsLocked,
                                             label = {
-                                                Text(if (option == UNLIMITED_MINUTES) "무제한" else "${option}분")
+                                                Text(
+                                                    if (option == UNLIMITED_MINUTES) {
+                                                        stringResource(R.string.unlimited)
+                                                    } else {
+                                                        stringResource(R.string.count_minutes, option)
+                                                    },
+                                                )
                                             },
                                         )
                                     }
                             }
                         }
                         NumberEntryField(
-                            label = "직접 입력(분, -1=무제한)",
+                            label = stringResource(R.string.settings_minutes_entry_by_day),
                             value = minutes,
                             minValue = UNLIMITED_MINUTES,
                             enabled = !limitsLocked,
@@ -204,20 +219,20 @@ fun SettingsScreen(
             }
         }
 
-        SettingsCard("긴급 시청") {
+        SettingsCard(stringResource(R.string.settings_emergency)) {
             Text(
-                "차단된 동안 5분만 예외로 열어줍니다.",
+                stringResource(R.string.settings_emergency_intro),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             ChipRow(
                 options = EMERGENCY_ALLOWANCE_PRESETS,
                 selected = settings.emergencyAllowance,
-                label = { "${it}회" },
+                label = { pluralStringResource(R.plurals.settings_emergency_allowance, it, it) },
                 onSelect = onEmergencyAllowanceChange,
             )
             NumberEntryField(
-                label = "직접 입력(회)",
+                label = stringResource(R.string.settings_emergency_entry),
                 value = settings.emergencyAllowance,
                 minValue = 0,
                 onCommit = onEmergencyAllowanceChange,
@@ -227,26 +242,37 @@ fun SettingsScreen(
                 options = EmergencyResetFrequency.entries.toList(),
                 selected = settings.emergencyResetFrequency,
                 label = {
-                    when (it) {
-                        EmergencyResetFrequency.DAILY -> "매일 리셋"
-                        EmergencyResetFrequency.WEEKLY -> "매주 리셋"
-                        EmergencyResetFrequency.MONTHLY -> "매달 리셋"
-                    }
+                    stringResource(
+                        when (it) {
+                            EmergencyResetFrequency.DAILY -> R.string.settings_emergency_reset_daily
+                            EmergencyResetFrequency.WEEKLY -> R.string.settings_emergency_reset_weekly
+                            EmergencyResetFrequency.MONTHLY -> R.string.settings_emergency_reset_monthly
+                        },
+                    )
                 },
                 onSelect = onEmergencyResetChange,
             )
         }
 
-        SettingsCard("알림") {
-            Text("몇 분마다 알려줄까요", style = MaterialTheme.typography.bodySmall)
+        SettingsCard(stringResource(R.string.settings_alarms)) {
+            Text(
+                stringResource(R.string.settings_alarm_interval_question),
+                style = MaterialTheme.typography.bodySmall,
+            )
             ChipRow(
                 options = ALARM_INTERVAL_PRESETS,
                 selected = settings.alarmIntervalMinutes,
-                label = { if (it == 0) "끔" else "${it}분" },
+                label = {
+                    if (it == 0) {
+                        stringResource(R.string.settings_alarm_interval_off)
+                    } else {
+                        stringResource(R.string.count_minutes, it)
+                    }
+                },
                 onSelect = onAlarmIntervalChange,
             )
             NumberEntryField(
-                label = "직접 입력(분, 0=끔)",
+                label = stringResource(R.string.settings_alarm_interval_entry),
                 value = settings.alarmIntervalMinutes,
                 minValue = 0,
                 onCommit = onAlarmIntervalChange,
@@ -257,7 +283,11 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("남은 시간 30·10·5·1분 알림", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    stringResource(R.string.settings_alarm_milestones),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
                 Switch(
                     checked = settings.alarmMilestonesEnabled,
                     onCheckedChange = onAlarmMilestonesChange,
@@ -265,38 +295,47 @@ fun SettingsScreen(
             }
         }
 
-        SettingsCard("하드코어 모드") {
+        SettingsCard(stringResource(R.string.settings_hardcore)) {
             Text(
-                "켜면 한도 설정이 잠기고, 켜져 있는 동안만 연속 기록과 XP가 쌓입니다. " +
-                    "끄기는 1시간 뒤에 적용되고 연속 기록은 0으로 초기화됩니다.",
+                stringResource(R.string.settings_hardcore_intro),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             when {
                 !settings.hardcoreMode ->
-                    OutlinedButton(onClick = onHardcoreEnable) { Text("켜기") }
+                    OutlinedButton(onClick = onHardcoreEnable) {
+                        Text(stringResource(R.string.settings_hardcore_enable))
+                    }
 
                 settings.hardcoreDisableRequestedAt != null -> {
                     Text(
-                        "${formatDuration(hardcoreCooldownRemaining)} 뒤 해제됩니다.",
+                        stringResource(
+                            R.string.settings_hardcore_cooldown,
+                            formatDuration(context, hardcoreCooldownRemaining),
+                        ),
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                    OutlinedButton(onClick = onHardcoreDisableCancel) { Text("해제 취소") }
+                    OutlinedButton(onClick = onHardcoreDisableCancel) {
+                        Text(stringResource(R.string.settings_hardcore_cancel))
+                    }
                 }
 
-                else -> OutlinedButton(onClick = onHardcoreDisableRequest) { Text("끄기 요청") }
+                else -> OutlinedButton(onClick = onHardcoreDisableRequest) {
+                    Text(stringResource(R.string.settings_hardcore_disable))
+                }
             }
         }
 
-        SettingsCard("예약 차단") {
+        SettingsCard(stringResource(R.string.settings_schedule)) {
             Text(
-                "정해진 요일·시간대엔 한도와 무관하게 자동으로 차단됩니다. 집중 모드처럼 긴급 시청으로 우회할 수 없어요.",
+                stringResource(R.string.settings_schedule_intro),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             scheduleWindows.forEachIndexed { index, window ->
                 ScheduleWindowEditor(
                     window = window,
+                    dayLabels = dayLabels,
                     onChange = { updated ->
                         onScheduleWindowsChange(scheduleWindows.toMutableList().apply { this[index] = updated })
                     },
@@ -305,11 +344,12 @@ fun SettingsScreen(
                     },
                 )
             }
+            val seededLabel = stringResource(R.string.settings_schedule_default_label)
             OutlinedButton(
                 onClick = {
                     val seeded = ScheduleWindow(
                         id = System.currentTimeMillis().toString(),
-                        label = "밤 시간",
+                        label = seededLabel,
                         days = List(7) { true },
                         startMinute = 22 * 60,
                         endMinute = 7 * 60,
@@ -317,7 +357,7 @@ fun SettingsScreen(
                     )
                     onScheduleWindowsChange(scheduleWindows + seeded)
                 },
-            ) { Text("+ 예약 추가") }
+            ) { Text(stringResource(R.string.settings_schedule_add)) }
         }
 
         // 접힌 채로 두는 건 평소엔 볼 일이 없어서고, 접힌 헤더에 요약 한 줄을 남기는 건
@@ -334,9 +374,9 @@ fun SettingsScreen(
         // Google Play requires an in-app way to delete the account, so this only shows once
         // there is one to delete. Sits last, and in error colours, so it can't be hit in passing.
         if (accountEmail != null) {
-            DangerCard("계정 삭제") {
+            DangerCard(stringResource(R.string.settings_delete_account)) {
                 Text(
-                    "계정과 서버에 저장된 모든 기록이 지워집니다. 되돌릴 수 없어요.",
+                    stringResource(R.string.settings_delete_account_warning),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Button(
@@ -346,7 +386,17 @@ fun SettingsScreen(
                         containerColor = MaterialTheme.colorScheme.error,
                         contentColor = MaterialTheme.colorScheme.onError,
                     ),
-                ) { Text(if (deleteAccountInFlight) "삭제 중…" else "계정 삭제") }
+                ) {
+                    Text(
+                        stringResource(
+                            if (deleteAccountInFlight) {
+                                R.string.settings_delete_account_in_flight
+                            } else {
+                                R.string.settings_delete_account
+                            },
+                        ),
+                    )
+                }
             }
         }
 
@@ -366,7 +416,7 @@ fun SettingsScreen(
 
 /**
  * The one deliberate, irreversible action in the app, so it spells out what goes and keeps the
- * destructive button visually separate from the "취소" it sits next to. [inFlight] disables both
+ * destructive button visually separate from the cancel it sits next to. [inFlight] disables both
  * buttons and blocks dismissal, so a second tap can't fire a second delete while one is running.
  */
 @Composable
@@ -378,24 +428,18 @@ private fun DeleteAccountDialog(
 ) {
     AlertDialog(
         onDismissRequest = { if (!inFlight) onDismiss() },
-        title = { Text("계정을 삭제할까요?") },
+        title = { Text(stringResource(R.string.settings_delete_dialog_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (email.isNotBlank()) {
                     Text(email, style = MaterialTheme.typography.bodyMedium)
                 }
                 Text(
-                    "다음 항목이 모두 삭제됩니다.\n" +
-                        "• 계정\n" +
-                        "• 사용시간 기록\n" +
-                        "• 스트릭 / XP\n" +
-                        "• 뱃지\n" +
-                        "• 설정",
+                    stringResource(R.string.settings_delete_dialog_items),
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Text(
-                    "삭제하면 되돌릴 수 없고, 크롬 확장에서도 같은 계정으로 로그인할 수 없습니다. " +
-                        "이 기기에 남아 있는 기록도 함께 지워집니다.",
+                    stringResource(R.string.settings_delete_dialog_note),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -408,10 +452,10 @@ private fun DeleteAccountDialog(
                 colors = ButtonDefaults.textButtonColors(
                     contentColor = MaterialTheme.colorScheme.error,
                 ),
-            ) { Text("영구 삭제") }
+            ) { Text(stringResource(R.string.settings_delete_dialog_confirm)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !inFlight) { Text("취소") }
+            TextButton(onClick = onDismiss, enabled = !inFlight) { Text(stringResource(R.string.cancel)) }
         },
     )
 }
@@ -432,11 +476,17 @@ private fun DiagnosticsCard(
     onClear: () -> Unit,
     onCopy: () -> Unit,
 ) {
-    val lastSuccess = lastSyncSuccessAtMillis?.let { formatDiagnosticTime(it) } ?: "기록 없음"
+    val lastSuccess = lastSyncSuccessAtMillis?.let { formatDiagnosticTime(it) }
+        ?: stringResource(R.string.settings_diagnostics_never)
     val summary = if (events.isEmpty()) {
-        "최근 성공 $lastSuccess · 실패 없음"
+        stringResource(R.string.settings_diagnostics_summary_ok, lastSuccess)
     } else {
-        "최근 성공 $lastSuccess · 실패 ${events.size}건"
+        pluralStringResource(
+            R.plurals.settings_diagnostics_summary_failures,
+            events.size,
+            lastSuccess,
+            events.size,
+        )
     }
 
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -452,7 +502,10 @@ private fun DiagnosticsCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("동기화 상태 / 진단", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        stringResource(R.string.settings_diagnostics_title),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
                     Text(
                         summary,
                         style = MaterialTheme.typography.bodySmall,
@@ -468,31 +521,38 @@ private fun DiagnosticsCard(
 
             if (expanded) {
                 Text(
-                    "이 기기에만 저장되고 서버로 보내지 않습니다. 이메일·계정 ID·토큰은 기록하지 않아요.",
+                    stringResource(R.string.settings_diagnostics_privacy),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (events.isEmpty()) {
-                    Text("기록된 실패가 없습니다.", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        stringResource(R.string.settings_diagnostics_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                 } else {
                     events.forEach { DiagnosticRow(it) }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = onCopy, enabled = events.isNotEmpty() || lastSyncSuccessAtMillis != null) {
-                        Text("복사")
+                        Text(stringResource(R.string.settings_diagnostics_copy))
                     }
                     OutlinedButton(
                         onClick = onClear,
                         enabled = events.isNotEmpty() || lastSyncSuccessAtMillis != null,
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                    ) { Text("전체 지우기") }
+                    ) { Text(stringResource(R.string.settings_diagnostics_clear)) }
                 }
             }
         }
     }
 }
 
-/** 실패 한 줄: 종류(한글) + 짧은 코드, 오른쪽에 시각과 반복 횟수. */
+/**
+ * 실패 한 줄: 종류 + 짧은 코드, 오른쪽에 시각과 반복 횟수.
+ *
+ * 이름을 모르는 종류는 저장된 키를 그대로 보여준다 — 더 새 버전이 남긴 이벤트가 그렇다.
+ */
 @Composable
 private fun DiagnosticRow(event: DiagnosticEvent) {
     Row(
@@ -501,7 +561,8 @@ private fun DiagnosticRow(event: DiagnosticEvent) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(diagnosticKindLabel(event.kind), style = MaterialTheme.typography.bodyMedium)
+            val kindLabel = diagnosticKindLabelRes(event.kind)?.let { stringResource(it) } ?: event.kind
+            Text(kindLabel, style = MaterialTheme.typography.bodyMedium)
             Text(
                 event.code,
                 style = MaterialTheme.typography.labelSmall,
@@ -516,7 +577,7 @@ private fun DiagnosticRow(event: DiagnosticEvent) {
             )
             if (event.count > 1) {
                 Text(
-                    "${event.count}회",
+                    stringResource(R.string.count_times, event.count),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.error,
                 )
@@ -562,6 +623,7 @@ private fun DangerCard(title: String, content: @Composable () -> Unit) {
 @Composable
 private fun ScheduleWindowEditor(
     window: ScheduleWindow,
+    dayLabels: Array<String>,
     onChange: (ScheduleWindow) -> Unit,
     onRemove: () -> Unit,
 ) {
@@ -579,7 +641,7 @@ private fun ScheduleWindowEditor(
             OutlinedTextField(
                 value = window.label,
                 onValueChange = { onChange(window.copy(label = it)) },
-                label = { Text("라벨") },
+                label = { Text(stringResource(R.string.settings_schedule_label)) },
                 singleLine = true,
                 modifier = Modifier.weight(1f),
             )
@@ -590,7 +652,7 @@ private fun ScheduleWindowEditor(
             modifier = Modifier.horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            DAY_LABELS.forEachIndexed { dayIndex, label ->
+            dayLabels.forEachIndexed { dayIndex, label ->
                 FilterChip(
                     selected = days[dayIndex],
                     onClick = {
@@ -607,12 +669,12 @@ private fun ScheduleWindowEditor(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             MinuteOfDayField(
-                label = "시작",
+                label = stringResource(R.string.settings_schedule_start),
                 minutes = window.startMinute,
                 onCommit = { onChange(window.copy(startMinute = it)) },
             )
             MinuteOfDayField(
-                label = "종료",
+                label = stringResource(R.string.settings_schedule_end),
                 minutes = window.endMinute,
                 onCommit = { onChange(window.copy(endMinute = it)) },
             )
@@ -621,7 +683,7 @@ private fun ScheduleWindowEditor(
         OutlinedButton(
             onClick = onRemove,
             colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-        ) { Text("삭제") }
+        ) { Text(stringResource(R.string.settings_schedule_remove)) }
     }
 }
 
@@ -718,11 +780,12 @@ private fun NumberEntryField(
     )
 }
 
+/** [label] is composable so a chip's text can come straight from a resource or a plural. */
 @Composable
 private fun <T> ChipRow(
     options: List<T>,
     selected: T,
-    label: (T) -> String,
+    label: @Composable (T) -> String,
     onSelect: (T) -> Unit,
     enabled: Boolean = true,
 ) {

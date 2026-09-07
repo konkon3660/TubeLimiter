@@ -1,5 +1,8 @@
 package com.tubelimiter.app.auth
 
+import android.content.Context
+import com.tubelimiter.app.R
+
 const val MIN_PASSWORD_LENGTH = 6
 
 enum class AuthMode { SIGN_IN, SIGN_UP }
@@ -30,39 +33,91 @@ private fun isPlausibleEmail(email: String): Boolean {
         trimmed.none { it.isWhitespace() }
 }
 
-fun CredentialError.message(): String = when (this) {
-    CredentialError.EmptyEmail -> "이메일을 입력하세요."
-    CredentialError.MalformedEmail -> "이메일 형식이 올바르지 않습니다."
-    CredentialError.ShortPassword -> "비밀번호는 ${MIN_PASSWORD_LENGTH}자 이상이어야 합니다."
+/**
+ * Every line the auth screen can show, as an identity rather than as text.
+ *
+ * Mapping a Supabase failure onto one of these is pure logic worth unit-testing, but unit tests
+ * cannot resolve Android resources — so the translation stops here and the screen finishes the
+ * job with [text].
+ */
+enum class AuthMessage {
+    EMPTY_EMAIL,
+    MALFORMED_EMAIL,
+    SHORT_PASSWORD,
+    GENERIC_FAILURE,
+    INVALID_CREDENTIALS,
+    EMAIL_NOT_CONFIRMED,
+    ALREADY_REGISTERED,
+    RATE_LIMITED,
+    NETWORK_UNREACHABLE,
+    SESSION_EXPIRED,
+    DELETE_UNAVAILABLE,
+    NOT_SIGNED_IN,
+}
+
+/** Either one of ours, or a server message we have nothing better to offer than. */
+sealed interface AuthError {
+    data class Known(val message: AuthMessage) : AuthError
+
+    /** Shown verbatim: we did not recognise it, and hiding it would leave the user with nothing. */
+    data class Unknown(val raw: String) : AuthError
+}
+
+fun CredentialError.asAuthMessage(): AuthMessage = when (this) {
+    CredentialError.EmptyEmail -> AuthMessage.EMPTY_EMAIL
+    CredentialError.MalformedEmail -> AuthMessage.MALFORMED_EMAIL
+    CredentialError.ShortPassword -> AuthMessage.SHORT_PASSWORD
+}
+
+fun AuthMessage.text(context: Context): String = when (this) {
+    AuthMessage.EMPTY_EMAIL -> context.getString(R.string.auth_error_empty_email)
+    AuthMessage.MALFORMED_EMAIL -> context.getString(R.string.auth_error_malformed_email)
+    AuthMessage.SHORT_PASSWORD ->
+        context.getString(R.string.auth_error_short_password, MIN_PASSWORD_LENGTH)
+
+    AuthMessage.GENERIC_FAILURE -> context.getString(R.string.auth_error_generic)
+    AuthMessage.INVALID_CREDENTIALS -> context.getString(R.string.auth_error_invalid_credentials)
+    AuthMessage.EMAIL_NOT_CONFIRMED -> context.getString(R.string.auth_error_email_not_confirmed)
+    AuthMessage.ALREADY_REGISTERED -> context.getString(R.string.auth_error_already_registered)
+    AuthMessage.RATE_LIMITED -> context.getString(R.string.auth_error_rate_limited)
+    AuthMessage.NETWORK_UNREACHABLE -> context.getString(R.string.auth_error_network)
+    AuthMessage.SESSION_EXPIRED -> context.getString(R.string.auth_error_session_expired)
+    AuthMessage.DELETE_UNAVAILABLE -> context.getString(R.string.auth_error_delete_unavailable)
+    AuthMessage.NOT_SIGNED_IN -> context.getString(R.string.auth_error_not_signed_in)
+}
+
+fun AuthError.text(context: Context): String = when (this) {
+    is AuthError.Known -> message.text(context)
+    is AuthError.Unknown -> raw
 }
 
 /**
- * Supabase returns English messages; map the ones a user actually hits so the
- * screen stays in Korean, and fall through to the original otherwise.
+ * Supabase returns raw English messages; map the ones a user actually hits onto our own
+ * wording, and fall through to the server's own text otherwise.
  */
-fun translateAuthError(raw: String?): String {
+fun translateAuthError(raw: String?): AuthError {
     val message = raw?.trim().orEmpty()
     val lowered = message.lowercase()
     return when {
-        message.isEmpty() -> "요청 중 오류가 발생했습니다."
-        "invalid login credentials" in lowered -> "이메일 또는 비밀번호가 올바르지 않습니다."
-        "email not confirmed" in lowered -> "가입 확인 메일의 링크를 먼저 눌러주세요."
+        message.isEmpty() -> known(AuthMessage.GENERIC_FAILURE)
+        "invalid login credentials" in lowered -> known(AuthMessage.INVALID_CREDENTIALS)
+        "email not confirmed" in lowered -> known(AuthMessage.EMAIL_NOT_CONFIRMED)
         "user already registered" in lowered || "already been registered" in lowered ->
-            "이미 가입된 이메일입니다. 로그인해주세요."
+            known(AuthMessage.ALREADY_REGISTERED)
 
-        "password should be at least" in lowered ->
-            "비밀번호는 ${MIN_PASSWORD_LENGTH}자 이상이어야 합니다."
-
-        "unable to validate email address" in lowered -> "이메일 형식이 올바르지 않습니다."
+        "password should be at least" in lowered -> known(AuthMessage.SHORT_PASSWORD)
+        "unable to validate email address" in lowered -> known(AuthMessage.MALFORMED_EMAIL)
         "over_email_send_rate_limit" in lowered || "rate limit" in lowered ->
-            "요청이 너무 잦습니다. 잠시 뒤 다시 시도해주세요."
+            known(AuthMessage.RATE_LIMITED)
 
         "failed to connect" in lowered || "unable to resolve host" in lowered || "timeout" in lowered ->
-            "네트워크에 연결할 수 없습니다."
+            known(AuthMessage.NETWORK_UNREACHABLE)
 
-        else -> message
+        else -> AuthError.Unknown(message)
     }
 }
+
+private fun known(message: AuthMessage): AuthError = AuthError.Known(message)
 
 /**
  * Account deletion goes through the `delete-account` Edge Function rather than GoTrue, so the
@@ -70,7 +125,7 @@ fun translateAuthError(raw: String?): String {
  * or the function itself being unavailable. Anything else — network trouble above all — reads
  * the same as everywhere else, so fall through to [translateAuthError].
  */
-fun translateDeleteAccountError(raw: String?): String {
+fun translateDeleteAccountError(raw: String?): AuthError {
     val message = raw?.trim().orEmpty()
     val lowered = message.lowercase()
     return when {
@@ -78,10 +133,10 @@ fun translateDeleteAccountError(raw: String?): String {
             "jwt expired" in lowered ||
             "missing authorization" in lowered ||
             "not authenticated" in lowered ->
-            "로그인이 만료되었습니다. 다시 로그인한 뒤 시도해주세요."
+            known(AuthMessage.SESSION_EXPIRED)
 
         "function not found" in lowered || "requested function was not found" in lowered ->
-            "지금은 탈퇴를 처리할 수 없습니다. 잠시 뒤 다시 시도해주세요."
+            known(AuthMessage.DELETE_UNAVAILABLE)
 
         else -> translateAuthError(message)
     }

@@ -17,35 +17,38 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.tubelimiter.app.R
 import com.tubelimiter.app.permission.AppPermission
 
-private data class PermissionCopy(val title: String, val rationale: String, val action: String)
+/** Resource ids rather than text, so a card can be described without a Context in hand. */
+private data class PermissionCopy(val titleRes: Int, val rationaleRes: Int, val actionRes: Int)
 
 private fun copyFor(permission: AppPermission): PermissionCopy = when (permission) {
     AppPermission.USAGE_ACCESS -> PermissionCopy(
-        title = "사용 현황 접근",
-        rationale = "유튜브 앱을 얼마나 봤는지 재려면 필요합니다. 설정 화면에서 TubeLimiter를 직접 켜야 합니다.",
-        action = "설정 열기",
+        titleRes = R.string.permission_usage_access_title,
+        rationaleRes = R.string.permission_usage_access_rationale,
+        actionRes = R.string.onboarding_action_open_settings,
     )
 
     AppPermission.OVERLAY -> PermissionCopy(
-        title = "다른 앱 위에 표시",
-        rationale = "한도를 넘겼을 때 차단 화면을 띄우려면 필요합니다.",
-        action = "설정 열기",
+        titleRes = R.string.permission_overlay_title,
+        rationaleRes = R.string.permission_overlay_rationale,
+        actionRes = R.string.onboarding_action_open_settings,
     )
 
     AppPermission.BATTERY_UNRESTRICTED -> PermissionCopy(
-        title = "배터리 최적화 제외",
-        rationale = "절전 모드에서 감지가 멈추지 않게 하려면 필요합니다.",
-        action = "허용 요청",
+        titleRes = R.string.permission_battery_title,
+        rationaleRes = R.string.permission_battery_rationale,
+        actionRes = R.string.onboarding_action_request,
     )
 
     AppPermission.NOTIFICATIONS -> PermissionCopy(
-        title = "알림",
-        rationale = "감지 서비스가 백그라운드에 상주하려면 알림 하나를 띄워야 합니다.",
-        action = "허용 요청",
+        titleRes = R.string.permission_notifications_title,
+        rationaleRes = R.string.permission_notifications_rationale,
+        actionRes = R.string.onboarding_action_request,
     )
 }
 
@@ -64,12 +67,12 @@ fun OnboardingScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(
-            text = "권한 설정",
+            text = stringResource(R.string.onboarding_title),
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
         )
         Text(
-            text = "아래 네 가지를 순서대로 허용해야 유튜브 사용시간 감지와 차단이 동작합니다.",
+            text = stringResource(R.string.onboarding_intro),
             style = MaterialTheme.typography.bodyMedium,
         )
 
@@ -99,18 +102,23 @@ private fun PermissionCard(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = if (isGranted) "완료" else "미허용", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    text = stringResource(
+                        if (isGranted) R.string.onboarding_status_granted else R.string.onboarding_status_missing,
+                    ),
+                    style = MaterialTheme.typography.labelLarge,
+                )
                 Spacer(Modifier.width(12.dp))
                 Text(
-                    text = copy.title,
+                    text = stringResource(copy.titleRes),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
             }
-            Text(text = copy.rationale, style = MaterialTheme.typography.bodySmall)
+            Text(text = stringResource(copy.rationaleRes), style = MaterialTheme.typography.bodySmall)
             if (!isGranted) {
                 Button(onClick = onRequest, enabled = isNext) {
-                    Text(copy.action)
+                    Text(stringResource(copy.actionRes))
                 }
             }
         }

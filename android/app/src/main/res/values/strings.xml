@@ -1,4 +1,271 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">TubeLimiter</string>
+
+    <!-- 앱 셸: 헤더와 하단 탭 -->
+    <string name="app_header_title">🎯 TubeLimiter</string>
+    <string name="nav_home">홈</string>
+    <string name="nav_dashboard">통계</string>
+    <string name="nav_settings">설정</string>
+
+    <!--
+        사용시간 표기. 어순이 언어마다 다르므로 조각을 코드에서 잇지 않고 통째로 포맷한다
+        ([com.tubelimiter.app.usage.formatDuration] 참고).
+    -->
+    <string name="duration_seconds">%1$d초</string>
+    <string name="duration_minutes">%1$d분</string>
+    <string name="duration_hours_minutes">%1$d시간 %2$d분</string>
+
+    <!-- 개수 표기 -->
+    <plurals name="count_days">
+        <item quantity="other">%1$d일</item>
+    </plurals>
+    <!-- 뱃지 칩처럼 일곱 개가 한 줄에 들어가는 좁은 자리용 -->
+    <string name="count_days_compact">%1$d일</string>
+    <string name="count_minutes">%1$d분</string>
+    <string name="count_times">%1$d회</string>
+    <string name="unlimited">무제한</string>
+    <string name="cancel">취소</string>
+
+    <!-- 권한 온보딩 -->
+    <string name="onboarding_title">권한 설정</string>
+    <string name="onboarding_intro">아래 네 가지를 순서대로 허용해야 유튜브 사용시간 감지와 차단이 동작합니다.</string>
+    <string name="onboarding_status_granted">완료</string>
+    <string name="onboarding_status_missing">미허용</string>
+    <string name="onboarding_action_open_settings">설정 열기</string>
+    <string name="onboarding_action_request">허용 요청</string>
+    <string name="permission_usage_access_title">사용 현황 접근</string>
+    <string name="permission_usage_access_rationale">유튜브 앱을 얼마나 봤는지 재려면 필요합니다. 설정 화면에서 TubeLimiter를 직접 켜야 합니다.</string>
+    <string name="permission_overlay_title">다른 앱 위에 표시</string>
+    <string name="permission_overlay_rationale">한도를 넘겼을 때 차단 화면을 띄우려면 필요합니다.</string>
+    <string name="permission_battery_title">배터리 최적화 제외</string>
+    <string name="permission_battery_rationale">절전 모드에서 감지가 멈추지 않게 하려면 필요합니다.</string>
+    <string name="permission_notifications_title">알림</string>
+    <string name="permission_notifications_rationale">감지 서비스가 백그라운드에 상주하려면 알림 하나를 띄워야 합니다.</string>
+    <string name="permission_settings_unavailable">설정 화면을 열 수 없습니다.</string>
+
+    <!-- 로그인 / 회원가입 -->
+    <string name="auth_title_sign_in">로그인</string>
+    <string name="auth_title_sign_up">회원가입</string>
+    <string name="auth_subtitle">크롬 확장과 같은 계정을 쓰면 설정과 기록이 이어집니다.</string>
+    <string name="auth_field_email">이메일</string>
+    <string name="auth_field_password">비밀번호</string>
+    <string name="auth_switch_to_sign_up">계정이 없으신가요? 회원가입</string>
+    <string name="auth_switch_to_sign_in">이미 계정이 있으신가요? 로그인</string>
+    <string name="auth_later">나중에 하기</string>
+    <string name="auth_notice_confirmation_sent">가입 확인 메일을 보냈어요. 메일의 링크를 누른 뒤 로그인해주세요.</string>
+    <string name="auth_error_empty_email">이메일을 입력하세요.</string>
+    <string name="auth_error_malformed_email">이메일 형식이 올바르지 않습니다.</string>
+    <string name="auth_error_short_password">비밀번호는 %1$d자 이상이어야 합니다.</string>
+    <string name="auth_error_generic">요청 중 오류가 발생했습니다.</string>
+    <string name="auth_error_invalid_credentials">이메일 또는 비밀번호가 올바르지 않습니다.</string>
+    <string name="auth_error_email_not_confirmed">가입 확인 메일의 링크를 먼저 눌러주세요.</string>
+    <string name="auth_error_already_registered">이미 가입된 이메일입니다. 로그인해주세요.</string>
+    <string name="auth_error_rate_limited">요청이 너무 잦습니다. 잠시 뒤 다시 시도해주세요.</string>
+    <string name="auth_error_network">네트워크에 연결할 수 없습니다.</string>
+    <string name="auth_error_session_expired">로그인이 만료되었습니다. 다시 로그인한 뒤 시도해주세요.</string>
+    <string name="auth_error_delete_unavailable">지금은 탈퇴를 처리할 수 없습니다. 잠시 뒤 다시 시도해주세요.</string>
+    <string name="auth_error_not_signed_in">로그인 상태가 아닙니다.</string>
+
+    <!-- 차단 사유: 홈 화면 뱃지와 차단 오버레이 제목이 같이 쓴다 -->
+    <string name="block_reason_focus_mode">집중 모드가 켜져 있어요</string>
+    <string name="block_reason_scheduled">예약된 차단 시간이에요</string>
+    <string name="block_reason_manual">직접 차단해 둔 상태예요</string>
+    <string name="block_reason_usage_limit">오늘 한도를 다 썼어요</string>
+
+    <!-- 차단 오버레이 -->
+    <string name="block_overlay_used_only">사용 %1$s</string>
+    <string name="block_overlay_used_of_limit">사용 %1$s / 한도 %2$s</string>
+    <string name="block_overlay_focus_mode">집중 모드가 끝나면 다시 열립니다.</string>
+    <string name="block_overlay_scheduled">예약된 시간이 끝나면 다시 열립니다.</string>
+    <string name="block_overlay_manual">앱에서 차단을 풀 수 있어요.</string>
+    <plurals name="block_overlay_emergency">
+        <item quantity="other">긴급 시청 5분 (%1$d회 남음)</item>
+    </plurals>
+    <string name="block_overlay_go_home">홈으로</string>
+
+    <!-- 홈 -->
+    <string name="home_sync_warning_never">아직 한 번도 동기화에 성공하지 못했어요. 설정 &gt; 동기화 상태에서 확인할 수 있어요.</string>
+    <plurals name="home_sync_warning_stale">
+        <item quantity="other">동기화가 %1$d시간째 되지 않고 있어요. 설정 &gt; 동기화 상태에서 확인할 수 있어요.</item>
+    </plurals>
+    <plurals name="home_streak_subtitle">
+        <item quantity="other">일 연속 성공 · 최고 %1$d일</item>
+    </plurals>
+    <string name="home_level_line">%1$s Lv.%2$d · %3$d/%4$d XP</string>
+    <string name="home_ring_label">차단까지</string>
+    <string name="home_stat_used_today">오늘 사용</string>
+    <string name="home_stat_emergency_left">긴급 시청 남음</string>
+    <string name="home_badge_monitoring">감시</string>
+    <string name="home_badge_monitoring_on">감시 중</string>
+    <string name="home_badge_mode">모드</string>
+    <string name="home_badge_off">꺼짐</string>
+    <string name="home_mode_inactive">비활성</string>
+    <string name="home_mode_focus_stop_pending">집중 모드 종료 대기 · %1$s 후 종료</string>
+    <string name="home_mode_focus_active">집중 모드 · %1$s 남음</string>
+    <string name="home_mode_focus_scheduled">집중 모드 대기 중 · %1$s 뒤 시작</string>
+    <string name="home_mode_schedule_window">%1$s · %2$s까지</string>
+    <string name="home_focus_title">집중 모드</string>
+    <string name="home_focus_intro">한도와 무관하게 정해진 시간 동안 즉시 차단합니다.</string>
+    <string name="home_focus_stops_in">%1$s 후 종료</string>
+    <string name="home_focus_stop_pending_note">종료를 요청했어요. 충동적으로 끄지 못하도록 잠시 기다립니다.</string>
+    <string name="home_focus_cancel_stop">종료 예약 취소</string>
+    <string name="home_focus_remaining">%1$s 남음</string>
+    <string name="home_focus_stop">집중 모드 종료</string>
+    <string name="home_focus_scheduled_note">%1$s 뒤 %2$d분간 시작</string>
+    <string name="home_focus_cancel_schedule">예약 취소</string>
+    <string name="home_focus_delay_label">지연(분)</string>
+    <string name="home_focus_duration_label">지속(분)</string>
+    <string name="home_focus_start">집중 모드 시작</string>
+    <string name="home_manual_block_title">직접 차단</string>
+    <string name="home_manual_block_on">한도와 무관하게 차단 중</string>
+    <string name="home_monitoring_title">백그라운드 감시</string>
+    <string name="home_monitoring_on">켜짐 — 앱을 닫아도 계속 잽니다</string>
+    <string name="home_monitoring_off">꺼짐 — 차단되지 않습니다</string>
+
+    <!-- 통계 -->
+    <string name="dashboard_hardcore_hint">연속 기록과 XP는 하드코어 모드가 켜져 있을 때만 쌓입니다.</string>
+    <string name="dashboard_level_line">%1$s %2$s · Lv.%3$d</string>
+    <string name="dashboard_xp_progress">%1$d / %2$d XP</string>
+    <string name="dashboard_stat_streak">연속</string>
+    <string name="dashboard_stat_best">최고</string>
+    <string name="dashboard_stat_success">성공</string>
+    <string name="dashboard_stat_perfect">완벽</string>
+    <string name="dashboard_badges">뱃지</string>
+    <string name="dashboard_perfect_badges">완벽한 날 (긴급 시청 0회)</string>
+    <string name="dashboard_heatmap_title">최근 28일</string>
+    <string name="dashboard_chart_title">사용시간 추이</string>
+    <string name="dashboard_chart_mode_time">사용 시간</string>
+    <string name="dashboard_chart_mode_percent" formatted="false">한도 대비 %</string>
+    <string name="dashboard_chart_peak_percent">최대 %1$d%%</string>
+    <string name="dashboard_chart_peak_duration">최대 %1$s</string>
+    <string name="dashboard_hourly_title">시간대별 사용 패턴</string>
+    <string name="dashboard_hour_start">0시</string>
+    <string name="dashboard_hour_end">23시</string>
+
+    <!-- 레벨 티어 -->
+    <string name="level_tier_legend">전설</string>
+    <string name="level_tier_master">마스터</string>
+    <string name="level_tier_skilled">숙련자</string>
+    <string name="level_tier_trainee">수련생</string>
+    <string name="level_tier_seed">새싹</string>
+
+    <!-- 설정 -->
+    <string name="settings_account">계정</string>
+    <string name="settings_account_loading">확인 중…</string>
+    <string name="settings_account_synced">크롬 확장과 기록이 이어집니다.</string>
+    <string name="settings_sign_out">로그아웃</string>
+    <string name="settings_account_signed_out">로그인하지 않아도 차단은 동작합니다. 로그인하면 확장과 계정을 공유합니다.</string>
+    <string name="settings_sign_in">로그인 / 회원가입</string>
+    <string name="settings_limit_mode">한도 방식</string>
+    <string name="settings_limit_mode_daily">매일 같음</string>
+    <string name="settings_limit_mode_by_day">요일별</string>
+    <string name="settings_daily_limit">하루 한도</string>
+    <string name="settings_by_day_limit">요일별 한도</string>
+    <string name="settings_minutes_entry_daily">직접 입력(분, 0=무제한)</string>
+    <string name="settings_minutes_entry_by_day">직접 입력(분, -1=무제한)</string>
+    <string name="settings_emergency">긴급 시청</string>
+    <string name="settings_emergency_intro">차단된 동안 5분만 예외로 열어줍니다.</string>
+    <plurals name="settings_emergency_allowance">
+        <item quantity="other">%1$d회</item>
+    </plurals>
+    <string name="settings_emergency_entry">직접 입력(회)</string>
+    <string name="settings_emergency_reset_daily">매일 리셋</string>
+    <string name="settings_emergency_reset_weekly">매주 리셋</string>
+    <string name="settings_emergency_reset_monthly">매달 리셋</string>
+    <string name="settings_alarms">알림</string>
+    <string name="settings_alarm_interval_question">몇 분마다 알려줄까요</string>
+    <string name="settings_alarm_interval_off">끔</string>
+    <string name="settings_alarm_interval_entry">직접 입력(분, 0=끔)</string>
+    <string name="settings_alarm_milestones">남은 시간 30·10·5·1분 알림</string>
+    <string name="settings_hardcore">하드코어 모드</string>
+    <string name="settings_hardcore_intro">켜면 한도 설정이 잠기고, 켜져 있는 동안만 연속 기록과 XP가 쌓입니다. 끄기는 1시간 뒤에 적용되고 연속 기록은 0으로 초기화됩니다.</string>
+    <string name="settings_hardcore_enable">켜기</string>
+    <string name="settings_hardcore_cooldown">%1$s 뒤 해제됩니다.</string>
+    <string name="settings_hardcore_cancel">해제 취소</string>
+    <string name="settings_hardcore_disable">끄기 요청</string>
+    <string name="settings_schedule">예약 차단</string>
+    <string name="settings_schedule_intro">정해진 요일·시간대엔 한도와 무관하게 자동으로 차단됩니다. 집중 모드처럼 긴급 시청으로 우회할 수 없어요.</string>
+    <string name="settings_schedule_default_label">밤 시간</string>
+    <string name="settings_schedule_add">+ 예약 추가</string>
+    <string name="settings_schedule_label">라벨</string>
+    <string name="settings_schedule_start">시작</string>
+    <string name="settings_schedule_end">종료</string>
+    <string name="settings_schedule_remove">삭제</string>
+    <string name="settings_diagnostics_title">동기화 상태 / 진단</string>
+    <string name="settings_diagnostics_never">기록 없음</string>
+    <string name="settings_diagnostics_summary_ok">최근 성공 %1$s · 실패 없음</string>
+    <plurals name="settings_diagnostics_summary_failures">
+        <item quantity="other">최근 성공 %1$s · 실패 %2$d건</item>
+    </plurals>
+    <string name="settings_diagnostics_privacy">이 기기에만 저장되고 서버로 보내지 않습니다. 이메일·계정 ID·토큰은 기록하지 않아요.</string>
+    <string name="settings_diagnostics_empty">기록된 실패가 없습니다.</string>
+    <string name="settings_diagnostics_copy">복사</string>
+    <string name="settings_diagnostics_clear">전체 지우기</string>
+    <string name="settings_diagnostics_clip_label">TubeLimiter 진단</string>
+    <string name="settings_diagnostics_copied">진단 정보를 복사했어요.</string>
+    <string name="diagnostic_kind_sync_settings">설정 동기화</string>
+    <string name="diagnostic_kind_sync_streak">연속 기록 / 뱃지</string>
+    <string name="diagnostic_kind_sync_usage">사용시간 보고</string>
+    <string name="diagnostic_kind_emergency_fetch">긴급 횟수 조회</string>
+    <string name="diagnostic_kind_auth">로그인 세션</string>
+    <string name="diagnostic_kind_monitor">감시 루프</string>
+    <string name="settings_delete_account">계정 삭제</string>
+    <string name="settings_delete_account_warning">계정과 서버에 저장된 모든 기록이 지워집니다. 되돌릴 수 없어요.</string>
+    <string name="settings_delete_account_in_flight">삭제 중…</string>
+    <string name="settings_delete_dialog_title">계정을 삭제할까요?</string>
+    <string name="settings_delete_dialog_items">다음 항목이 모두 삭제됩니다.\n• 계정\n• 사용시간 기록\n• 스트릭 / XP\n• 뱃지\n• 설정</string>
+    <string name="settings_delete_dialog_note">삭제하면 되돌릴 수 없고, 크롬 확장에서도 같은 계정으로 로그인할 수 없습니다. 이 기기에 남아 있는 기록도 함께 지워집니다.</string>
+    <string name="settings_delete_dialog_confirm">영구 삭제</string>
+    <string name="settings_account_deleted">계정이 삭제되었습니다.</string>
+
+    <!-- 요일 약칭. 일요일부터 — [com.tubelimiter.app.usage.dayIndex]와 같은 순서다. -->
+    <string-array name="day_labels_short">
+        <item>일</item>
+        <item>월</item>
+        <item>화</item>
+        <item>수</item>
+        <item>목</item>
+        <item>금</item>
+        <item>토</item>
+    </string-array>
+
+    <!-- 알림 채널 -->
+    <string name="notification_channel_ongoing_name">사용시간 감시</string>
+    <string name="notification_channel_ongoing_description">유튜브 사용시간을 재는 동안 표시됩니다.</string>
+    <string name="notification_channel_nudge_name">알림</string>
+    <string name="notification_channel_nudge_description">남은 시간 알림, 집중 모드 시작·종료 등.</string>
+
+    <!-- 상주 알림 -->
+    <string name="notification_ongoing_starting">감시 중</string>
+    <string name="notification_ongoing_blocked">차단 중 · 오늘 %1$s 사용</string>
+    <string name="notification_ongoing_unlimited">오늘 %1$s 사용 · 한도 없음</string>
+    <string name="notification_ongoing_with_limit">오늘 %1$s 사용 · %2$s 남음</string>
+
+    <!-- 알림 문구 -->
+    <plurals name="nudge_streak_milestone">
+        <item quantity="other">%1$d일 연속 달성! 뱃지를 얻었어요.</item>
+    </plurals>
+    <plurals name="nudge_perfect_milestone">
+        <item quantity="other">긴급 시청 없이 %1$d일 연속! 완벽한 날 뱃지를 얻었어요.</item>
+    </plurals>
+    <string name="nudge_hardcore_released">하드코어 모드가 해제되었습니다. 연속 기록이 초기화됐어요.</string>
+    <string name="nudge_focus_started">집중 모드가 시작되었습니다.</string>
+    <string name="nudge_focus_ended">집중 모드가 종료되었습니다.</string>
+    <string name="nudge_schedule_started">예약된 차단 시간이 시작되었습니다.</string>
+    <string name="nudge_schedule_ended">예약된 차단 시간이 종료되었습니다.</string>
+    <string name="nudge_schedule_upcoming">10분 후 예약된 차단이 시작됩니다.</string>
+    <string name="nudge_emergency_blocked_focus">집중 모드 중에는 긴급 시청을 쓸 수 없어요.</string>
+    <string name="nudge_emergency_blocked_schedule">예약된 차단 시간에는 긴급 시청을 쓸 수 없어요.</string>
+    <plurals name="nudge_emergency_cooldown">
+        <item quantity="other">%1$d초 후 다시 시도해주세요.</item>
+    </plurals>
+    <string name="nudge_emergency_none_left_elsewhere">다른 기기에서 이미 다 써서 남은 긴급 시청 횟수가 없습니다.</string>
+    <string name="nudge_emergency_none_left">남은 긴급 시청 횟수가 없습니다.</string>
+    <plurals name="alarm_watching_minutes">
+        <item quantity="other">오늘 유튜브를 %1$d분째 보고 있어요.</item>
+    </plurals>
+    <plurals name="alarm_remaining_minutes">
+        <item quantity="other">오늘 남은 시청 시간이 %1$d분입니다.</item>
+    </plurals>
 </resources>

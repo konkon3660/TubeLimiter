@@ -74,9 +74,19 @@ class DayWindowTest {
 
     @Test
     fun `durations read as seconds under a minute`() {
-        assertEquals("45초", formatDuration(45_000))
-        assertEquals("30분", formatDuration(30 * 60_000L))
-        assertEquals("2시간 5분", formatDuration((125 * 60_000).toLong()))
+        // The wording lives in strings.xml; what is worth pinning here is the coarseness:
+        // seconds below a minute, whole minutes above it, and hours once there are any.
+        assertEquals(DurationParts(hours = 0, minutes = 0, seconds = 45), durationParts(45_000))
+        assertEquals(DurationParts(hours = 0, minutes = 30, seconds = 0), durationParts(30 * 60_000L))
+        assertEquals(
+            DurationParts(hours = 2, minutes = 5, seconds = 0),
+            durationParts((125 * 60_000).toLong()),
+        )
+    }
+
+    @Test
+    fun `seconds are dropped above a minute so a ticking clock does not redraw`() {
+        assertEquals(durationParts(45 * 60_000L), durationParts(45 * 60_000L + 5_000L))
     }
 
     @Test

@@ -37,7 +37,7 @@ sealed interface AuthResult {
 
     /** Sign-up succeeded but the address still needs confirming before a session exists. */
     data object ConfirmationRequired : AuthResult
-    data class Failed(val message: String) : AuthResult
+    data class Failed(val error: AuthError) : AuthResult
 }
 
 class AuthRepository(context: Context) {
@@ -119,7 +119,7 @@ class AuthRepository(context: Context) {
      */
     suspend fun deleteAccount(): AuthResult {
         if (client.auth.currentSessionOrNull() == null) {
-            return AuthResult.Failed("로그인 상태가 아닙니다.")
+            return AuthResult.Failed(AuthError.Known(AuthMessage.NOT_SIGNED_IN))
         }
         return runCatching {
             // No arguments: the function reads the caller from the JWT this call carries.

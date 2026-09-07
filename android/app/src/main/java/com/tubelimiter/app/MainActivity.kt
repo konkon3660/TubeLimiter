@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,9 +40,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tubelimiter.app.auth.AccountState
+import com.tubelimiter.app.auth.AuthError
 import com.tubelimiter.app.auth.AuthMode
 import com.tubelimiter.app.auth.AuthRepository
 import com.tubelimiter.app.auth.AuthResult
+import com.tubelimiter.app.auth.text
 import com.tubelimiter.app.data.AppSettings
 import com.tubelimiter.app.data.AppState
 import com.tubelimiter.app.data.RuntimeState
@@ -92,10 +95,10 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Tab(val label: String, val glyph: String) {
-    HOME("홈", "🏠"),
-    DASHBOARD("통계", "📊"),
-    SETTINGS("설정", "⚙️"),
+private enum class Tab(val labelRes: Int, val glyph: String) {
+    HOME(R.string.nav_home, "🏠"),
+    DASHBOARD(R.string.nav_dashboard, "📊"),
+    SETTINGS(R.string.nav_settings, "⚙️"),
 }
 
 /** Same indigo gradient banner as the extension popup's `.header`, so both clients read as one app. */
@@ -109,7 +112,7 @@ private fun AppHeader() {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "🎯 TubeLimiter",
+            text = stringResource(R.string.app_header_title),
             color = Color.White,
             fontWeight = FontWeight.Bold,
             fontSize = 18.sp,
@@ -138,8 +141,9 @@ fun AppRoot() {
     var showAuth by remember { mutableStateOf(false) }
     var authBusy by remember { mutableStateOf(false) }
     var deleteAccountBusy by remember { mutableStateOf(false) }
-    var authError by remember { mutableStateOf<String?>(null) }
-    var authNotice by remember { mutableStateOf<String?>(null) }
+    var authError by remember { mutableStateOf<AuthError?>(null) }
+    // String resource for the notice under the auth fields, resolved by the screen itself.
+    var authNoticeRes by remember { mutableStateOf<Int?>(null) }
 
     val settings by settingsStore.settings.collectAsStateWithLifecycle(Settings())
     val state by stateStore.state.collectAsStateWithLifecycle(RuntimeState())
@@ -208,7 +212,11 @@ fun AppRoot() {
                         try {
                             if (intent != null) context.startActivity(intent)
                         } catch (_: ActivityNotFoundException) {
-                            Toast.makeText(context, "설정 화면을 열 수 없습니다.", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.permission_settings_unavailable),
+                                Toast.LENGTH_SHORT,
+                            ).show()
                         }
                     }
                 },
@@ -221,23 +229,23 @@ fun AppRoot() {
         Scaffold(modifier = Modifier.fillMaxSize(), topBar = { AppHeader() }) { padding ->
             AuthScreen(
                 busy = authBusy,
-                errorMessage = authError,
-                noticeMessage = authNotice,
+                error = authError,
+                noticeRes = authNoticeRes,
                 modifier = Modifier.padding(padding),
                 onClearMessages = {
                     authError = null
-                    authNotice = null
+                    authNoticeRes = null
                 },
                 onCancel = {
                     showAuth = false
                     authError = null
-                    authNotice = null
+                    authNoticeRes = null
                 },
                 onSubmit = { mode, email, password ->
                     scope.launch {
                         authBusy = true
                         authError = null
-                        authNotice = null
+                        authNoticeRes = null
                         val result = when (mode) {
                             AuthMode.SIGN_IN -> authRepository.signIn(email, password)
                             AuthMode.SIGN_UP -> authRepository.signUp(email, password)
@@ -246,9 +254,9 @@ fun AppRoot() {
                         when (result) {
                             AuthResult.Success -> showAuth = false
                             AuthResult.ConfirmationRequired ->
-                                authNotice = "가입 확인 메일을 보냈어요. 메일의 링크를 누른 뒤 로그인해주세요."
+                                authNoticeRes = R.string.auth_notice_confirmation_sent
 
-                            is AuthResult.Failed -> authError = result.message
+                            is AuthResult.Failed -> authError = result.error
                         }
                     }
                 },
@@ -299,7 +307,7 @@ fun AppRoot() {
                         selected = tab == entry,
                         onClick = { tab = entry },
                         icon = { Text(entry.glyph) },
-                        label = { Text(entry.label) },
+                        label = { Text(stringResource(entry.labelRes)) },
                     )
                 }
             }
@@ -391,7 +399,7 @@ fun AppRoot() {
                     scope.launch {
                         val result = authRepository.signOut()
                         if (result is AuthResult.Failed) {
-                            Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, result.error.text(context), Toast.LENGTH_SHORT).show()
                         }
                     }
                 },
@@ -412,8 +420,8 @@ fun AppRoot() {
                             }
                             deleteAccountBusy = false
                             val notice = when (result) {
-                                is AuthResult.Failed -> result.message
-                                else -> "계정이 삭제되었습니다."
+                                is AuthResult.Failed -> result.error.text(context)
+                                else -> context.getString(R.string.settings_account_deleted)
                             }
                             Toast.makeText(context, notice, Toast.LENGTH_LONG).show()
                         }
@@ -447,9 +455,14 @@ fun AppRoot() {
                 // (diagnostics/SyncDiagnostics.kt의 "민감정보 금지" 주석 참고).
                 onCopyDiagnostics = {
                     val report = buildDiagnosticsReport(state.lastSyncSuccessAtMillis, state.diagnosticEvents)
+                    val clipLabel = context.getString(R.string.settings_diagnostics_clip_label)
                     context.getSystemService(ClipboardManager::class.java)
-                        ?.setPrimaryClip(ClipData.newPlainText("TubeLimiter 진단", report))
-                    Toast.makeText(context, "진단 정보를 복사했어요.", Toast.LENGTH_SHORT).show()
+                        ?.setPrimaryClip(ClipData.newPlainText(clipLabel, report))
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.settings_diagnostics_copied),
+                        Toast.LENGTH_SHORT,
+                    ).show()
                 },
                 modifier = contentModifier,
             )
