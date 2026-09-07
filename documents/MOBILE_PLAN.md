@@ -93,6 +93,16 @@
 3. ~~UsageStatsManager 폴링.~~ 완료 — 실기기에서 감지 확인됨. 하루 경계는 24시간 룩백으로 이전 상태를 판정해 `startsInForeground`로 넘김.
 4. ~~오버레이 차단.~~ 구현 완료 — Foreground Service(`UsageMonitorService`)가 폴링, 한도 초과 + 유튜브 foreground면 `BlockOverlay` 표시. **실기기 검증 미완**.
 5. ~~확장 기능 포팅.~~ 완료 — Supabase 동기화(인증 + 네트워크) 포함.
+6. ~~릴리스 빌드 준비.~~ 완료 — 버전을 `gradle.properties`로 빼고, 릴리스 서명은 커밋하지 않는 `keystore.properties`에서 읽으며(없으면 미서명 빌드), R8 축소 + kotlinx.serialization keep 룰. 절차는 [ANDROID_SETUP.md](ANDROID_SETUP.md).
+7. ~~ktlint 게이트.~~ 완료 — 처음엔 기존 위반 22건 때문에 `ignoreFailures = true`로 들어왔고, `ktlintFormat`으로 backlog를 비운 뒤 `false`로 뒤집었다. 이제 위반 하나에 빌드가 깨진다.
+8. ~~유닛 테스트 CI.~~ 붙임 — `.github/workflows/ci.yml`. **단, 안드로이드 잡은 아직 한 번도 실행되지 않아 미검증**(아래 "CI" 참고).
+9. ~~진단 로그 / 다국어.~~ 완료 — 위 대응표 참고.
+
+남은 것:
+
+- **오버레이 실기기 검증** (위 4번). 에뮬레이터로는 `UsageStatsManager` 정확도를 못 봐서 여전히 미완.
+- **CI 안드로이드 잡 첫 실행 확인** — 아직 한 번도 안 돌아서 SDK 37 설치와 JDK 버전이 미검증이다. 잡 구성과 실패 예상 지점은 [ANDROID_SETUP.md](ANDROID_SETUP.md)의 "CI".
+- 대시보드의 서버 기록 병합 / 그날 한도 스냅샷 포팅(대응표의 "미포팅" 두 줄). 로컬만 봐도 동작에 문제는 없지만, 폰을 새로 깔면 히트맵이 비어 보이고 한도를 올리면 과거 판정이 같이 움직인다.
 
 ### 확장 대비 기능 대응표
 
@@ -101,23 +111,32 @@
 | 일일 한도 / 요일별 한도 | 완료 | 요일 인덱스는 확장과 동일하게 일=0 기준 저장 |
 | 새벽 4시 하루 경계 | 완료 | `lib/time.js`의 `DAY_CUTOFF_HOUR` 포팅 |
 | 집중 모드 (지연 시작 포함) | 완료 | |
-| 긴급 시청 5분 (일/주/월 리셋) | 완료 | 차단 오버레이에서 바로 사용 |
+| 긴급 시청 5분 (일/주/월 리셋) | 완료 | 차단 오버레이에서 바로 사용. 남은 횟수는 계정 단위 — 다른 기기가 쓴 몫을 빼고 보여주고, 게이트는 `consumeEmergency`의 edit 트랜잭션 안에서 읽어 원자적으로 유지. 버킷 합산 규칙은 [BACKEND.md](BACKEND.md) |
 | 수동 차단 | 완료 | |
 | 알림 (N분 주기 / 남은 30·10·5·1분) | 완료 | |
 | 하드코어 모드 + 1시간 해제 쿨다운 | 완료 | 해제 시 연속 기록 0으로 초기화까지 동일 |
 | 스트릭 / XP / 레벨 / 뱃지 | 완료 | 레벨 공식·XP 배분 모두 동일. 긴급 시청 시간을 스트릭 판정에서 빼고 "완벽한 날"(긴급 시청 0회)을 따로 세는 규칙도 `Gamification.kt`에 같이 포팅됨 |
 | 대시보드 (28일 히트맵, 14일 막대) | 완료 | Compose 자체 구현, 차트 라이브러리 없음 |
+| 대시보드에 서버 기록 병합 | **미포팅** | 확장은 `daily_usage`를 읽어 날짜별 `max(로컬, 서버)`로 합쳐 그린다(`lib/historyMerge.js`). 안드로이드 대시보드는 아직 로컬 기록만 그린다 |
+| 그날 적용된 한도 스냅샷 | **미포팅** | 확장은 `limit_history`에 날짜별 한도를 남겨 과거를 소급 판정하지 않는다. 안드로이드 대시보드는 아직 현재 `LimitConfig`로 과거를 판정하므로, 한도를 올리면 지난 판정이 같이 움직인다 |
 | 계정 로그인/로그아웃 | 완료 | `supabase-kt`. 확장과 같은 프로젝트·같은 계정 |
 | 클라우드 동기화 | 완료 | `settings`/`streaks`/`achievements`는 `SyncRepository`로 pull/push. `daily_usage`는 `increment_daily_usage` RPC로 델타 합산 (documents/BACKEND.md 참고) |
+| 동기화 진단 로그 | 완료 | DataStore 50건 링버퍼(`diagnostics/SyncDiagnostics.kt`), 설정 화면에 접기 카드 + 복사/지우기, 마지막 성공이 24시간을 넘으면 홈에 한 줄 경고. 이벤트 종류·버퍼 크기·임계값은 확장과 **문자열까지 동일해야 하는 계약** — [BACKEND.md](BACKEND.md) |
+| 다국어 (한국어/영어) | 완료 | 모든 화면 문구가 `res/values/strings.xml` + `res/values-en/`로 이동. 판정 함수는 문구 대신 리소스 id를 돌려준다 — 유닛 테스트가 `Context`에 못 닿기 때문 (아래 "구현 메모") |
 | 화이트리스트 (URL 예외) | **포팅 불가** | 앱 단위 감지라 URL 개념이 없음 |
 | Shorts 항상 차단 / Shorts 별도 집계 | **포팅 불가** | `UsageStatsManager`는 패키지만 알고 화면 내용은 모름. AccessibilityService면 가능하나 위에서 배제한 방식 |
+| Shorts 전용 일일 한도 | **포팅 불가** | 같은 이유. 서버 컬럼 `settings.shorts_limit_ms`는 존재하지만 안드로이드는 `SETTINGS_COLUMNS`에 넣지 않아 읽지도 쓰지도 않는다 — 확장이 넣은 값이 보존되게 |
 
 ### 구현 메모
 
 - 폴링 주기는 적응형: 유튜브가 화면에 있으면 5초, 아니면 30초. 차단 반응성과 배터리를 맞바꾼 값.
-- 판정 로직은 전부 순수 함수로 분리해 기기 없이 테스트함 (`limit/`, `gamification/`, `usage/DayWindow.kt`, `data/Encoding.kt`). 확장의 `service-worker.js`가 DB 호출과 판정을 섞어놓은 것과 달리, 여기서는 판정이 값을 반환하고 저장은 호출자가 함.
+- 판정 로직은 전부 순수 함수로 분리해 기기 없이 테스트함 (`limit/`, `gamification/`, `usage/DayWindow.kt`, `data/Encoding.kt`, `diagnostics/SyncDiagnostics.kt`, `sync/UsageMerge.kt`). 판정이 값을 반환하고 저장은 호출자가 하는 구조. 확장은 원래 `service-worker.js`가 DB 호출과 판정을 한 덩어리로 섞어놔서 유닛 테스트가 하나도 안 붙었는데, 지금은 이쪽 구조를 역으로 가져가 `lib/blockDecision.js` / `lib/alarmRules.js` / `lib/dateRollover.js`로 판정을 떼어냈다 — 두 클라이언트의 대응 파일이 이제 1:1로 붙는다.
 - `UsageMonitorService.tick()`이 확장의 `handleTick()` 순서를 그대로 따름: 사용량 기록 → 날짜 롤오버 → 하드코어 쿨다운 → 긴급횟수 리셋 → 집중모드 승격/만료 → 긴급 만료 → 알림 → 차단 판정.
-- DataStore에는 컬렉션을 넣기 어려워서 사용 기록·요일별 한도·뱃지는 직접 만든 문자열 인코딩으로 저장 (`data/Encoding.kt`). `org.json`은 유닛 테스트에서 스텁이라 못 쓰고, 필드 네 개 때문에 serialization 플러그인을 넣을 이유는 없다고 판단.
+- DataStore에는 컬렉션을 넣기 어려워서 사용 기록·요일별 한도·뱃지는 직접 만든 문자열 인코딩으로 저장 (`data/Encoding.kt`). `org.json`은 유닛 테스트에서 스텁이라 못 쓰고, 필드 네 개 때문에 serialization 플러그인을 넣을 이유는 없다고 판단. 진단 로그 링버퍼도 같은 이유로 같은 방식(`U+001E`/`U+001F` 구분자)을 쓴다 — 새 의존성 없음.
+- **화면 문구는 전부 `res/values/strings.xml`(한국어) + `res/values-en/`(영어)에 있다.** 문구를 추가할 땐 두 파일에 다 넣어야 하고, 두 로케일은 `app_name`만 다르다(앱 이름은 번역하지 않음).
+  - **판정 함수는 문구 대신 리소스 id/enum을 돌려준다** (`diagnosticKindLabelRes`, `BlockReason.messageRes`, `CredentialError.asAuthMessage`, `staleSyncWarning`의 sealed `SyncWarning`). 유닛 테스트는 `Context`에 닿을 수 없어 안드로이드 리소스를 못 읽는데, 순수 함수가 문구를 만들어 돌려주면 그 함수가 통째로 테스트 밖으로 나간다. 문구를 붙이는 건 Compose 화면 몫.
+  - 개수가 들어가는 문구는 문자열을 이어붙이지 말고 `plurals`를 쓴다 — 영어는 단수/복수가 갈리고 한국어는 안 갈린다.
+  - 레이아웃 두 곳을 영어 기준으로 넓혔다(영어가 더 길다): 대시보드 스탯 행은 셀에 weight를 줬고("365 days" vs "365일"), 홈 모드 뱃지는 넘치는 대신 줄바꿈하게 바꿨다.
 - 부팅 후 자동 시작(`BootReceiver`)은 감시 토글이 켜져 있을 때만.
 - UI는 Material You 동적 색상 대신 확장과 같은 인디고 고정 팔레트(`ui/theme/Theme.kt`)로 맞춤 — 홈 화면(`HomeScreen.kt`)도 원형 진행 링·스트릭 히어로 카드·상태 뱃지로 확장 팝업과 같은 느낌으로 재구성, 집중 모드는 프리셋 대신 확장과 동일한 지연(분)+지속(분) 입력. 상시 알림도 브랜드 색 colorized + 진행바 적용.
 
