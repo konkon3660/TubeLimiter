@@ -8,12 +8,17 @@ create table if not exists daily_usage (
   -- usage_ms 중 긴급 시청으로 본 시간. usage_ms에서 빼둔 값이 아니라 "그중 얼마"인지를 나타낸다
   -- (총 시청시간은 사실대로 두고, 스트릭 판정에서만 이만큼을 빼준다).
   emergency_ms bigint not null default 0,
+  -- 그날 긴급 시청을 부여받은 횟수. 시간만 서버에 있고 횟수가 기기별 로컬 값으로만 남으면,
+  -- PC에서 3회를 다 써도 폰에서 다시 3회를 쓸 수 있다 — 커밋먼트 장치가 기기 하나 바꾸면
+  -- 무력화되는 구멍이라, 횟수도 여기에 합산해서 모든 기기가 같은 잔여 횟수를 보게 한다.
+  emergency_uses integer not null default 0,
   updated_at timestamptz not null default now(),
   primary key (user_id, date)
 );
 
--- 기존 설치에 긴급 시청 시간 컬럼 추가 (이미 있으면 무시)
+-- 기존 설치에 긴급 시청 시간/횟수 컬럼 추가 (이미 있으면 무시)
 alter table daily_usage add column if not exists emergency_ms bigint not null default 0;
+alter table daily_usage add column if not exists emergency_uses integer not null default 0;
 
 create table if not exists settings (
   user_id uuid primary key references auth.users(id) on delete cascade,
@@ -101,39 +106,46 @@ create policy "achievements: owner rw" on achievements
 -- 인자 3개로 부르는 기존 클라이언트(안드로이드)가 "function is not unique"로 실패한다.
 -- 기본값이 있는 4인자 버전 하나로 대체하면 3인자 호출도 그대로 동작한다.
 drop function if exists increment_daily_usage(date, bigint, bigint);
+-- 4인자 버전은 create or replace로 못 바꾼다. 인자만 늘어나는 게 아니라 반환 테이블에
+-- emergency_uses가 하나 더 붙어서 반환 타입 자체가 달라지기 때문이다
+-- ("cannot change return type of existing function"). 그래서 먼저 drop 한다.
+drop function if exists increment_daily_usage(date, bigint, bigint, bigint);
 
 create or replace function increment_daily_usage(
   p_date date,
   p_usage_delta_ms bigint,
   p_shorts_delta_ms bigint default 0,
-  p_emergency_delta_ms bigint default 0
+  p_emergency_delta_ms bigint default 0,
+  p_emergency_uses_delta integer default 0
 )
-returns table (usage_ms bigint, shorts_ms bigint, emergency_ms bigint)
+returns table (usage_ms bigint, shorts_ms bigint, emergency_ms bigint, emergency_uses integer)
 language plpgsql
 set search_path = public
 as $$
 begin
   return query
-  insert into daily_usage (user_id, date, usage_ms, shorts_ms, emergency_ms, updated_at)
+  insert into daily_usage (user_id, date, usage_ms, shorts_ms, emergency_ms, emergency_uses, updated_at)
   values (
     auth.uid(),
     p_date,
     greatest(p_usage_delta_ms, 0),
     greatest(p_shorts_delta_ms, 0),
     greatest(p_emergency_delta_ms, 0),
+    greatest(p_emergency_uses_delta, 0),
     now()
   )
   on conflict (user_id, date) do update
     set usage_ms = daily_usage.usage_ms + greatest(excluded.usage_ms, 0),
         shorts_ms = daily_usage.shorts_ms + greatest(excluded.shorts_ms, 0),
         emergency_ms = daily_usage.emergency_ms + greatest(excluded.emergency_ms, 0),
+        emergency_uses = daily_usage.emergency_uses + greatest(excluded.emergency_uses, 0),
         updated_at = now()
-  returning daily_usage.usage_ms, daily_usage.shorts_ms, daily_usage.emergency_ms;
+  returning daily_usage.usage_ms, daily_usage.shorts_ms, daily_usage.emergency_ms, daily_usage.emergency_uses;
 end;
 $$;
 
 -- 새 함수는 기본으로 PUBLIC(anon 포함)에도 EXECUTE 권한이 열린다. 익명 호출은 auth.uid()가
 -- null이라 daily_usage.user_id(not null)에서 에러로 막히긴 하지만, 최소 권한 원칙상 애초에
 -- 로그인한 사용자만 부를 수 있게 좁혀둔다.
-revoke execute on function increment_daily_usage(date, bigint, bigint, bigint) from public;
-grant execute on function increment_daily_usage(date, bigint, bigint, bigint) to authenticated;
+revoke execute on function increment_daily_usage(date, bigint, bigint, bigint, integer) from public;
+grant execute on function increment_daily_usage(date, bigint, bigint, bigint, integer) to authenticated;
