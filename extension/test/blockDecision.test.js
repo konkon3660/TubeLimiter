@@ -114,6 +114,38 @@ test('긴급 시청 중이어도 수동 차단은 표시 상태로 남는다', (
   assert.equal(decision.displayBlocked, true); // "차단해둔 상태"라는 사실은 유지된다
 });
 
+// trackingBlocked는 storage의 trackingBlocked로 저장돼 trackUsage의 집계 중단 판정에 쓰인다.
+// 예전엔 이 판정에도 displayBlocked를 써서, 수동 차단 위에서 쓴 긴급 시청은 탭만 풀리고 시간은
+// 집계되지 않는 비대칭이 있었다 (안드로이드엔 이 게이트 자체가 없어 늘 집계된다).
+test('수동 차단 위에서 쓴 긴급 시청 시간도 집계된다 (표시는 차단인 채로)', () => {
+  const decision = resolveBlockDecision(inputs({ manuallyBlocked: true, emergencyModeActive: true }));
+  assert.equal(decision.displayBlocked, true);
+  assert.equal(decision.trackingBlocked, false);
+});
+
+test('긴급 시청 집계는 차단 사유(수동/한도)와 무관하게 같다', () => {
+  const overManual = resolveBlockDecision(inputs({ manuallyBlocked: true, emergencyModeActive: true }));
+  const overLimit = resolveBlockDecision(inputs({ usedMs: 60 * MIN, emergencyModeActive: true }));
+  assert.equal(overManual.trackingBlocked, overLimit.trackingBlocked);
+  assert.equal(overLimit.trackingBlocked, false);
+});
+
+test('긴급 시청이 없으면 수동 차단·한도 초과 둘 다 집계가 멈춘다', () => {
+  assert.equal(resolveBlockDecision(inputs({ manuallyBlocked: true })).trackingBlocked, true);
+  assert.equal(resolveBlockDecision(inputs({ usedMs: 60 * MIN })).trackingBlocked, true);
+});
+
+test('집중 모드·예약 차단은 긴급 시청 중에도 집계가 멈춘다 (애초에 뚫리지 않는 차단)', () => {
+  const focus = resolveBlockDecision(inputs({ focusModeActive: true, emergencyModeActive: true }));
+  const schedule = resolveBlockDecision(inputs({ scheduleBlockActive: true, emergencyModeActive: true }));
+  assert.equal(focus.trackingBlocked, true);
+  assert.equal(schedule.trackingBlocked, true);
+});
+
+test('아무 차단도 없으면 당연히 집계된다', () => {
+  assert.equal(resolveBlockDecision(inputs({ usedMs: 10 * MIN })).trackingBlocked, false);
+});
+
 test('isWhitelistedUrl은 부분 문자열 매칭이고 URL/목록이 없으면 false다', () => {
   assert.equal(isWhitelistedUrl('https://www.youtube.com/@lecture/videos', ['youtube.com/@lecture']), true);
   assert.equal(isWhitelistedUrl('https://www.youtube.com/watch?v=abc', ['youtube.com/@lecture']), false);

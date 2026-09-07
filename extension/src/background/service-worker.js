@@ -23,6 +23,7 @@ import {
   emergencyResetDate,
   DEFAULT_EMERGENCY_USES
 } from '../lib/dateRollover.js';
+import { planLimitHistoryUpdate } from '../lib/limitHistory.js';
 
 const MAX_ELAPSED_MS = 10 * 60 * 1000; // 비정상적으로 큰 elapsed 값 방어
 const DEFAULT_DAILY_LIMIT_MS = 30 * 60 * 1000;
@@ -40,6 +41,12 @@ let trackingStartTime = null;
 let isVideoPlaying = true; // content script가 실제 재생 상태를 보고하기 전까지 낙관적으로 true
 
 let isYoutubeBlocked = false;
+// 사용시간 집계를 멈춰야 하는지(= 지금 실제로 볼 수 없는 상태인지). 표시용 isYoutubeBlocked와
+// 갈라지는 값이라 따로 들고 있는다 - 긴급 시청 중엔 차단 사유가 무엇이든 집계는 계속돼야 한다
+// (lib/blockDecision.js의 trackingBlocked 주석 참고).
+// null은 "이번 세션에서 아직 판정한 적 없음"이라 첫 판정이 반드시 storage에 기록된다
+// (이전 버전에서 올라온 저장소엔 이 키가 아예 없다).
+let trackingBlocked = null;
 let isManuallyBlocked = false;
 let focusModeActive = false;
 let focusModeEndTime = null;
@@ -109,6 +116,26 @@ async function saveTodayUsage(ms) {
   const history = usage_history || {};
   history[getTodayDate()] = ms;
   await setStorage({ usage_history: history });
+}
+
+// 그날 실제로 적용된 한도를 날짜별로 남긴다(limit_history). 이게 없으면 대시보드가 과거
+// 날짜까지 "지금 설정된 한도"로 소급 판정해서, 한도를 올리는 순간 예전에 초과했던 날들이
+// 한꺼번에 성공으로 바뀐다. 판정/정리 규칙은 lib/limitHistory.js에 있고 여기선 읽고 쓰기만 한다.
+async function recordLimitHistory(updates) {
+  if (!updates.length) return;
+  const { limit_history } = await getStorage(['limit_history']);
+  const { history, changed } = planLimitHistoryUpdate(limit_history || {}, updates, getTodayDate());
+  // 값이 그대로면 쓰지 않는다 - 이 함수는 사용시간이 기록될 때마다(그리고 매 틱마다) 불린다.
+  if (changed) await setStorage({ limit_history: history });
+}
+
+/**
+ * 오늘치 한도 기록. 롤오버를 한 번도 안 거친 오늘 날짜에 구멍이 생기지 않도록,
+ * "오늘 기록이 처음 생기는" 자리(사용시간 저장)와 롤오버 양쪽에서 부른다.
+ */
+async function recordTodayLimit() {
+  const today = getTodayDate();
+  await recordLimitHistory([{ date: today, limitMs: computeLimitForDate(settingsCache, today) }]);
 }
 
 async function addShortsUsage(elapsedMs) {
@@ -281,13 +308,22 @@ async function trackUsageInner({ assumeFocused = false, focusedOverride = null }
     return;
   }
 
-  // isYoutubeBlocked 인메모리 값은 서비스워커가 재시작되면 잠깐 stale할 수 있으니
-  // 실제로 시간을 더하기 직전엔 storage의 최신 값으로 다시 확인한다.
-  const { isYoutubeBlocked: storedBlocked, last_emergency_granted_at: emergencyGrantedAt } = await getStorage([
-    'isYoutubeBlocked', 'last_emergency_granted_at'
-  ]);
-  if (storedBlocked) {
-    isYoutubeBlocked = true;
+  // 인메모리 차단 상태는 서비스워커가 재시작되면 잠깐 stale할 수 있으니 실제로 시간을 더하기
+  // 직전엔 storage의 최신 값으로 다시 확인한다.
+  //
+  // 집계를 멈추는 기준은 표시용 isYoutubeBlocked가 아니라 trackingBlocked다. 표시용 값은 긴급
+  // 시청 중에도 수동 차단을 살려두기 때문에, 그걸로 게이트를 걸면 "수동 차단 위에서 쓴 긴급
+  // 시청은 탭은 풀리는데 시간은 집계되지 않는" 비대칭이 생긴다(한도 초과 위에서 쓴 긴급 시청은
+  // 집계됐다). 이제 긴급 시청으로 허용된 시간은 차단 사유와 무관하게 집계된다.
+  const {
+    isYoutubeBlocked: storedBlocked,
+    trackingBlocked: storedTrackingBlocked,
+    last_emergency_granted_at: emergencyGrantedAt
+  } = await getStorage(['isYoutubeBlocked', 'trackingBlocked', 'last_emergency_granted_at']);
+  if (storedBlocked) isYoutubeBlocked = true;
+  // 이전 버전에서 막 올라와 아직 checkUsageAndBlock이 한 번도 안 돈 경우엔 이 키가 없다 -
+  // 그동안은 예전 기준(표시용 값)을 그대로 쓴다.
+  if (storedTrackingBlocked ?? !!storedBlocked) {
     trackingStartTime = null;
     return;
   }
@@ -315,6 +351,9 @@ async function trackUsageInner({ assumeFocused = false, focusedOverride = null }
 
   const newUsage = (await getTodayUsage()) + elapsed;
   await saveTodayUsage(newUsage);
+  // 오늘 기록이 생겼으니 그 시간에 적용되던 한도도 같이 남긴다 - 롤오버를 거치기 전이라도
+  // 대시보드가 오늘 칸을 추정치로 그리지 않게 한다.
+  await recordTodayLimit();
   await addHourlyUsage(elapsed, now);
   // 이 구간 중 긴급 시청 창과 겹친 만큼은 긴급분으로도 따로 남긴다 (usage_history엔 이미 포함).
   const emergencyPortion = Math.min(elapsed, emergencyOverlapMs(startTime, now, emergencyGrantedAt));
@@ -350,6 +389,19 @@ async function checkDateRolloverInner() {
   // 어떤 날짜들을 정산해야 하는지는 순수 판정에 맡기고(lib/dateRollover.js), 여기선
   // 그 결과대로 Supabase에 반영하고 기준점을 옮기는 일만 한다.
   const plan = planDateRollover(local_current_date, today);
+
+  // 정산되는 지난 날짜들과 새로 시작하는 오늘의 한도를 남긴다. 지난 날짜는 이미 기록이 있으면
+  // 건드리지 않는다(keepExisting) - 지금 settingsCache는 그날 이후 바뀌었을 수 있어서, 그날
+  // 남겨둔 값이 언제나 더 정확하다. 기록이 없는 날(브라우저를 안 켠 날)만 아래 applyDayRollover가
+  // 쓰는 것과 같은 값으로 채워 히트맵과 스트릭 판정이 어긋나지 않게 한다.
+  await recordLimitHistory([
+    ...plan.dates.map((date) => ({
+      date,
+      limitMs: computeLimitForDate(settingsCache, date),
+      keepExisting: true
+    })),
+    { date: today, limitMs: computeLimitForDate(settingsCache, today) }
+  ]);
 
   if (plan.dates.length === 0) {
     if (plan.nextStoredDate) await setStorage({ local_current_date: plan.nextStoredDate });
@@ -741,9 +793,12 @@ async function checkUsageAndBlock() {
   };
   const decision = resolveBlockDecision(blockInputs);
 
-  if (decision.displayBlocked !== isYoutubeBlocked) {
+  // 표시용(isYoutubeBlocked)과 집계 게이트용(trackingBlocked)을 같이 남긴다. trackUsage는
+  // 인메모리 값을 못 믿어 storage에서 다시 읽으므로 둘 다 저장돼 있어야 한다.
+  if (decision.displayBlocked !== isYoutubeBlocked || decision.trackingBlocked !== trackingBlocked) {
     isYoutubeBlocked = decision.displayBlocked;
-    await setStorage({ isYoutubeBlocked: decision.displayBlocked });
+    trackingBlocked = decision.trackingBlocked;
+    await setStorage({ isYoutubeBlocked, trackingBlocked });
   }
 
   const whitelist = settingsCache.whitelist || [];
@@ -788,7 +843,10 @@ function isCurrentlyTracking() {
     isTrackableYoutubeUrl(activeTabUrl) &&
     trackingStartTime &&
     isVideoPlaying &&
-    !isYoutubeBlocked
+    // 표시용 isYoutubeBlocked가 아니라 실제 집계 게이트를 본다 - 수동 차단 위에서 긴급 시청을
+    // 쓰는 동안은 "차단해둔 상태"로 표시되지만 시간은 집계되므로, 여기서 표시용 값을 쓰면
+    // 팝업만 "대기중"이라고 거짓말을 하게 된다. (null = 아직 판정 전 → 기존 기본값과 같이 통과)
+    !trackingBlocked
   );
 }
 

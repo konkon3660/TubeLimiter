@@ -12,6 +12,7 @@ import {
   isPerfectDay
 } from '../lib/gamification.js';
 import { computeLimitForDate } from '../lib/limits.js';
+import { resolveLimitForDate } from '../lib/limitHistory.js';
 import { mergeHistories } from '../lib/historyMerge.js';
 
 const signedOutView = document.getElementById('signedOutView');
@@ -84,8 +85,12 @@ function formatMinutes(ms) {
  * emergencyUses가 null이면 "이 기기에 그날 기록이 없어 횟수를 모른다"는 뜻이다(긴급 시청 횟수는
  * 서버로 올라가지 않고 로컬에만 남는다 - documents/BACKEND.md daily_usage 절). 그때 0회로 적으면
  * 없는 사실을 지어내는 셈이라 횟수만 빼고 시간만 보여준다.
+ *
+ * limitEstimated도 같은 이유로 밝힌다: 한도 기록(limit_history)이 없는 옛 날짜는 지금 설정으로
+ * 근사 판정할 수밖에 없는데, 그걸 실제 한도인 것처럼 적으면 "설정을 바꾸면 과거 판정이 바뀐다"는
+ * 사실이 화면에서 안 보인다.
  */
-function formatDayBreakdown(usageMs, limitMs, emergencyMs, emergencyUses) {
+function formatDayBreakdown(usageMs, limitMs, emergencyMs, emergencyUses, limitEstimated = false) {
   const ownMs = Math.max(0, usageMs - Math.max(0, emergencyMs));
   const parts = [`사용 ${formatMinutes(usageMs)}`];
   if (emergencyMs > 0 || emergencyUses > 0) {
@@ -93,11 +98,11 @@ function formatDayBreakdown(usageMs, limitMs, emergencyMs, emergencyUses) {
     parts.push(`긴급 ${formatMinutes(emergencyMs)}${usesLabel}`);
     parts.push(`판정 기준 ${formatMinutes(ownMs)}`);
   }
-  parts.push(`한도 ${formatMinutes(limitMs)}`);
+  parts.push(`한도 ${formatMinutes(limitMs)}${limitEstimated ? '(현재 설정 기준 추정)' : ''}`);
   return parts.join(' · ');
 }
 
-async function renderHeatmap(usageHistory, settings, emergencyHistory = {}) {
+async function renderHeatmap(usageHistory, settings, emergencyHistory = {}, limitHistory = {}) {
   const dates = lastNDates(28);
   const today = getTodayDate();
   const container = document.getElementById('heatmap');
@@ -108,7 +113,9 @@ async function renderHeatmap(usageHistory, settings, emergencyHistory = {}) {
     cell.title = date;
     const usage = usageHistory[date];
     if (usage !== undefined) {
-      const limit = computeLimitForDate(settings, date);
+      // 그날 실제로 적용됐던 한도가 남아 있으면 그 값으로 판정한다. 기록이 없는 옛 날짜만
+      // 지금 설정으로 근사 판정하고(estimated), 그런 날은 툴팁에 추정이라고 밝힌다.
+      const { limitMs: limit, estimated: limitEstimated } = resolveLimitForDate(limitHistory, settings, date);
       // 스트릭과 같은 규칙으로 판정한다: 긴급 시청 시간은 빼고 보되(실패 아님),
       // 긴급 시청을 쓴 날은 완벽한 날이 아니라 한 단계 옅게 표시된다.
       const emergency = emergencyHistory[date] || {};
@@ -119,7 +126,7 @@ async function renderHeatmap(usageHistory, settings, emergencyHistory = {}) {
       // 판정 근거를 툴팁에 그대로 적는다. 초과로 뜬 날이 "긴급 시청분을 빼고도 넘긴" 건지
       // "긴급 기록이 없는" 건지 화면에서 바로 구분되지 않으면, 규칙을 아는 사람만 읽을 수 있는
       // 히트맵이 된다 (실제로 긴급 시청을 쓴 날이 왜 실패인지 묻는 일이 있었다).
-      const breakdown = formatDayBreakdown(usage, limit, emergencyMs, emergencyUses);
+      const breakdown = formatDayBreakdown(usage, limit, emergencyMs, emergencyUses, limitEstimated);
       if (isPerfectDay(usage, limit, emergencyMs, emergencyUses ?? 0)) {
         cell.classList.add('perfect');
         cell.title = `${date} · 완벽한 날
@@ -162,7 +169,7 @@ async function renderBadges(userId) {
   });
 }
 
-function renderChart(usageHistory, settings) {
+function renderChart(usageHistory, settings, limitHistory = {}) {
   const dates = lastNDates(chartRangeDays);
   const ctx = document.getElementById('usageChart');
   const axisColor = '#475569';
@@ -172,7 +179,8 @@ function renderChart(usageHistory, settings) {
   const values = dates.map((d) => {
     const usedMs = usageHistory[d] || 0;
     if (!isPercent) return Math.round(usedMs / 60000);
-    const limitMs = computeLimitForDate(settings, d);
+    // 히트맵과 같은 기준: 그날 기록된 한도가 있으면 그것으로, 없으면 지금 설정으로 근사한다.
+    const { limitMs } = resolveLimitForDate(limitHistory, settings, d);
     // 한도가 무제한(Infinity)인 날은 "한도 대비 사용률"이 정의되지 않으므로 0%로 표시한다.
     if (!Number.isFinite(limitMs) || limitMs <= 0) return 0;
     return Math.round((usedMs / limitMs) * 1000) / 10; // 소수 첫째 자리까지
@@ -266,7 +274,7 @@ function updateChipGroupUI(groupEl, dataAttr, activeValue) {
   });
 }
 
-function setupChartControls(history, settings, hourlyHistory) {
+function setupChartControls(history, settings, hourlyHistory, limitHistory) {
   const rangeGroup = document.getElementById('chartRangeGroup');
   const modeGroup = document.getElementById('chartModeGroup');
 
@@ -281,7 +289,7 @@ function setupChartControls(history, settings, hourlyHistory) {
     chartRangeDays = range;
     updateChipGroupUI(rangeGroup, 'range', chartRangeDays);
     await setStorage({ dashboardChartRangeDays: chartRangeDays });
-    renderChart(history, settings);
+    renderChart(history, settings, limitHistory);
     renderHourlyChart(hourlyHistory);
   });
 
@@ -292,7 +300,7 @@ function setupChartControls(history, settings, hourlyHistory) {
     if ((mode !== 'minutes' && mode !== 'percent') || mode === chartMode) return;
     chartMode = mode;
     updateChipGroupUI(modeGroup, 'mode', chartMode);
-    renderChart(history, settings);
+    renderChart(history, settings, limitHistory);
   });
 }
 
@@ -311,12 +319,14 @@ async function init() {
     { settingsCache },
     { usage_history_hourly },
     { emergency_history },
+    { limit_history },
     { dashboardChartRangeDays }
   ] = await Promise.all([
     getStorage(['usage_history']),
     getStorage(['settingsCache']),
     getStorage(['usage_history_hourly']),
     getStorage(['emergency_history']),
+    getStorage(['limit_history']),
     getStorage(['dashboardChartRangeDays'])
   ]);
 
@@ -339,6 +349,9 @@ async function init() {
   );
 
   const hourlyHistory = usage_history_hourly || {};
+  // 서버(daily_usage)에는 한도가 올라가지 않으므로 limit_history는 로컬 기록뿐이다 —
+  // 다른 기기에서만 본 날은 기록이 없어 근사 판정으로 떨어진다(툴팁에 그렇게 표시된다).
+  const limitHistory = limit_history || {};
   const hardcoreMode = !!settingsCache?.hardcore_mode;
   document.getElementById('streakSection').style.display = hardcoreMode ? '' : 'none';
   document.getElementById('streakLockedHint').style.display = hardcoreMode ? 'none' : '';
@@ -372,9 +385,9 @@ async function init() {
     await renderBadges(user.id);
   }
 
-  await renderHeatmap(history, settingsCache, emergencyHistory);
-  setupChartControls(history, settingsCache, hourlyHistory);
-  renderChart(history, settingsCache);
+  await renderHeatmap(history, settingsCache, emergencyHistory, limitHistory);
+  setupChartControls(history, settingsCache, hourlyHistory, limitHistory);
+  renderChart(history, settingsCache, limitHistory);
   renderHourlyChart(hourlyHistory);
 }
 

@@ -37,7 +37,7 @@ export function isUsageLimitExceeded(usedMs, limitMs) {
  * @param {boolean} inputs.scheduleBlockActive
  * @param {boolean} inputs.emergencyModeActive
  * @param {boolean} inputs.manuallyBlocked
- * @returns {{shouldBlock: boolean, reason: string, displayBlocked: boolean}}
+ * @returns {{shouldBlock: boolean, reason: string, displayBlocked: boolean, trackingBlocked: boolean}}
  */
 export function resolveBlockDecision({
   usedMs = 0,
@@ -71,13 +71,19 @@ export function resolveBlockDecision({
   return {
     shouldBlock,
     reason,
-    // storage의 isYoutubeBlocked(팝업 표시·긴급 시청 요청 가능 여부·트래킹 중단 판정에 쓰임)는
-    // shouldBlock과 미묘하게 다르다: 긴급 시청 중에도 "차단 상태이긴 한데 지금만 풀린 것"으로
-    // 봐야 하므로, 긴급이 뚫어주는 사유(수동 차단)는 여기선 그대로 살아있다.
-    // 한도 초과만 긴급 시청 중 제외되는데, 그래야 긴급 시청 중 시간이 계속 집계된다
-    // (trackUsage가 isYoutubeBlocked면 집계를 건너뛴다).
+    // storage의 isYoutubeBlocked(팝업 표시·긴급 시청 요청 가능 여부에 쓰임)는 shouldBlock과
+    // 미묘하게 다르다: 긴급 시청 중에도 "차단해둔 상태이긴 한데 지금만 풀린 것"으로 봐야 하므로,
+    // 긴급이 뚫어주는 사유(수동 차단)는 여기선 그대로 살아있다. 한도 초과만 긴급 시청 중
+    // 제외되는데, 그래야 팝업이 "남은 시간 없음"과 "지금은 볼 수 있음"을 같이 보여준다.
     displayBlocked: focusModeActive || scheduleBlockActive || manuallyBlocked ||
-      (usageLimitExceeded && !emergencyModeActive)
+      (usageLimitExceeded && !emergencyModeActive),
+    // 사용시간 집계를 멈춰야 하는지는 "지금 실제로 볼 수 있는가"와 같은 질문이라 shouldBlock과
+    // 같은 값이다. 예전엔 이 판정에도 displayBlocked를 썼는데, 그러면 같은 긴급 시청인데도
+    // 한도 초과 위에서 쓴 시간은 집계되고 수동 차단 위에서 쓴 시간은 통째로 빠지는 비대칭이
+    // 생겼다(안드로이드엔 이 게이트 자체가 없어 늘 집계된다). 긴급 시청으로 허용된 시간은
+    // 차단 사유와 무관하게 총 시청시간에도, 긴급분(emergency_ms)에도 들어가야 한다.
+    // 집중 모드/예약 차단은 애초에 긴급 시청으로 뚫리지 않으므로 여기서도 계속 집계가 멈춘다.
+    trackingBlocked: shouldBlock
   };
 }
 
