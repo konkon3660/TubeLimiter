@@ -167,15 +167,15 @@ fun SettingsScreen(
                                 (withCurrent(LIMIT_PRESETS_MINUTES, minutes) + UNLIMITED_MINUTES)
                                     .distinct()
                                     .forEach { option ->
-                                    FilterChip(
-                                        selected = minutes == option,
-                                        onClick = { onByDayChange(index, option) },
-                                        enabled = !limitsLocked,
-                                        label = {
-                                            Text(if (option == UNLIMITED_MINUTES) "무제한" else "${option}분")
-                                        },
-                                    )
-                                }
+                                        FilterChip(
+                                            selected = minutes == option,
+                                            onClick = { onByDayChange(index, option) },
+                                            enabled = !limitsLocked,
+                                            label = {
+                                                Text(if (option == UNLIMITED_MINUTES) "무제한" else "${option}분")
+                                            },
+                                        )
+                                    }
                             }
                         }
                         NumberEntryField(

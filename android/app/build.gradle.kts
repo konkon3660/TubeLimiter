@@ -113,8 +113,7 @@ ktlint {
             "ktlint_standard_function-signature" to "disabled",
         ),
     )
-    // Reports without failing the build: the current source carries a small backlog of
-    // formatting deviations (`./gradlew ktlintCheck` lists them, `ktlintFormat` fixes most).
-    // Once that is cleared, flip this to false to make the check enforcing.
-    ignoreFailures.set(true)
+    // The backlog is cleared, so the check is enforcing: a violation fails the build.
+    // `./gradlew ktlintFormat` fixes the auto-correctable ones.
+    ignoreFailures.set(false)
 }

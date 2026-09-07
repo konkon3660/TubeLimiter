@@ -153,8 +153,11 @@ private fun StreakHeroCard(streak: StreakRecord) {
             )
             LinearProgressIndicator(
                 progress = {
-                    if (progress.xpForNextLevel == 0) 0f
-                    else (progress.xpIntoLevel.toFloat() / progress.xpForNextLevel).coerceIn(0f, 1f)
+                    if (progress.xpForNextLevel == 0) {
+                        0f
+                    } else {
+                        (progress.xpIntoLevel.toFloat() / progress.xpForNextLevel).coerceIn(0f, 1f)
+                    }
                 },
                 modifier = Modifier
                     .fillMaxWidth()

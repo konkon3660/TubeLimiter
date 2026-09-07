@@ -34,6 +34,7 @@ data class AccountState(
 
 sealed interface AuthResult {
     data object Success : AuthResult
+
     /** Sign-up succeeded but the address still needs confirming before a session exists. */
     data object ConfirmationRequired : AuthResult
     data class Failed(val message: String) : AuthResult

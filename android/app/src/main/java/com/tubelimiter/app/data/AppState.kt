@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.map
 
 private val KEY_USAGE_HISTORY = stringPreferencesKey("usage_history")
 private val KEY_USAGE_HISTORY_HOURLY = stringPreferencesKey("usage_history_hourly")
+
 /** Per-day share of [KEY_USAGE_HISTORY] that was watched on an emergency pass, and how many
  * passes that day spent. Kept apart so the rollover can excuse emergency time from the streak
  * while still barring that day from the perfect-day count. */
@@ -40,6 +41,7 @@ private val KEY_MANUAL_BLOCK = booleanPreferencesKey("manual_block")
 private val KEY_FOCUS_END = longPreferencesKey("focus_end")
 private val KEY_FOCUS_DELAY_END = longPreferencesKey("focus_delay_end")
 private val KEY_FOCUS_DELAY_DURATION = intPreferencesKey("focus_delay_duration")
+
 /** When an already-active focus session was asked to stop early; null means no request pending. */
 private val KEY_FOCUS_STOP_REQUESTED_AT = longPreferencesKey("focus_stop_requested_at")
 private val KEY_EMERGENCY_END = longPreferencesKey("emergency_end")
@@ -61,6 +63,7 @@ private val KEY_DAILY_USAGE_EMERGENCY_USES_SYNCED = intPreferencesKey("daily_usa
 /** Whether a scheduled-block window was active the last time it was checked, so `tick()` can
  * detect the start/end transition (survives process death, unlike an in-memory flag). */
 private val KEY_SCHEDULE_BLOCK_WAS_ACTIVE = booleanPreferencesKey("schedule_block_was_active")
+
 /** Date the "10 minutes until a scheduled block starts" nudge was last sent, for once-per-day dedupe. */
 private val KEY_SCHEDULE_START_NOTIFIED_DATE = stringPreferencesKey("schedule_start_notified_date")
 

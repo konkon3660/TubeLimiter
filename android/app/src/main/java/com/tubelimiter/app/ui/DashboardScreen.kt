@@ -34,13 +34,13 @@ import androidx.compose.ui.unit.dp
 import com.tubelimiter.app.data.CHART_RANGE_PRESETS_DAYS
 import com.tubelimiter.app.gamification.PERFECT_MILESTONES
 import com.tubelimiter.app.gamification.STREAK_MILESTONES
+import com.tubelimiter.app.gamification.StreakRecord
 import com.tubelimiter.app.gamification.isDaySuccess
 import com.tubelimiter.app.gamification.isPerfectDay
-import com.tubelimiter.app.gamification.perfectAchievementKey
-import com.tubelimiter.app.gamification.StreakRecord
 import com.tubelimiter.app.gamification.levelProgress
 import com.tubelimiter.app.gamification.levelTier
 import com.tubelimiter.app.gamification.milestoneAchievementKey
+import com.tubelimiter.app.gamification.perfectAchievementKey
 import com.tubelimiter.app.limit.LimitConfig
 import com.tubelimiter.app.limit.computeLimitMillis
 import com.tubelimiter.app.limit.isUnlimited
@@ -104,8 +104,11 @@ private fun StreakCard(streak: StreakRecord) {
             Text("${tier.emoji} ${tier.title} · Lv.${progress.level}", style = MaterialTheme.typography.titleMedium)
             LinearProgressIndicator(
                 progress = {
-                    if (progress.xpForNextLevel == 0) 0f
-                    else (progress.xpIntoLevel.toFloat() / progress.xpForNextLevel).coerceIn(0f, 1f)
+                    if (progress.xpForNextLevel == 0) {
+                        0f
+                    } else {
+                        (progress.xpIntoLevel.toFloat() / progress.xpForNextLevel).coerceIn(0f, 1f)
+                    }
                 },
                 modifier = Modifier.fillMaxWidth(),
             )

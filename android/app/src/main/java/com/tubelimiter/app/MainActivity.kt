@@ -91,7 +91,7 @@ class MainActivity : ComponentActivity() {
 private enum class Tab(val label: String, val glyph: String) {
     HOME("홈", "🏠"),
     DASHBOARD("통계", "📊"),
-    SETTINGS("설정", "⚙️")
+    SETTINGS("설정", "⚙️"),
 }
 
 /** Same indigo gradient banner as the extension popup's `.header`, so both clients read as one app. */
@@ -430,4 +430,3 @@ fun AppRoot() {
         }
     }
 }
-
