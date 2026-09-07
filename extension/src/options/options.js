@@ -12,6 +12,11 @@ document.getElementById('openAuthButton').addEventListener('click', () => {
 
 document.getElementById('signOutButton').addEventListener('click', async () => {
   await supabase.auth.signOut();
+  // 로그아웃하면 서버 버킷 합계는 더 이상 이 기기 것이 아니다. 남겨두면 다른 기기가 쓴 몫만큼
+  // 남은 긴급 시청 횟수가 깎인 채로 굳는다 — 로그아웃 상태는 로컬 값만으로 동작해야 한다.
+  await chrome.storage.local.remove([
+    'emergencyUsesBucketDate', 'emergencyUsesBucketRemote', 'emergencyUsesBucketReported'
+  ]);
   window.location.reload();
 });
 

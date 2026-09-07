@@ -1,9 +1,10 @@
 import { getStorage, setStorage } from '../lib/storage.js';
-import { getTodayDate } from '../lib/time.js';
+import { getTodayDate, getWeekStartDate, getMonthStartDate } from '../lib/time.js';
 import { supabase, getCurrentUser } from '../lib/supabaseClient.js';
 import { getLevelProgress } from '../lib/gamification.js';
 import { computeLimitForDate } from '../lib/limits.js';
-import { combinedUsedMillis } from '../lib/usageMerge.js';
+import { combinedUsedMillis, remainingEmergencyUses } from '../lib/usageMerge.js';
+import { emergencyResetDate, DEFAULT_EMERGENCY_USES } from '../lib/dateRollover.js';
 import { resolveFocusStopTime } from '../lib/focusMode.js';
 import { EMERGENCY_GRANT_COOLDOWN_MS } from '../lib/emergency.js';
 import { isScheduleActive } from '../lib/schedule.js';
@@ -159,13 +160,14 @@ async function renderLocal() {
     console.error('[TubeLimiter] getTrackingStatus 실패:', e);
   }
 
-  const [{ usage_history }, { settingsCache }, { emergency_uses_today }, { focusModeActive, focusModeEndTime, focusModeDelayEndTime, focusStopRequestedAt }, { emergencyModeActive, emergencyEndTime, last_emergency_granted_at }, dailySync] = await Promise.all([
+  const [{ usage_history }, { settingsCache }, { emergency_uses_today }, { focusModeActive, focusModeEndTime, focusModeDelayEndTime, focusStopRequestedAt }, { emergencyModeActive, emergencyEndTime, last_emergency_granted_at }, dailySync, emergencyBucket] = await Promise.all([
     getStorage(['usage_history']),
     getStorage(['settingsCache']),
     getStorage(['emergency_uses_today']),
     getStorage(['focusModeActive', 'focusModeEndTime', 'focusModeDelayEndTime', 'focusStopRequestedAt']),
     getStorage(['emergencyModeActive', 'emergencyEndTime', 'last_emergency_granted_at']),
-    getStorage(['dailyUsageSyncDate', 'dailyUsageSyncedMillis', 'dailyUsageCombinedMillis'])
+    getStorage(['dailyUsageSyncDate', 'dailyUsageSyncedMillis', 'dailyUsageCombinedMillis']),
+    getStorage(['emergencyUsesBucketDate', 'emergencyUsesBucketRemote', 'emergencyUsesBucketReported'])
   ]);
 
   const today = getTodayDate();
@@ -191,7 +193,20 @@ async function renderLocal() {
     progressCircle.style.background = 'var(--primary-color)';
     progressCircle.title = '무제한';
   }
-  document.getElementById('emergencyCount').textContent = `${emergency_uses_today ?? (settingsCache?.emergency_config?.dailyUses ?? 3)}회`;
+  // 남은 횟수는 이 기기 카운터가 아니라 "다른 기기가 이 버킷에서 쓴 몫"까지 뺀 값이다.
+  // 백그라운드가 동기화할 때 서버 버킷 합계를 캐시해둔다(service-worker.js
+  // refreshEmergencyUsesBucket). 캐시가 다른 버킷 것이면 로컬 값 그대로 — 오프라인/로그아웃에선
+  // 기존과 똑같이 보인다.
+  const localEmergencyUses = emergency_uses_today ?? (settingsCache?.emergency_config?.dailyUses ?? DEFAULT_EMERGENCY_USES);
+  const emergencyBucketStart = emergencyResetDate(settingsCache?.emergency_config?.resetFrequency, {
+    today,
+    weekStart: getWeekStartDate(),
+    monthStart: getMonthStartDate()
+  });
+  const emergencyLeft = emergencyBucket.emergencyUsesBucketDate === emergencyBucketStart
+    ? remainingEmergencyUses(localEmergencyUses, emergencyBucket.emergencyUsesBucketReported || 0, emergencyBucket.emergencyUsesBucketRemote || 0)
+    : localEmergencyUses;
+  document.getElementById('emergencyCount').textContent = `${emergencyLeft}회`;
 
   const focusActive = !!(focusModeActive && focusModeEndTime > Date.now());
   const focusScheduled = !focusActive && !!(focusModeDelayEndTime && focusModeDelayEndTime > Date.now());

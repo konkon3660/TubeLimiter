@@ -6,12 +6,23 @@ import { computeLimitForDate } from '../lib/limits.js';
 import { HARDCORE_DISABLE_COOLDOWN_MS } from '../lib/hardcore.js';
 import { FOCUS_STOP_COOLDOWN_MS, resolveFocusStopTime } from '../lib/focusMode.js';
 import { EMERGENCY_GRANT_COOLDOWN_MS, EMERGENCY_DURATION_MS, emergencyOverlapMs } from '../lib/emergency.js';
-import { usageDeltaSinceSync, combinedUsedMillis } from '../lib/usageMerge.js';
+import {
+  usageDeltaSinceSync,
+  combinedUsedMillis,
+  sumEmergencyUsesInBucket,
+  reportedEmergencyUsesInBucket,
+  remainingEmergencyUses
+} from '../lib/usageMerge.js';
 import { isScheduleActive, minutesUntilNextScheduleStart } from '../lib/schedule.js';
 import { focusStateBeforeTransition } from '../lib/focusTransition.js';
 import { resolveBlockDecision, resolveTabBlock, isWhitelistedUrl, isShortsUrl } from '../lib/blockDecision.js';
 import { evaluateAlarms } from '../lib/alarmRules.js';
-import { planDateRollover, planEmergencyReset } from '../lib/dateRollover.js';
+import {
+  planDateRollover,
+  planEmergencyReset,
+  emergencyResetDate,
+  DEFAULT_EMERGENCY_USES
+} from '../lib/dateRollover.js';
 
 const MAX_ELAPSED_MS = 10 * 60 * 1000; // 비정상적으로 큰 elapsed 값 방어
 const DEFAULT_DAILY_LIMIT_MS = 30 * 60 * 1000;
@@ -450,22 +461,31 @@ async function syncUsageToSupabaseInner(force = false) {
       'dailyUsageSyncDate',
       'dailyUsageSyncedMillis',
       'dailyUsageShortsSyncedMillis',
-      'dailyUsageEmergencySyncedMillis'
+      'dailyUsageEmergencySyncedMillis',
+      'dailyUsageEmergencyUsesSyncedCount'
     ])
   ]);
 
   const localUsage = (usage_history || {})[today] || 0;
   const localShorts = (usage_history_shorts || {})[today] || 0;
-  const localEmergency = emergencyEntryFor(emergencyHistory, today).ms;
+  const todayEmergency = emergencyEntryFor(emergencyHistory, today);
+  const localEmergency = todayEmergency.ms;
+  // 긴급 시청 "횟수"도 시간과 같은 델타 방식으로 올린다. 여기까지 올려야 다른 기기가 남은
+  // 횟수를 제대로 알 수 있다 — 안 올리면 기기를 바꿔서 횟수를 다시 채우는 우회가 가능하다.
+  const localEmergencyUses = todayEmergency.uses;
   const usageDelta = usageDeltaSinceSync(localUsage, synced.dailyUsageSyncDate, synced.dailyUsageSyncedMillis, today);
   const shortsDelta = usageDeltaSinceSync(localShorts, synced.dailyUsageSyncDate, synced.dailyUsageShortsSyncedMillis, today);
   const emergencyDelta = usageDeltaSinceSync(localEmergency, synced.dailyUsageSyncDate, synced.dailyUsageEmergencySyncedMillis, today);
+  const emergencyUsesDelta = usageDeltaSinceSync(
+    localEmergencyUses, synced.dailyUsageSyncDate, synced.dailyUsageEmergencyUsesSyncedCount, today
+  );
 
   const { data, error } = await supabase.rpc('increment_daily_usage', {
     p_date: today,
     p_usage_delta_ms: usageDelta,
     p_shorts_delta_ms: shortsDelta,
-    p_emergency_delta_ms: emergencyDelta
+    p_emergency_delta_ms: emergencyDelta,
+    p_emergency_uses_delta: emergencyUsesDelta
   });
   if (error) {
     console.error('[TubeLimiter] daily_usage 동기화 실패:', error);
@@ -473,12 +493,56 @@ async function syncUsageToSupabaseInner(force = false) {
   }
 
   const row = Array.isArray(data) ? data[0] : data;
+  const remoteTodayUses = row?.emergency_uses ?? localEmergencyUses;
   await setStorage({
     dailyUsageSyncDate: today,
     dailyUsageSyncedMillis: localUsage,
     dailyUsageShortsSyncedMillis: localShorts,
     dailyUsageEmergencySyncedMillis: localEmergency,
-    dailyUsageCombinedMillis: row?.usage_ms ?? localUsage
+    dailyUsageEmergencyUsesSyncedCount: localEmergencyUses,
+    dailyUsageCombinedMillis: row?.usage_ms ?? localUsage,
+    dailyUsageCombinedEmergencyUses: remoteTodayUses
+  });
+
+  await refreshEmergencyUsesBucket(user, today, emergencyHistory, localEmergencyUses, remoteTodayUses);
+}
+
+// 남은 긴급 시청 횟수는 버킷(일/주/월) 단위인데 서버 daily_usage는 날짜별 행이라, weekly/monthly
+// 설정에서는 버킷 시작일 이후 행들의 emergency_uses를 select 해서 합산해야 진짜 합계가 나온다
+// (오늘 행 하나만 보면 주간/월간에서 틀린다). 매 틱마다 select를 날릴 순 없으니 동기화
+// 스로틀(30초)에 얹고, 서비스워커는 자주 깼다 죽으므로 결과는 chrome.storage에 캐시한다.
+// 조회에 실패하면 캐시를 그대로 둔다 — 실패를 0으로 덮어쓰면 잔여 횟수가 엉뚱하게 흔들린다.
+async function refreshEmergencyUsesBucket(user, today, emergencyHistory, syncedTodayUses, remoteTodayUses) {
+  // 리셋 판정(planEmergencyReset)이 쓰는 것과 같은 규칙 — 리셋 키가 곧 버킷 시작일이다.
+  const bucketStart = emergencyResetDate(settingsCache.emergency_config?.resetFrequency, {
+    today,
+    weekStart: getWeekStartDate(),
+    monthStart: getMonthStartDate()
+  });
+
+  let remoteBucketUses = remoteTodayUses;
+  if (bucketStart !== today) {
+    // 주간/월간이면 오늘 행 하나로는 모자라니 버킷 구간을 통째로 읽는다.
+    const { data, error } = await supabase
+      .from('daily_usage')
+      .select('emergency_uses')
+      .eq('user_id', user.id)
+      .gte('date', bucketStart)
+      .lte('date', today);
+    if (error) {
+      console.error('[TubeLimiter] 긴급 시청 횟수 합계 조회 실패:', error);
+      return;
+    }
+    remoteBucketUses = (data || []).reduce((sum, r) => sum + (r.emergency_uses || 0), 0);
+  }
+
+  const localBucketUses = sumEmergencyUsesInBucket(emergencyHistory, bucketStart, today);
+  await setStorage({
+    emergencyUsesBucketDate: bucketStart,
+    emergencyUsesBucketRemote: remoteBucketUses,
+    emergencyUsesBucketReported: reportedEmergencyUsesInBucket(
+      localBucketUses, emergencyEntryFor(emergencyHistory, today).uses, syncedTodayUses
+    )
   });
 }
 
@@ -491,6 +555,41 @@ async function getEffectiveTodayUsage(localUsage) {
 }
 
 // --- 긴급 시청 횟수 리셋 ---
+
+/** 지금 버킷의 시작일. 리셋 판정과 서버 합산 구간이 같은 규칙을 쓰도록 여기 하나로 모은다. */
+function currentEmergencyBucketStart() {
+  return emergencyResetDate(settingsCache.emergency_config?.resetFrequency, {
+    today: getTodayDate(),
+    weekStart: getWeekStartDate(),
+    monthStart: getMonthStartDate()
+  });
+}
+
+/**
+ * 남은 긴급 시청 횟수. 로컬 카운터(emergency_uses_today)에서 "다른 기기가 이 버킷에서 이미 쓴
+ * 만큼"을 뺀 값이다. 로컬 카운터만 보면 기기를 바꿔 횟수를 다시 채울 수 있다.
+ *
+ * 캐시가 다른 버킷 것이거나(리셋 직후) 아직 한 번도 동기화되지 않았으면 로컬 값 그대로 돌려준다 —
+ * 오프라인/로그아웃에서도 기존과 똑같이 동작해야 하기 때문이다(documents/BACKEND.md의 설계).
+ *
+ * @returns {Promise<{local: number, effective: number}>} local은 차감에 쓸 로컬 카운터 값.
+ */
+async function getEffectiveEmergencyUses() {
+  const stored = await getStorage([
+    'emergency_uses_today',
+    'emergencyUsesBucketDate',
+    'emergencyUsesBucketRemote',
+    'emergencyUsesBucketReported'
+  ]);
+  const local = stored.emergency_uses_today ?? (settingsCache.emergency_config?.dailyUses ?? DEFAULT_EMERGENCY_USES);
+  if (stored.emergencyUsesBucketDate !== currentEmergencyBucketStart()) return { local, effective: local };
+  return {
+    local,
+    effective: remainingEmergencyUses(
+      local, stored.emergencyUsesBucketReported || 0, stored.emergencyUsesBucketRemote || 0
+    )
+  };
+}
 
 async function checkAndResetEmergencyUses() {
   const { last_emergency_date } = await getStorage(['last_emergency_date']);
@@ -790,11 +889,11 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   if (request.action === 'requestEmergency') {
     (async () => {
-      const { emergency_uses_today, last_emergency_granted_at } = await getStorage([
-        'emergency_uses_today', 'last_emergency_granted_at'
-      ]);
-      let uses = emergency_uses_today;
-      if (uses === undefined) uses = settingsCache.emergency_config?.dailyUses ?? 3;
+      const { last_emergency_granted_at } = await getStorage(['last_emergency_granted_at']);
+      // 판정은 로컬 카운터가 아니라 "다른 기기가 쓴 몫까지 뺀" 합계 기준으로 한다.
+      // 차감은 여전히 로컬 카운터에 하고(오프라인에서도 돌아야 하므로), 다른 기기 몫은
+      // 동기화 때 캐시해둔 서버 버킷 합계로 매번 다시 뺀다.
+      const { local: localUses, effective: remainingUses } = await getEffectiveEmergencyUses();
 
       if (!isYoutubeBlocked) {
         sendResponse({ success: false, message: '현재 차단 상태가 아닙니다.' });
@@ -827,16 +926,18 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
         }
       }
 
-      if (uses <= 0) {
+      if (remainingUses <= 0) {
         sendResponse({ success: false, message: '남은 긴급 시청 횟수가 없습니다.' });
         return;
       }
 
-      uses -= 1;
       const grantedAt = Date.now();
-      await setStorage({ emergency_uses_today: uses, last_emergency_granted_at: grantedAt });
+      await setStorage({ emergency_uses_today: Math.max(0, localUses - 1), last_emergency_granted_at: grantedAt });
       // 그날 긴급 시청을 썼다는 사실 자체를 남긴다 — 부여받고 안 봐도 완벽한 날은 아니다.
       await addEmergencyUse();
+      // 다음 30초 틱을 기다리면 그 사이에 다른 기기가 같은 횟수를 또 쓸 수 있으므로 바로 올린다.
+      // 실패해도(오프라인) 로컬 차감은 이미 끝났으니 이 기기 동작에는 영향이 없다.
+      await syncUsageToSupabase(true).catch(() => {});
 
       emergencyModeActive = true;
       const emergencyEndTime = grantedAt + EMERGENCY_DURATION_MS;

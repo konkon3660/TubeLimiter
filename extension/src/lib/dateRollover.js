@@ -49,6 +49,11 @@ export function planDateRollover(storedDate, today, maxDays = MAX_ROLLOVER_DAYS)
  * 긴급 시청 횟수가 담기는 버킷의 키. 이 값이 바뀌면 남은 횟수가 리셋된다.
  * 안드로이드 emergencyResetKey()와 같은 규칙.
  *
+ * 리셋 키는 동시에 그 버킷의 "시작일"이기도 하다. 서버 daily_usage는 날짜별 행이라 weekly/monthly
+ * 설정에서 기기 간 합계를 내려면 이 날짜 이후 행들의 emergency_uses를 합산해야 하는데, 그 구간
+ * 기준을 따로 만들지 않고 이 함수 하나로 통일한다 — 규칙이 두 군데로 갈라지면 리셋 시점과
+ * 합산 구간이 어긋나 잔여 횟수가 조용히 틀어진다.
+ *
  * @param {string|undefined} frequency 'daily' | 'weekly' | 'monthly' (그 외/누락이면 daily)
  * @param {{today: string, weekStart: string, monthStart: string}} dates
  */
