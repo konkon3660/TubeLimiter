@@ -63,4 +63,51 @@ class AuthMessagesTest {
         assertEquals("요청 중 오류가 발생했습니다.", translateAuthError(null))
         assertEquals("요청 중 오류가 발생했습니다.", translateAuthError("  "))
     }
+
+    @Test
+    fun `a rejected session while deleting reads as an expired login`() {
+        assertEquals(
+            "로그인이 만료되었습니다. 다시 로그인한 뒤 시도해주세요.",
+            translateDeleteAccountError("invalid JWT"),
+        )
+        assertEquals(
+            "로그인이 만료되었습니다. 다시 로그인한 뒤 시도해주세요.",
+            translateDeleteAccountError("JWT expired"),
+        )
+        assertEquals(
+            "로그인이 만료되었습니다. 다시 로그인한 뒤 시도해주세요.",
+            translateDeleteAccountError("Missing authorization header"),
+        )
+    }
+
+    @Test
+    fun `a missing Edge Function reads as try again later`() {
+        assertEquals(
+            "지금은 탈퇴를 처리할 수 없습니다. 잠시 뒤 다시 시도해주세요.",
+            translateDeleteAccountError("Requested function was not found"),
+        )
+    }
+
+    @Test
+    fun `RestException noise around the body still matches`() {
+        // RestException.message appends the URL, headers and method to the server's body.
+        val raw = """
+            {"error":"invalid JWT"}
+            URL: https://example.supabase.co/functions/v1/delete-account
+            Headers: []
+            Http Method: POST
+        """.trimIndent()
+        assertEquals("로그인이 만료되었습니다. 다시 로그인한 뒤 시도해주세요.", translateDeleteAccountError(raw))
+    }
+
+    @Test
+    fun `delete failures fall through to the shared auth mapping`() {
+        assertEquals("네트워크에 연결할 수 없습니다.", translateDeleteAccountError("Unable to resolve host"))
+        assertEquals(
+            "요청이 너무 잦습니다. 잠시 뒤 다시 시도해주세요.",
+            translateDeleteAccountError("Request rate limit reached"),
+        )
+        assertEquals("Something odd happened", translateDeleteAccountError("Something odd happened"))
+        assertEquals("요청 중 오류가 발생했습니다.", translateDeleteAccountError(null))
+    }
 }

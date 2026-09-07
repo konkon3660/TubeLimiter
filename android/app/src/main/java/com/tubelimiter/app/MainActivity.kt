@@ -132,6 +132,7 @@ fun AppRoot() {
 
     var showAuth by remember { mutableStateOf(false) }
     var authBusy by remember { mutableStateOf(false) }
+    var deleteAccountBusy by remember { mutableStateOf(false) }
     var authError by remember { mutableStateOf<String?>(null) }
     var authNotice by remember { mutableStateOf<String?>(null) }
 
@@ -371,6 +372,30 @@ fun AppRoot() {
                         val result = authRepository.signOut()
                         if (result is AuthResult.Failed) {
                             Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+                deleteAccountInFlight = deleteAccountBusy,
+                // Unlike a sign-out, which leaves this device's data in place for the next
+                // sign-in, deletion has to take the local copy with it: the account it was
+                // synced from no longer exists. Local wipe only on success, and written
+                // straight to the stores rather than through editSettings, which would try
+                // to push the reset back up to the row that was just deleted.
+                onDeleteAccount = {
+                    if (!deleteAccountBusy) {
+                        scope.launch {
+                            deleteAccountBusy = true
+                            val result = authRepository.deleteAccount()
+                            if (result is AuthResult.Success) {
+                                stateStore.clearAccountData()
+                                settingsStore.resetToDefaults()
+                            }
+                            deleteAccountBusy = false
+                            val notice = when (result) {
+                                is AuthResult.Failed -> result.message
+                                else -> "계정이 삭제되었습니다."
+                            }
+                            Toast.makeText(context, notice, Toast.LENGTH_LONG).show()
                         }
                     }
                 },

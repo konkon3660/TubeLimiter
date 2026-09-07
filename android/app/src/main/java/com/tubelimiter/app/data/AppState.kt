@@ -315,6 +315,40 @@ class AppState(private val context: Context) {
 
     suspend fun setScheduleStartNotifiedDate(dateKey: String) = edit { it[KEY_SCHEDULE_START_NOTIFIED_DATE] = dateKey }
 
+    /**
+     * Wipes everything the deleted account contributed: the usage history the dashboard draws,
+     * the streak/XP record and unlocked achievements (both pulled from `streaks`/`achievements`
+     * by [com.tubelimiter.app.sync.SyncRepository.pullStreak]), and the `daily_usage` sync
+     * markers — leaving those would have the next account inherit this one's reported totals.
+     *
+     * Deliberately leaves the live protection state alone (manual block, a running or scheduled
+     * focus session, the emergency allowance and its cooldown, alarm bookkeeping, schedule-window
+     * markers). None of it came from the account, and clearing it would turn "delete my account"
+     * into a way out of a focus session that is currently blocking.
+     */
+    suspend fun clearAccountData() = edit { prefs ->
+        prefs.remove(KEY_USAGE_HISTORY)
+        prefs.remove(KEY_USAGE_HISTORY_HOURLY)
+        prefs.remove(KEY_EMERGENCY_MILLIS_HISTORY)
+        prefs.remove(KEY_EMERGENCY_USES_HISTORY)
+        prefs.remove(KEY_LAST_ROLLOVER_DATE)
+
+        prefs.remove(KEY_STREAK_CURRENT)
+        prefs.remove(KEY_STREAK_BEST)
+        prefs.remove(KEY_STREAK_LAST_DATE)
+        prefs.remove(KEY_STREAK_TOTAL_SUCCESS)
+        prefs.remove(KEY_STREAK_XP)
+        prefs.remove(KEY_STREAK_PERFECT_DAYS)
+        prefs.remove(KEY_STREAK_PERFECT_CURRENT)
+        prefs.remove(KEY_STREAK_PERFECT_BEST)
+        prefs.remove(KEY_ACHIEVEMENTS)
+
+        prefs.remove(KEY_DAILY_USAGE_SYNC_DATE)
+        prefs.remove(KEY_DAILY_USAGE_SYNCED_MILLIS)
+        prefs.remove(KEY_DAILY_USAGE_COMBINED_MILLIS)
+        prefs.remove(KEY_DAILY_USAGE_EMERGENCY_SYNCED_MILLIS)
+    }
+
     private suspend fun edit(block: (MutablePreferences) -> Unit) {
         context.dataStore.edit(block)
     }

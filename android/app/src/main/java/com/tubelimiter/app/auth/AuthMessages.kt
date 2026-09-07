@@ -63,3 +63,26 @@ fun translateAuthError(raw: String?): String {
         else -> message
     }
 }
+
+/**
+ * Account deletion goes through the `delete-account` Edge Function rather than GoTrue, so the
+ * failures a user can actually hit are different ones: a session the server no longer accepts,
+ * or the function itself being unavailable. Anything else — network trouble above all — reads
+ * the same as everywhere else, so fall through to [translateAuthError].
+ */
+fun translateDeleteAccountError(raw: String?): String {
+    val message = raw?.trim().orEmpty()
+    val lowered = message.lowercase()
+    return when {
+        "invalid jwt" in lowered ||
+            "jwt expired" in lowered ||
+            "missing authorization" in lowered ||
+            "not authenticated" in lowered ->
+            "로그인이 만료되었습니다. 다시 로그인한 뒤 시도해주세요."
+
+        "function not found" in lowered || "requested function was not found" in lowered ->
+            "지금은 탈퇴를 처리할 수 없습니다. 잠시 뒤 다시 시도해주세요."
+
+        else -> translateAuthError(message)
+    }
+}

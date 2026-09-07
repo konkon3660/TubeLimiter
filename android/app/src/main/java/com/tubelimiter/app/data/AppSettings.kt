@@ -131,6 +131,30 @@ class AppSettings(private val context: Context) {
         prefs[KEY_SCHEDULE_WINDOWS] = encodeScheduleWindows(settings.scheduleWindows)
     }
 
+    /**
+     * Drops every stored setting so the reader above falls back to the declared defaults.
+     * Used after the account is deleted: the settings row was mirrored from the server (see
+     * [replaceAll]), so leaving it behind would keep the deleted account's configuration on the
+     * device. Removes rather than writes defaults, so a later sign-in on a fresh account seeds
+     * its row from the same values a first install would.
+     *
+     * Only touches this file's keys — [AppState] shares the same DataStore and clears its own.
+     */
+    suspend fun resetToDefaults() = edit { prefs ->
+        prefs.remove(KEY_LIMIT_MINUTES)
+        prefs.remove(KEY_LIMIT_BY_DAY)
+        prefs.remove(KEY_LIMIT_FREQUENCY)
+        prefs.remove(KEY_MONITORING)
+        prefs.remove(KEY_EMERGENCY_ALLOWANCE)
+        prefs.remove(KEY_EMERGENCY_RESET)
+        prefs.remove(KEY_ALARM_INTERVAL)
+        prefs.remove(KEY_ALARM_MILESTONES)
+        prefs.remove(KEY_HARDCORE)
+        prefs.remove(KEY_HARDCORE_DISABLE_AT)
+        prefs.remove(KEY_CHART_RANGE_DAYS)
+        prefs.remove(KEY_SCHEDULE_WINDOWS)
+    }
+
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
         context.dataStore.edit(block)
     }

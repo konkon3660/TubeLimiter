@@ -12,14 +12,18 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,6 +62,8 @@ fun SettingsScreen(
     accountLoading: Boolean,
     onSignInClick: () -> Unit,
     onSignOut: () -> Unit,
+    deleteAccountInFlight: Boolean,
+    onDeleteAccount: () -> Unit,
     onDailyLimitChange: (Int) -> Unit,
     onByDayChange: (Int, Int) -> Unit,
     onFrequencyChange: (LimitFrequency) -> Unit,
@@ -74,6 +80,7 @@ fun SettingsScreen(
 ) {
     // Hardcore mode is what makes the streak mean anything, so it locks the limits.
     val limitsLocked = settings.hardcoreMode
+    var confirmDeleteAccount by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -301,12 +308,115 @@ fun SettingsScreen(
                 },
             ) { Text("+ 예약 추가") }
         }
+
+        // Google Play requires an in-app way to delete the account, so this only shows once
+        // there is one to delete. Sits last, and in error colours, so it can't be hit in passing.
+        if (accountEmail != null) {
+            DangerCard("계정 삭제") {
+                Text(
+                    "계정과 서버에 저장된 모든 기록이 지워집니다. 되돌릴 수 없어요.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Button(
+                    onClick = { confirmDeleteAccount = true },
+                    enabled = !deleteAccountInFlight,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError,
+                    ),
+                ) { Text(if (deleteAccountInFlight) "삭제 중…" else "계정 삭제") }
+            }
+        }
+
+        if (confirmDeleteAccount) {
+            DeleteAccountDialog(
+                email = accountEmail.orEmpty(),
+                inFlight = deleteAccountInFlight,
+                onDismiss = { confirmDeleteAccount = false },
+                onConfirm = {
+                    confirmDeleteAccount = false
+                    onDeleteAccount()
+                },
+            )
+        }
     }
+}
+
+/**
+ * The one deliberate, irreversible action in the app, so it spells out what goes and keeps the
+ * destructive button visually separate from the "취소" it sits next to. [inFlight] disables both
+ * buttons and blocks dismissal, so a second tap can't fire a second delete while one is running.
+ */
+@Composable
+private fun DeleteAccountDialog(
+    email: String,
+    inFlight: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (!inFlight) onDismiss() },
+        title = { Text("계정을 삭제할까요?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (email.isNotBlank()) {
+                    Text(email, style = MaterialTheme.typography.bodyMedium)
+                }
+                Text(
+                    "다음 항목이 모두 삭제됩니다.\n" +
+                        "• 계정\n" +
+                        "• 사용시간 기록\n" +
+                        "• 스트릭 / XP\n" +
+                        "• 뱃지\n" +
+                        "• 설정",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    "삭제하면 되돌릴 수 없고, 크롬 확장에서도 같은 계정으로 로그인할 수 없습니다. " +
+                        "이 기기에 남아 있는 기록도 함께 지워집니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (!inFlight) onConfirm() },
+                enabled = !inFlight,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error,
+                ),
+            ) { Text("영구 삭제") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !inFlight) { Text("취소") }
+        },
+    )
 }
 
 @Composable
 private fun SettingsCard(title: String, content: @Composable () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            content()
+        }
+    }
+}
+
+/** [SettingsCard] in the theme's error colours, for the one card holding a destructive action. */
+@Composable
+private fun DangerCard(title: String, content: @Composable () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer,
+            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        ),
+    ) {
         Column(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),

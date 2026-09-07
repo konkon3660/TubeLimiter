@@ -8,12 +8,21 @@ import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.auth.status.SessionStatus
 import io.github.jan.supabase.createSupabaseClient
+import io.github.jan.supabase.functions.Functions
+import io.github.jan.supabase.functions.functions
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.postgrest
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 private const val TAG = "AuthRepository"
+
+/**
+ * Edge Function that deletes the caller's `auth.users` row, which cascades to `daily_usage`,
+ * `settings`, `streaks` and `achievements`. It takes no body: the caller is identified purely
+ * from the JWT supabase-kt attaches, so no user id ever travels in the request.
+ */
+private const val DELETE_ACCOUNT_FUNCTION = "delete-account"
 
 data class AccountState(
     val loading: Boolean = true,
@@ -39,6 +48,8 @@ class AuthRepository(context: Context) {
         // auth-kt persists the session on Android by itself, so a restart stays signed in.
         install(Auth)
         install(Postgrest)
+        // Only used by deleteAccount(); the plugin signs its requests with the current session.
+        install(Functions)
     }
 
     val postgrest get() = client.postgrest
@@ -84,6 +95,34 @@ class AuthRepository(context: Context) {
         client.auth.signOut()
         AuthResult.Success
     }.getOrElse { failure(it) }
+
+    /**
+     * Erases the account server-side, then drops the session. Google Play requires this path to
+     * exist in-app for any app that has accounts.
+     *
+     * Deliberately fails closed: unless the Edge Function returns success the session is left
+     * alone, so a network blip cannot sign someone out of an account that still exists. The
+     * local DataStore wipe is the caller's job — see MainActivity's `onDeleteAccount` — and it
+     * only runs on [AuthResult.Success].
+     */
+    suspend fun deleteAccount(): AuthResult {
+        if (client.auth.currentSessionOrNull() == null) {
+            return AuthResult.Failed("로그인 상태가 아닙니다.")
+        }
+        return runCatching {
+            // No arguments: the function reads the caller from the JWT this call carries.
+            client.functions.invoke(DELETE_ACCOUNT_FUNCTION)
+            // The row is gone, so signing out can only fail on the way to a session that is
+            // already dead; auth-kt clears the stored session either way, so don't let a
+            // throw here report a deletion that actually succeeded as a failure.
+            runCatching { client.auth.signOut() }
+                .onFailure { Log.w(TAG, "Sign-out after account deletion failed", it) }
+            AuthResult.Success
+        }.getOrElse { error ->
+            Log.e(TAG, "Account deletion failed", error)
+            AuthResult.Failed(translateDeleteAccountError(error.message))
+        }
+    }
 
     private fun failure(error: Throwable): AuthResult.Failed {
         Log.e(TAG, "Auth request failed", error)
