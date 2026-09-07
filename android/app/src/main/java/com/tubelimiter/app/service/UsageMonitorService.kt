@@ -24,6 +24,8 @@ import com.tubelimiter.app.data.AppState
 import com.tubelimiter.app.data.HISTORY_RETENTION_DAYS
 import com.tubelimiter.app.data.RuntimeState
 import com.tubelimiter.app.data.Settings
+import com.tubelimiter.app.diagnostics.DiagnosticKind
+import com.tubelimiter.app.diagnostics.summarizeFailure
 import com.tubelimiter.app.gamification.applyDayRollover
 import com.tubelimiter.app.limit.BlockInputs
 import com.tubelimiter.app.limit.EMERGENCY_DURATION_MILLIS
@@ -121,10 +123,21 @@ class UsageMonitorService : Service() {
 
     private suspend fun monitorLoop() {
         while (scope.isActive) {
-            val wait = runCatching { tick() }
-                .onFailure { Log.e(TAG, "Monitor tick failed", it) }
-                .getOrDefault(POLL_IDLE_MILLIS)
-            delay(wait)
+            val result = runCatching { tick() }
+            result.exceptionOrNull()?.let { error ->
+                Log.e(TAG, "Monitor tick failed", error)
+                // 틱이 통째로 넘어지면 사용량도 안 쌓이고 차단도 안 걸리는데, 화면에는 여전히
+                // "감시 중" 알림만 떠 있다. logcat을 볼 수 없는 실기기에서 이걸 알아챌 유일한
+                // 흔적이라 진단 기록에 남긴다. 기록 자체가 또 실패해도 루프는 계속 돌아야 한다.
+                runCatching {
+                    stateStore.recordDiagnosticFailure(
+                        atMillis = System.currentTimeMillis(),
+                        kind = DiagnosticKind.MONITOR,
+                        code = "tick/${summarizeFailure(error)}",
+                    )
+                }
+            }
+            delay(result.getOrDefault(POLL_IDLE_MILLIS))
         }
     }
 

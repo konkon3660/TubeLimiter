@@ -8,6 +8,11 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.tubelimiter.app.diagnostics.DIAGNOSTIC_CAPACITY
+import com.tubelimiter.app.diagnostics.DiagnosticEvent
+import com.tubelimiter.app.diagnostics.appendDiagnosticEvent
+import com.tubelimiter.app.diagnostics.decodeDiagnosticEvents
+import com.tubelimiter.app.diagnostics.encodeDiagnosticEvents
 import com.tubelimiter.app.gamification.StreakRecord
 import com.tubelimiter.app.limit.AlarmState
 import kotlinx.coroutines.flow.Flow
@@ -67,6 +72,12 @@ private val KEY_SCHEDULE_BLOCK_WAS_ACTIVE = booleanPreferencesKey("schedule_bloc
 /** Date the "10 minutes until a scheduled block starts" nudge was last sent, for once-per-day dedupe. */
 private val KEY_SCHEDULE_START_NOTIFIED_DATE = stringPreferencesKey("schedule_start_notified_date")
 
+/** 동기화/인증 실패 링버퍼와 마지막 성공 시각. 성공은 시각만 덮어쓰고 이벤트를 쌓지 않는다 —
+ * 30초마다 성공하는 동기화를 전부 남기면 버퍼가 노이즈로 차서 정작 실패가 밀려난다.
+ * 포맷은 [com.tubelimiter.app.diagnostics.encodeDiagnosticEvents] 참고. */
+private val KEY_DIAGNOSTIC_EVENTS = stringPreferencesKey("diagnostic_events")
+private val KEY_LAST_SYNC_SUCCESS_AT = longPreferencesKey("last_sync_success_at")
+
 /** How many days of usage history to keep for the dashboard. */
 const val HISTORY_RETENTION_DAYS = 60
 
@@ -107,6 +118,10 @@ data class RuntimeState(
     val dailyUsageEmergencyUsesSynced: Int = 0,
     val scheduleBlockWasActive: Boolean = false,
     val scheduleStartNotifiedDate: String? = null,
+    /** 최근 동기화·인증 실패, 최신순. 민감정보는 담기지 않는다(diagnostics/SyncDiagnostics.kt 참고). */
+    val diagnosticEvents: List<DiagnosticEvent> = emptyList(),
+    /** 마지막으로 서버 왕복이 성공한 시각. 한 번도 없으면 null. */
+    val lastSyncSuccessAtMillis: Long? = null,
 ) {
     fun focusActiveAt(nowMillis: Long): Boolean =
         focusEndMillis != null && nowMillis < focusEndMillis
@@ -179,6 +194,8 @@ class AppState(private val context: Context) {
         dailyUsageEmergencyUsesSynced = this[KEY_DAILY_USAGE_EMERGENCY_USES_SYNCED] ?: 0,
         scheduleBlockWasActive = this[KEY_SCHEDULE_BLOCK_WAS_ACTIVE] ?: false,
         scheduleStartNotifiedDate = this[KEY_SCHEDULE_START_NOTIFIED_DATE],
+        diagnosticEvents = decodeDiagnosticEvents(this[KEY_DIAGNOSTIC_EVENTS]),
+        lastSyncSuccessAtMillis = this[KEY_LAST_SYNC_SUCCESS_AT],
     )
 
     suspend fun recordUsage(dateKey: String, usedMillis: Long, keepKeys: Set<String>) = edit { prefs ->
@@ -364,6 +381,35 @@ class AppState(private val context: Context) {
         prefs[KEY_EMERGENCY_USES_OTHER_DEVICES] = uses.coerceAtLeast(0)
     }
 
+    /**
+     * 서버 왕복이 성공했을 때. **이벤트를 쌓지 않고 시각만 덮어쓴다** — 성공은 세는 게 아니라
+     * "마지막이 언제였나"만 알면 되고, 30초마다 한 줄씩 남기면 링버퍼가 성공 기록으로만 차서
+     * 정작 봐야 할 실패가 밀려난다.
+     */
+    suspend fun recordSyncSuccess(atMillis: Long) = edit { it[KEY_LAST_SYNC_SUCCESS_AT] = atMillis }
+
+    /**
+     * 실패 한 건을 링버퍼에 넣는다. 읽기-수정-쓰기를 한 edit 안에서 처리해, 여러 동기화 경로가
+     * 동시에 실패해도 기록이 서로를 덮어쓰지 않는다.
+     *
+     * [code]에는 서버 에러 메시지 원문이 아니라 짧은 분류만 넘길 것
+     * ([com.tubelimiter.app.diagnostics.summarizeFailure] 참고) — 토큰·이메일·user_id가
+     * 이 버퍼에 들어가면 사용자가 그대로 복사해 남에게 보내게 된다.
+     */
+    suspend fun recordDiagnosticFailure(atMillis: Long, kind: String, code: String) = edit { prefs ->
+        val updated = appendDiagnosticEvent(
+            events = decodeDiagnosticEvents(prefs[KEY_DIAGNOSTIC_EVENTS]),
+            event = DiagnosticEvent(atMillis = atMillis, kind = kind, code = code),
+            capacity = DIAGNOSTIC_CAPACITY,
+        )
+        prefs[KEY_DIAGNOSTIC_EVENTS] = encodeDiagnosticEvents(updated)
+    }
+
+    suspend fun clearDiagnostics() = edit { prefs ->
+        prefs.remove(KEY_DIAGNOSTIC_EVENTS)
+        prefs.remove(KEY_LAST_SYNC_SUCCESS_AT)
+    }
+
     suspend fun setScheduleBlockWasActive(active: Boolean) = edit { it[KEY_SCHEDULE_BLOCK_WAS_ACTIVE] = active }
 
     suspend fun setScheduleStartNotifiedDate(dateKey: String) = edit { it[KEY_SCHEDULE_START_NOTIFIED_DATE] = dateKey }
@@ -407,6 +453,11 @@ class AppState(private val context: Context) {
         // (KEY_EMERGENCY_REMAINING)은 위 주석대로 그대로 두므로 탈퇴가 우회로가 되지는 않는다.
         prefs.remove(KEY_EMERGENCY_USES_OTHER_DEVICES)
         prefs.remove(KEY_EMERGENCY_USES_OTHER_DEVICES_KEY)
+
+        // 진단 기록도 지운 계정과의 통신 기록이다. 남겨두면 이미 없는 계정의 실패 목록이
+        // 계속 보이고, "마지막 성공" 시각도 다음 계정의 판정에 그대로 끼어든다.
+        prefs.remove(KEY_DIAGNOSTIC_EVENTS)
+        prefs.remove(KEY_LAST_SYNC_SUCCESS_AT)
     }
 
     private suspend fun edit(block: (MutablePreferences) -> Unit) {

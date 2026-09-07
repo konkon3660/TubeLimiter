@@ -1,6 +1,8 @@
 package com.tubelimiter.app
 
 import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
@@ -44,6 +46,8 @@ import com.tubelimiter.app.data.AppSettings
 import com.tubelimiter.app.data.AppState
 import com.tubelimiter.app.data.RuntimeState
 import com.tubelimiter.app.data.Settings
+import com.tubelimiter.app.diagnostics.buildDiagnosticsReport
+import com.tubelimiter.app.diagnostics.staleSyncWarning
 import com.tubelimiter.app.limit.BlockInputs
 import com.tubelimiter.app.limit.blockReason
 import com.tubelimiter.app.limit.computeLimitMillis
@@ -267,6 +271,15 @@ fun AppRoot() {
 
     val scheduleWindow = isScheduleActive(nowMillis, settings.scheduleWindows)
 
+    // 로그인 상태에서 마지막 동기화 성공이 하루를 넘겼는지. nowMillis가 1초마다 갱신되므로
+    // 임계값을 넘는 순간 별도 트리거 없이 홈 화면에 한 줄이 뜬다.
+    val syncWarning = staleSyncWarning(
+        signedIn = account.signedIn,
+        lastSuccessAtMillis = state.lastSyncSuccessAtMillis,
+        hasRecordedFailure = state.diagnosticEvents.isNotEmpty(),
+        nowMillis = nowMillis,
+    )
+
     val blockReason = BlockInputs(
         usedMillis = effectiveUsedMillis,
         limitMillis = limitMillis,
@@ -313,6 +326,7 @@ fun AppRoot() {
                 hardcoreMode = settings.hardcoreMode,
                 streak = state.streak,
                 scheduleWindow = scheduleWindow,
+                syncWarning = syncWarning,
                 nowMillis = nowMillis,
                 onStartFocus = { delayMinutes, durationMinutes ->
                     scope.launch {
@@ -425,6 +439,18 @@ fun AppRoot() {
                 onHardcoreDisableCancel = { editSettings { settingsStore.cancelHardcoreDisable() } },
                 scheduleWindows = settings.scheduleWindows,
                 onScheduleWindowsChange = { editSettings { settingsStore.setScheduleWindows(it) } },
+                lastSyncSuccessAtMillis = state.lastSyncSuccessAtMillis,
+                diagnosticEvents = state.diagnosticEvents,
+                onClearDiagnostics = { scope.launch { stateStore.clearDiagnostics() } },
+                // 클립보드에 나가는 건 시각·종류·코드뿐이다 — buildDiagnosticsReport가 그것만
+                // 조립하고, 코드 자체도 저장 시점에 이미 걸러진 값이다
+                // (diagnostics/SyncDiagnostics.kt의 "민감정보 금지" 주석 참고).
+                onCopyDiagnostics = {
+                    val report = buildDiagnosticsReport(state.lastSyncSuccessAtMillis, state.diagnosticEvents)
+                    context.getSystemService(ClipboardManager::class.java)
+                        ?.setPrimaryClip(ClipData.newPlainText("TubeLimiter 진단", report))
+                    Toast.makeText(context, "진단 정보를 복사했어요.", Toast.LENGTH_SHORT).show()
+                },
                 modifier = contentModifier,
             )
         }

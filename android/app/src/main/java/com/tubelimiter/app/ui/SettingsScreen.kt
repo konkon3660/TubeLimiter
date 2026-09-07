@@ -1,5 +1,6 @@
 package com.tubelimiter.app.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -36,6 +37,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.tubelimiter.app.data.Settings
+import com.tubelimiter.app.diagnostics.DiagnosticEvent
+import com.tubelimiter.app.diagnostics.diagnosticKindLabel
+import com.tubelimiter.app.diagnostics.formatDiagnosticTime
 import com.tubelimiter.app.limit.EmergencyResetFrequency
 import com.tubelimiter.app.limit.LIMIT_PRESETS_MINUTES
 import com.tubelimiter.app.limit.LimitFrequency
@@ -76,11 +80,18 @@ fun SettingsScreen(
     onHardcoreDisableCancel: () -> Unit,
     scheduleWindows: List<ScheduleWindow>,
     onScheduleWindowsChange: (List<ScheduleWindow>) -> Unit,
+    /** 마지막으로 서버 왕복이 성공한 시각, 한 번도 없으면 null. */
+    lastSyncSuccessAtMillis: Long?,
+    /** 최근 동기화·인증 실패, 최신순 (diagnostics/SyncDiagnostics.kt). */
+    diagnosticEvents: List<DiagnosticEvent>,
+    onClearDiagnostics: () -> Unit,
+    onCopyDiagnostics: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Hardcore mode is what makes the streak mean anything, so it locks the limits.
     val limitsLocked = settings.hardcoreMode
     var confirmDeleteAccount by remember { mutableStateOf(false) }
+    var diagnosticsExpanded by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -309,6 +320,17 @@ fun SettingsScreen(
             ) { Text("+ 예약 추가") }
         }
 
+        // 접힌 채로 두는 건 평소엔 볼 일이 없어서고, 접힌 헤더에 요약 한 줄을 남기는 건
+        // 펼치지 않아도 "마지막 성공이 언제였나"는 보이게 하려는 것.
+        DiagnosticsCard(
+            expanded = diagnosticsExpanded,
+            onToggle = { diagnosticsExpanded = !diagnosticsExpanded },
+            lastSyncSuccessAtMillis = lastSyncSuccessAtMillis,
+            events = diagnosticEvents,
+            onClear = onClearDiagnostics,
+            onCopy = onCopyDiagnostics,
+        )
+
         // Google Play requires an in-app way to delete the account, so this only shows once
         // there is one to delete. Sits last, and in error colours, so it can't be hit in passing.
         if (accountEmail != null) {
@@ -392,6 +414,115 @@ private fun DeleteAccountDialog(
             TextButton(onClick = onDismiss, enabled = !inFlight) { Text("취소") }
         },
     )
+}
+
+/**
+ * 접히는 "동기화 상태 / 진단" 섹션.
+ *
+ * 동기화 실패는 지금까지 `Log`로만 남아 사용자에겐 아무 흔적도 없었다 — 외부 크래시 리포팅을
+ * 쓰지 않기로 한 이상, 실기기에서 며칠째 실패하는 걸 알아챌 곳은 여기뿐이다. 그래서 접혀
+ * 있어도 헤더에 최근 성공 시각과 실패 건수는 그대로 보인다.
+ */
+@Composable
+private fun DiagnosticsCard(
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    lastSyncSuccessAtMillis: Long?,
+    events: List<DiagnosticEvent>,
+    onClear: () -> Unit,
+    onCopy: () -> Unit,
+) {
+    val lastSuccess = lastSyncSuccessAtMillis?.let { formatDiagnosticTime(it) } ?: "기록 없음"
+    val summary = if (events.isEmpty()) {
+        "최근 성공 $lastSuccess · 실패 없음"
+    } else {
+        "최근 성공 $lastSuccess · 실패 ${events.size}건"
+    }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onToggle),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("동기화 상태 / 진단", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        summary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    if (expanded) "▲" else "▼",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            if (expanded) {
+                Text(
+                    "이 기기에만 저장되고 서버로 보내지 않습니다. 이메일·계정 ID·토큰은 기록하지 않아요.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (events.isEmpty()) {
+                    Text("기록된 실패가 없습니다.", style = MaterialTheme.typography.bodyMedium)
+                } else {
+                    events.forEach { DiagnosticRow(it) }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onCopy, enabled = events.isNotEmpty() || lastSyncSuccessAtMillis != null) {
+                        Text("복사")
+                    }
+                    OutlinedButton(
+                        onClick = onClear,
+                        enabled = events.isNotEmpty() || lastSyncSuccessAtMillis != null,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    ) { Text("전체 지우기") }
+                }
+            }
+        }
+    }
+}
+
+/** 실패 한 줄: 종류(한글) + 짧은 코드, 오른쪽에 시각과 반복 횟수. */
+@Composable
+private fun DiagnosticRow(event: DiagnosticEvent) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(diagnosticKindLabel(event.kind), style = MaterialTheme.typography.bodyMedium)
+            Text(
+                event.code,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                formatDiagnosticTime(event.atMillis),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (event.count > 1) {
+                Text(
+                    "${event.count}회",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+    }
 }
 
 @Composable

@@ -67,6 +67,9 @@ fun HomeScreen(
     /** Currently-active scheduled-block window, if any (read-only here - only the settings
      * screen can add/edit/remove windows, by design, so this stays a real commitment device). */
     scheduleWindow: ScheduleWindow?,
+    /** 동기화가 오래 실패했을 때 띄울 한 줄, 아니면 null
+     * ([com.tubelimiter.app.diagnostics.staleSyncWarning]가 판정한다). */
+    syncWarning: String?,
     nowMillis: Long,
     onStartFocus: (delayMinutes: Int, durationMinutes: Int) -> Unit,
     onStopFocus: () -> Unit,
@@ -86,6 +89,7 @@ fun HomeScreen(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        if (syncWarning != null) SyncWarningBanner(syncWarning)
         if (hardcoreMode) StreakHeroCard(streak)
         UsageRingCard(usedMillis, limitMillis, emergencyRemaining)
         ModeBadgesCard(
@@ -124,6 +128,33 @@ fun HomeScreen(
             subtitle = if (monitoringEnabled) "켜짐 — 앱을 닫아도 계속 잽니다" else "꺼짐 — 차단되지 않습니다",
             checked = monitoringEnabled,
             onChange = onMonitoringChange,
+        )
+    }
+}
+
+/**
+ * 동기화가 오래 실패했을 때만 뜨는 한 줄.
+ *
+ * 카드가 아니라 얇은 띠 하나인 건 의도적이다 — 차단이나 스트릭과 달리 이건 사용자가 지금
+ * 당장 뭘 해야 하는 일이 아니고, 그냥 오프라인이었을 수도 있다. [StatusBadge]의 경고 톤과
+ * 같은 색을 써서 이 화면 안에서 새로운 시각 언어를 만들지 않는다.
+ */
+@Composable
+private fun SyncWarningBanner(message: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color(0xFFF59E0B).copy(alpha = 0.15f))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("⚠️", style = MaterialTheme.typography.labelSmall)
+        Text(
+            text = message,
+            style = MaterialTheme.typography.labelSmall,
+            color = Color(0xFFB45309),
         )
     }
 }

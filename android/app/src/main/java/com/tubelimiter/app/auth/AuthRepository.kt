@@ -57,6 +57,17 @@ class AuthRepository(context: Context) {
 
     fun currentUserIdOrNull(): String? = client.auth.currentSessionOrNull()?.user?.id
 
+    /**
+     * 저장된 세션의 토큰 갱신이 실패한 상태인지. `sessionStatus`는 StateFlow라 구독 없이
+     * 지금 값만 볼 수 있다.
+     *
+     * 갱신 실패는 [account]에서 `loading = true`로 접히기 때문에 화면상으로는 그냥 "확인 중"과
+     * 구별되지 않고, 동기화 쪽에서는 [currentUserIdOrNull]이 null이라 조용한 로그아웃과도
+     * 구별되지 않는다. 진단 기록에서 이 둘을 갈라놓으려고 노출한다
+     * ([com.tubelimiter.app.sync.SyncRepository] 참고).
+     */
+    fun sessionRefreshFailed(): Boolean = client.auth.sessionStatus.value is SessionStatus.RefreshFailure
+
     val account: Flow<AccountState> = client.auth.sessionStatus.map { status ->
         when (status) {
             is SessionStatus.Authenticated -> AccountState(
