@@ -12,6 +12,7 @@ import {
   isPerfectDay
 } from '../lib/gamification.js';
 import { computeLimitForDate } from '../lib/limits.js';
+import { mergeHistories } from '../lib/historyMerge.js';
 
 const signedOutView = document.getElementById('signedOutView');
 const signedInView = document.getElementById('signedInView');
@@ -22,6 +23,10 @@ let chartMode = 'minutes'; // 'minutes' | 'percent' — 세션 중에만 유지,
 let usageChartInstance = null;
 let hourlyChartInstance = null;
 
+// 히트맵(28일)과 막대그래프(최대 30일)를 다 채우려면 30일이면 충분하다. 더 길게 읽어봐야
+// 화면에 그릴 곳이 없고, select 응답만 커진다.
+const HISTORY_LOOKBACK_DAYS = 30;
+
 // usage_history는 lib/time.js의 getTodayDate() (새벽 4시 기준) 키로 저장되므로,
 // 여기서도 같은 기준으로 날짜를 생성해야 자정~새벽 4시 사이에 히트맵/차트가 어긋나지 않는다.
 function lastNDates(n) {
@@ -31,6 +36,65 @@ function lastNDates(n) {
     dates.push(addDaysToDate(today, -i));
   }
   return dates;
+}
+
+/**
+ * 서버(daily_usage)에서 최근 N일치 행을 한 번에 읽는다. 실패하면 null — 호출부는 로컬 기록만으로
+ * 기존과 똑같이 그린다(대시보드가 통째로 비는 것보다 이 기기 기록이라도 보이는 게 낫다).
+ *
+ * 날짜 경계: daily_usage.date는 확장/안드로이드가 각자 lib/time.js의 getTodayDate()
+ * (새벽 4시 컷오프)로 만든 'YYYY-MM-DD'를 그대로 써 넣은 값이다. 그래서 여기서도 같은
+ * 컨벤션으로 만든 lastNDates()의 시작일을 gte 경계로 쓰면 로컬 기록 키와 어긋나지 않는다.
+ * 서버 쪽에서 UTC 자정 기준으로 다시 계산하면 오히려 하루씩 밀린다.
+ */
+async function fetchServerHistory(userId, days) {
+  const since = addDaysToDate(getTodayDate(), -(days - 1));
+  try {
+    const { data, error } = await supabase
+      .from('daily_usage')
+      .select('date, usage_ms, shorts_ms, emergency_ms')
+      .eq('user_id', userId)
+      .gte('date', since);
+    if (error) {
+      console.error('[TubeLimiter] daily_usage 기록 조회 실패:', error);
+      return null;
+    }
+    return data || [];
+  } catch (e) {
+    // 오프라인이면 fetch 자체가 throw 한다 — 여기서 막지 않으면 init()이 통째로 죽는다.
+    console.error('[TubeLimiter] daily_usage 기록 조회 실패:', e);
+    return null;
+  }
+}
+
+function setHistoryNote(message) {
+  const el = document.getElementById('historySourceNote');
+  if (el) el.textContent = message;
+}
+
+function formatMinutes(ms) {
+  if (!Number.isFinite(ms)) return '무제한';
+  return `${Math.round(ms / 60000)}분`;
+}
+
+/**
+ * 히트맵 툴팁에 들어갈 판정 근거 한 줄. 긴급 시청분은 스트릭 판정에서 빠지므로(gamification.js의
+ * isDaySuccess) 총 사용시간만 보여주면 초과로 뜬 이유를 읽을 수 없다 - 뺀 뒤의 값과 한도를 같이 적는다.
+ *
+ * emergencyUses가 null이면 "이 기기에 그날 기록이 없어 횟수를 모른다"는 뜻이다(긴급 시청 횟수는
+ * 서버로 올라가지 않고 로컬에만 남는다 - documents/BACKEND.md daily_usage 절). 그때 0회로 적으면
+ * 없는 사실을 지어내는 셈이라 횟수만 빼고 시간만 보여준다.
+ */
+function formatDayBreakdown(usageMs, limitMs, emergencyMs, emergencyUses) {
+  const ownMs = Math.max(0, usageMs - Math.max(0, emergencyMs));
+  const parts = [`사용 ${formatMinutes(usageMs)}`];
+  if (emergencyMs > 0 || emergencyUses > 0) {
+    const usesLabel = emergencyUses === null ? '' : `(${emergencyUses}회)`;
+    parts.push(`긴급 ${formatMinutes(emergencyMs)}${usesLabel}`);
+    parts.push(`판정 기준 ${formatMinutes(ownMs)}`);
+  }
+  parts.push(`한도 ${formatMinutes(limitMs)}`);
+  return parts.join(' · ');
 }
 
 async function renderHeatmap(usageHistory, settings, emergencyHistory = {}) {
@@ -49,15 +113,25 @@ async function renderHeatmap(usageHistory, settings, emergencyHistory = {}) {
       // 긴급 시청을 쓴 날은 완벽한 날이 아니라 한 단계 옅게 표시된다.
       const emergency = emergencyHistory[date] || {};
       const emergencyMs = emergency.ms || 0;
-      const emergencyUses = emergency.uses || 0;
-      if (isPerfectDay(usage, limit, emergencyMs, emergencyUses)) {
+      // null = 서버에만 있는 날이라 횟수를 모른다. 판정할 때는 0회로 보되(실제로 긴급 시청을
+      // 했다면 그 시간이 emergency_ms로 서버에 올라와 완벽한 날에서 걸러진다) 툴팁에는 적지 않는다.
+      const emergencyUses = emergency.uses ?? null;
+      // 판정 근거를 툴팁에 그대로 적는다. 초과로 뜬 날이 "긴급 시청분을 빼고도 넘긴" 건지
+      // "긴급 기록이 없는" 건지 화면에서 바로 구분되지 않으면, 규칙을 아는 사람만 읽을 수 있는
+      // 히트맵이 된다 (실제로 긴급 시청을 쓴 날이 왜 실패인지 묻는 일이 있었다).
+      const breakdown = formatDayBreakdown(usage, limit, emergencyMs, emergencyUses);
+      if (isPerfectDay(usage, limit, emergencyMs, emergencyUses ?? 0)) {
         cell.classList.add('perfect');
-        cell.title = `${date} · 완벽한 날`;
+        cell.title = `${date} · 완벽한 날
+${breakdown}`;
       } else if (isDaySuccess(usage, limit, emergencyMs)) {
         cell.classList.add('success');
-        if (emergencyUses > 0) cell.title = `${date} · 긴급 시청 ${emergencyUses}회`;
+        cell.title = `${date} · 성공${emergencyUses > 0 ? ` (긴급 시청 ${emergencyUses}회)` : ''}
+${breakdown}`;
       } else {
         cell.classList.add('fail');
+        cell.title = `${date} · 초과
+${breakdown}`;
       }
     }
     if (date === today) cell.classList.add('today');
@@ -250,9 +324,21 @@ async function init() {
     chartRangeDays = dashboardChartRangeDays;
   }
 
-  const history = usage_history || {};
+  // 히트맵과 사용 시간 그래프는 서버 기록까지 합쳐서 그린다. 로컬 usage_history만 보면
+  // 재설치하거나 새 기기에서 로그인한 직후에는 히트맵이 통째로 비고, 기기 두 대를 번갈아 쓰면
+  // 기기마다 다른 그래프가 나온다 — 계정 기록은 daily_usage에 이미 다 쌓여 있는데도.
+  const serverRows = await fetchServerHistory(user.id, HISTORY_LOOKBACK_DAYS);
+  const { usage: history, emergency: emergencyHistory } = mergeHistories(
+    { usage: usage_history || {}, emergency: emergency_history || {} },
+    serverRows || []
+  );
+  setHistoryNote(
+    serverRows
+      ? '히트맵과 사용 시간 그래프는 이 계정에 연결된 모든 기기의 기록을 합쳐서 보여줍니다.'
+      : '서버 기록을 불러오지 못해 이 기기에 저장된 기록만 표시하고 있어요.'
+  );
+
   const hourlyHistory = usage_history_hourly || {};
-  const emergencyHistory = emergency_history || {};
   const hardcoreMode = !!settingsCache?.hardcore_mode;
   document.getElementById('streakSection').style.display = hardcoreMode ? '' : 'none';
   document.getElementById('streakLockedHint').style.display = hardcoreMode ? 'none' : '';

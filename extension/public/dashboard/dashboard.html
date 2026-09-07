@@ -131,6 +131,14 @@
       box-shadow: none;
     }
 
+    .section-note {
+      margin: 10px 0 0;
+      color: var(--gray);
+      font-size: 0.85em;
+      line-height: 1.5;
+    }
+    .hourly-section .section-note { margin: -4px 0 14px; }
+
     canvas { max-width: 100%; }
 
     @media (max-width: 800px) {
@@ -197,6 +205,7 @@
       <h4>최근 28일 기록</h4>
       <div class="heatmap-legend">💎 진한 초록 = 완벽한 날(긴급 시청 0회) · 연두 = 성공 · 빨강 = 한도 초과</div>
       <div class="heatmap" id="heatmap"></div>
+      <div class="section-note" id="historySourceNote"></div>
     </div>
 
     <div class="section chart-section">
@@ -219,6 +228,7 @@
 
     <div class="section hourly-section">
       <h4>시간대별 이용 패턴</h4>
+      <div class="section-note">이 그래프는 이 기기의 기록만 보여줍니다 — 시간대별 기록은 서버에 올라가지 않아요.</div>
       <canvas id="hourlyChart" height="90"></canvas>
     </div>
   </div>
