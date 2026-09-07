@@ -82,7 +82,7 @@
 <header>
   <h1>TubeLimiter 개인정보처리방침</h1>
   <p class="meta">
-    최종 수정일: 2026년 9월 5일<br>
+    최종 수정일: 2026년 9월 7일<br>
     적용 대상: TubeLimiter 안드로이드 앱(<code>com.tubelimiter.app</code>) 및 TubeLimiter 크롬 확장 프로그램
   </p>
   <p class="lang-switch"><a href="#english">English version below ↓</a></p>
@@ -307,14 +307,21 @@
 </p>
 <div class="note">
   <p>
-    <strong>현재 앱 안에 계정 삭제 버튼은 없습니다.</strong>
-    앱과 확장 프로그램에는 로그아웃 기능만 있습니다.
+    <strong>앱과 확장 프로그램 안에서 직접 계정을 삭제할 수 있습니다.</strong>
+  </p>
+  <ul>
+    <li>안드로이드 앱: 설정 화면 맨 아래 <strong>위험 구역 → 계정 삭제</strong></li>
+    <li>크롬 확장 프로그램: 옵션 페이지 맨 아래 <strong>위험 구역 → 계정 삭제</strong></li>
+  </ul>
+  <p>
+    삭제는 되돌릴 수 없으므로 확인 절차를 거친 뒤에 실행됩니다. 삭제가 완료되면 계정과 함께
+    위 네 테이블의 해당 사용자 행이 모두 삭제되고
+    (모든 테이블이 계정에 <code>on delete cascade</code>로 연결되어 있습니다),
+    그 기기에 남아 있던 사용 기록·스트릭·설정도 함께 지워집니다.
   </p>
   <p>
-    계정과 서버 기록 전체를 지우려면 <a href="mailto:jookpower1022@gmail.com">jookpower1022@gmail.com</a>으로
-    가입에 사용한 이메일 주소를 적어 삭제를 요청해 주세요. 요청을 확인한 뒤 30일 이내에 처리합니다.
-    계정을 삭제하면 위 네 테이블의 해당 사용자 행도 함께 삭제됩니다
-    (모든 테이블이 계정에 <code>on delete cascade</code>로 연결되어 있습니다).
+    앱에 접근할 수 없는 경우에는 <a href="mailto:jookpower1022@gmail.com">jookpower1022@gmail.com</a>으로
+    가입에 사용한 이메일 주소를 적어 삭제를 요청하셔도 됩니다. 요청을 확인한 뒤 30일 이내에 처리합니다.
   </p>
   <p>
     기기 안의 데이터만 지우려면 앱/확장 프로그램을 삭제하거나, 안드로이드에서 앱 저장공간을 비우면 됩니다.
@@ -355,7 +362,7 @@
 <header id="english" style="border-bottom:none; margin-top:32px;">
   <h1 style="border:0;">TubeLimiter Privacy Policy (English)</h1>
   <p class="meta">
-    Last updated: September 5, 2026<br>
+    Last updated: September 7, 2026<br>
     Applies to: the TubeLimiter Android app (<code>com.tubelimiter.app</code>) and the TubeLimiter Chrome extension
   </p>
 </header>
@@ -565,15 +572,22 @@
 <p>Data is kept until you ask for it to be deleted; there is no automatic expiry.</p>
 <div class="note">
   <p>
-    <strong>There is currently no in-app "delete account" button.</strong>
-    The app and the extension offer sign-out only.
+    <strong>You can delete your account from inside the app and the extension.</strong>
+  </p>
+  <ul>
+    <li>Android app: Settings screen, bottom &mdash; <strong>Danger zone &rarr; Delete account</strong></li>
+    <li>Chrome extension: options page, bottom &mdash; <strong>Danger zone &rarr; Delete account</strong></li>
+  </ul>
+  <p>
+    Deletion is irreversible, so it runs only after an explicit confirmation step. On success your
+    account is removed together with your rows in all four tables — every table is tied to the
+    account with <code>on delete cascade</code> — and the usage history, streaks and settings held
+    on that device are cleared as well.
   </p>
   <p>
-    To have your account and all server records deleted, email
+    If you cannot reach the app, you can instead email
     <a href="mailto:jookpower1022@gmail.com">jookpower1022@gmail.com</a> from or naming the address
-    you signed up with. Requests are handled within 30 days of confirmation. Deleting the account
-    removes your rows in all four tables as well — every table is tied to the account with
-    <code>on delete cascade</code>.
+    you signed up with. Requests are handled within 30 days of confirmation.
   </p>
   <p>
     To remove only the on-device data, uninstall the app or extension, or clear the app's storage on Android.
