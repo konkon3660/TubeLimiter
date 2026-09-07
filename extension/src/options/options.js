@@ -4,6 +4,7 @@ import { HARDCORE_DISABLE_COOLDOWN_MS } from '../lib/hardcore.js';
 
 const signedOutView = document.getElementById('signedOutView');
 const signedInView = document.getElementById('signedInView');
+const accountDeletedView = document.getElementById('accountDeletedView');
 
 document.getElementById('openAuthButton').addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('auth/auth.html') });
@@ -351,6 +352,98 @@ document.getElementById('saveButton').addEventListener('click', async () => {
   setTimeout(() => (statusEl.textContent = ''), 2000);
 });
 
+// --- 계정 삭제(위험 구역) ---
+// 되돌릴 수 없는 동작이라 두 단계로 막는다: confirm 한 번 + 본인 이메일 직접 입력.
+// 순서도 중요하다 — 서버(Edge Function) 삭제가 성공했을 때만 로그아웃하고 로컬을 비운다.
+// 반대로 하면 삭제가 실패했는데 내 기록만 날아가는 최악의 경우가 생긴다.
+const deleteAccountButton = document.getElementById('deleteAccountButton');
+const deleteAccountConfirmBlock = document.getElementById('deleteAccountConfirmBlock');
+const deleteAccountPhraseEl = document.getElementById('deleteAccountPhrase');
+const deleteAccountConfirmInput = document.getElementById('deleteAccountConfirmInput');
+const confirmDeleteAccountButton = document.getElementById('confirmDeleteAccountButton');
+const cancelDeleteAccountButton = document.getElementById('cancelDeleteAccountButton');
+const deleteAccountStatus = document.getElementById('deleteAccountStatus');
+
+// 이메일 없이 가입된 계정(소셜 등)이면 확인 문구로 '삭제'를 쓴다.
+const DELETE_FALLBACK_PHRASE = '삭제';
+let deleteConfirmPhrase = '';
+let deleteInFlight = false;
+
+function normalizeDeletePhrase(value) {
+  return (value || '').trim().toLowerCase();
+}
+
+function renderDeleteConfirmState() {
+  const matched = !!deleteConfirmPhrase
+    && normalizeDeletePhrase(deleteAccountConfirmInput.value) === normalizeDeletePhrase(deleteConfirmPhrase);
+  confirmDeleteAccountButton.disabled = deleteInFlight || !matched;
+}
+
+function setDeleteControlsDisabled(disabled) {
+  deleteAccountButton.disabled = disabled;
+  cancelDeleteAccountButton.disabled = disabled;
+  deleteAccountConfirmInput.disabled = disabled;
+}
+
+deleteAccountConfirmInput.addEventListener('input', renderDeleteConfirmState);
+
+deleteAccountButton.addEventListener('click', () => {
+  if (deleteInFlight) return;
+  if (!confirm('계정을 삭제하면 계정, 사용 시간 기록, 스트릭·XP, 뱃지, 설정이 모두 영구 삭제됩니다. 되돌릴 수 없습니다. 계속할까요?')) return;
+
+  deleteAccountConfirmBlock.style.display = '';
+  deleteAccountConfirmInput.value = '';
+  deleteAccountStatus.textContent = '';
+  renderDeleteConfirmState();
+  deleteAccountConfirmInput.focus();
+});
+
+cancelDeleteAccountButton.addEventListener('click', () => {
+  if (deleteInFlight) return;
+  deleteAccountConfirmBlock.style.display = 'none';
+  deleteAccountConfirmInput.value = '';
+  deleteAccountStatus.textContent = '';
+  renderDeleteConfirmState();
+});
+
+confirmDeleteAccountButton.addEventListener('click', async () => {
+  // 버튼 disabled와 별개로 한 번 더 막는다 — 연타로 두 번 삭제가 나가면 안 된다.
+  if (deleteInFlight) return;
+  if (normalizeDeletePhrase(deleteAccountConfirmInput.value) !== normalizeDeletePhrase(deleteConfirmPhrase)) return;
+
+  deleteInFlight = true;
+  confirmDeleteAccountButton.disabled = true;
+  setDeleteControlsDisabled(true);
+  deleteAccountStatus.textContent = '계정을 삭제하는 중...';
+
+  const { error } = await supabase.functions.invoke('delete-account');
+  if (error) {
+    // 서버가 거절했으면 로컬은 아무것도 건드리지 않는다. 로그인 상태 그대로 두고 다시 시도할 수 있게.
+    deleteInFlight = false;
+    setDeleteControlsDisabled(false);
+    deleteAccountStatus.textContent = `삭제 실패: ${error.message} — 계정과 기록은 그대로 남아 있습니다.`;
+    renderDeleteConfirmState();
+    return;
+  }
+
+  // 서버 세션은 이미 죽었으니 네트워크를 타지 않는 로컬 로그아웃만 한다.
+  await supabase.auth.signOut({ scope: 'local' });
+  // chrome.storage.local엔 이 확장이 쓰는 값(설정 캐시 · 사용/긴급 기록 · 집중/차단 상태 ·
+  // 알람 상태 · 동기화 마커 · Supabase 세션)만 들어 있어서 통째로 비우는 게 가장 확실하다.
+  await chrome.storage.local.clear();
+  // 다른 설정 변경과 같은 경로로 백그라운드에 알린다. 이미 지운 뒤라 실패해도 되돌릴 게 없다.
+  await chrome.runtime.sendMessage({ action: 'settingsUpdated' }).catch(() => {});
+
+  clearInterval(hardcorePendingInterval);
+  signedOutView.style.display = 'none';
+  signedInView.style.display = 'none';
+  accountDeletedView.style.display = '';
+});
+
+document.getElementById('deletedSignUpButton').addEventListener('click', () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('auth/auth.html') });
+});
+
 async function init() {
   const user = await getCurrentUser();
   if (!user) {
@@ -360,6 +453,10 @@ async function init() {
   }
   signedOutView.style.display = 'none';
   signedInView.style.display = '';
+
+  deleteConfirmPhrase = user.email || DELETE_FALLBACK_PHRASE;
+  deleteAccountPhraseEl.textContent = deleteConfirmPhrase;
+  renderDeleteConfirmState();
 
   const { data } = await supabase.from('settings').select('*').eq('user_id', user.id).maybeSingle();
   fillForm(

@@ -26,12 +26,12 @@
       padding: 18px 20px;
     }
 
-    #signedOutView, #signedInView {
+    #signedOutView, #signedInView, #accountDeletedView {
       max-width: 760px;
       margin: 0 auto;
     }
 
-    #signedOutView .auth-box {
+    #signedOutView .auth-box, #accountDeletedView .auth-box {
       background: var(--bg-color);
       border-radius: 14px;
       box-shadow: var(--shadow-lg);
@@ -252,18 +252,65 @@
     .save-bar #saveStatus { margin: 0; }
     .save-bar #signOutButton { width: auto; margin: 0 0 0 auto; padding: 10px 20px; }
 
+    /* 위험 구역: 실수로 누르기 어렵도록 본문과 확실히 구분되게 칠한다 */
+    #signedInView .danger-section {
+      border-color: rgba(239, 68, 68, 0.35);
+      background: rgba(239, 68, 68, 0.03);
+    }
+    #signedInView .danger-section h4 { color: var(--danger-color); }
+    .danger-list {
+      margin: 10px 0 14px;
+      padding-left: 20px;
+      font-size: 0.88em;
+      color: var(--dark-gray);
+    }
+    .danger-list li { margin-bottom: 4px; }
+    .danger-confirm-phrase {
+      font-family: monospace;
+      font-size: 0.95em;
+      color: var(--danger-color);
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 7px 10px;
+      margin-bottom: 8px;
+      word-break: break-all;
+    }
+    .danger-section input[type="text"] {
+      width: 100%;
+      padding: 9px 11px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: var(--card-bg);
+      color: var(--dark-gray);
+      font-size: 0.95em;
+    }
+    .danger-section input[type="text"]:focus {
+      border-color: var(--danger-color);
+      box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+      outline: none;
+    }
+    .danger-actions { display: flex; gap: 8px; margin-top: 10px; }
+    .danger-section button:disabled {
+      background: var(--gray);
+      cursor: not-allowed;
+      box-shadow: none;
+      transform: none;
+    }
+
     @media (max-width: 680px) {
       body { margin: 0; font-size: 14px; }
       body > .header { margin: 0 0 12px; border-radius: 0; }
       #signedInView { grid-template-columns: 1fr; padding: 0 12px !important; }
-      #signedOutView { padding: 0 12px; }
+      #signedOutView, #accountDeletedView { padding: 0 12px; }
       .save-bar { position: static; flex-wrap: wrap; }
       .save-bar #signOutButton { margin-left: 0; }
       /* 16px 미만 인풋은 iOS Safari에서 포커스 시 자동 확대됨 */
       .field-row input[type="number"],
       .field-row select,
       .day-limit-row input,
-      .whitelist-item input {
+      .whitelist-item input,
+      .danger-section input[type="text"] {
         font-size: 16px;
       }
     }
@@ -371,6 +418,39 @@
       <button id="saveButton" class="btn-primary">저장</button>
       <div id="saveStatus" class="input-hint"></div>
       <button id="signOutButton" class="btn-secondary">로그아웃</button>
+    </div>
+
+    <div class="control-section wide-section danger-section">
+      <h4>⚠️ 위험 구역</h4>
+      <div class="input-hint">계정을 삭제하면 아래 항목이 서버와 이 브라우저에서 모두 지워집니다. <strong>되돌릴 수 없습니다.</strong></div>
+      <ul class="danger-list">
+        <li>계정 (로그인 정보)</li>
+        <li>사용 시간 기록</li>
+        <li>스트릭 · XP</li>
+        <li>뱃지</li>
+        <li>설정 (한도 · 화이트리스트 · 예약 차단 등)</li>
+      </ul>
+      <button type="button" id="deleteAccountButton" class="btn-danger" style="width:auto;">계정 삭제</button>
+
+      <div id="deleteAccountConfirmBlock" class="field-row" style="display:none; margin-top:16px;">
+        <label for="deleteAccountConfirmInput">확인을 위해 아래 값을 그대로 입력하세요</label>
+        <div class="danger-confirm-phrase" id="deleteAccountPhrase"></div>
+        <input type="text" id="deleteAccountConfirmInput" autocomplete="off" spellcheck="false">
+        <div class="danger-actions">
+          <button type="button" id="confirmDeleteAccountButton" class="btn-danger" style="width:auto;" disabled>영구 삭제</button>
+          <button type="button" id="cancelDeleteAccountButton" class="btn-secondary" style="width:auto;">취소</button>
+        </div>
+      </div>
+
+      <div id="deleteAccountStatus" class="input-hint" style="margin-top:10px;"></div>
+    </div>
+  </div>
+
+  <div id="accountDeletedView" style="display:none;">
+    <div class="auth-box">
+      <p>✅ 계정이 삭제되었습니다.</p>
+      <div class="input-hint">계정, 사용 시간 기록, 스트릭 · XP, 뱃지, 설정이 모두 지워졌고 이 브라우저에 저장된 데이터도 함께 삭제했습니다. 다시 쓰시려면 새로 가입해주세요.</div>
+      <button id="deletedSignUpButton" class="btn-primary" style="margin-top:12px;">로그인 / 회원가입</button>
     </div>
   </div>
 
