@@ -51,6 +51,54 @@
 
 네 테이블 모두 `auth.uid() = user_id`인 행만 읽기/쓰기 가능 (`for all using ... with check ...`). 서비스 키 없이 anon key + 로그인 세션만으로 각자 자기 행만 건드릴 수 있음 — 그래서 anon key는 코드에 커밋해도 안전함 (`extension/src/lib/config.js`, `android/.../SupabaseConfig.kt`).
 
+## Edge Function: 계정 삭제 (`delete-account`)
+
+구글 플레이는 앱 안에 계정 삭제 경로가 있을 것을 요구한다. 그런데 위 RLS 구조는 `public` 스키마 테이블만 지켜주는 것이고, 계정 자체(`auth.users` 행)는 anon key로 건드릴 수 없다 — `service_role` 키가 있어야 한다. 그 키는 클라이언트에 넣으면 RLS를 통째로 무력화하는 마스터 키가 되므로, 서버에서만 도는 Edge Function으로 감싼다. 소스는 `extension/supabase/functions/delete-account/index.ts`.
+
+### 동작
+
+1. JWT 검증은 **켜둔 채로**(배포 기본값) 쓴다. 호출자 신원은 `Authorization: Bearer <access token>` 헤더에서만 나온다.
+2. 그 헤더를 얹은 anon 클라이언트로 `getUser()`를 불러 토큰의 주인을 확인한다. 실패하면 401.
+3. 그 다음에야 `SUPABASE_SERVICE_ROLE_KEY`로 admin 클라이언트를 만들어 `auth.admin.deleteUser(user.id)`를 호출한다.
+
+**요청 본문은 읽지 않는다.** 지울 대상 id는 오직 `getUser()`에서만 나온다 — 본문의 `user_id` 같은 값을 받는 순간 "남의 id를 넣어 남의 계정을 지우는" 구멍이 되기 때문. 호출자는 자기가 가진 토큰의 주인 외에 다른 id를 만들어낼 수 없으므로, 자기 계정만 지울 수 있다는 보장이 여기서 나온다.
+
+`POST`(와 프리플라이트 `OPTIONS`)만 받고 나머지 메서드는 405 — 되돌릴 수 없는 작업이라 GET 프리페치 같은 걸로 실수로 불리면 안 되기 때문. 응답은 성공/실패 모두 `{ success, error? }` 형태의 JSON이고, admin 호출이 실패해도 원문 에러는 서버 로그에만 남기고 클라이언트에는 `delete_failed` 같은 일반 코드만 준다(내부 테이블/제약조건 이름이 새 나가지 않게).
+
+CORS는 확장이 `chrome-extension://` 오리진에서 부르기 때문에 필요하다(확장 ID마다 오리진이 달라 `Access-Control-Allow-Origin: *`, 함수 자체는 JWT로 스스로를 지킨다). 안드로이드는 네이티브 HTTP라 CORS와 무관하지만 같은 핸들러가 양쪽을 받는다.
+
+### 네 테이블은 알아서 지워진다
+
+`daily_usage` / `settings` / `streaks` / `achievements` 네 개 모두 `user_id`가 `references auth.users(id) on delete cascade`다. 그래서 auth 유저 한 줄만 지우면 DB가 나머지를 같이 지운다 — **함수는 테이블별 delete를 하지 않는다.** 여기서 또 지우면 같은 규칙이 스키마와 함수 두 군데로 갈라져서, 나중에 테이블이 하나 늘 때 함수를 같이 안 고치면 조용히 찌꺼기가 남는다. 테이블을 추가할 때 cascade만 제대로 걸면 이 함수는 건드릴 필요가 없다(아래 "스키마 바꿀 때 체크리스트" 참고).
+
+### 배포
+
+Supabase CLI가 `supabase/functions/<이름>`을 **작업 디렉터리 기준으로** 찾으므로 `extension/`에서 실행한다.
+
+```bash
+cd extension
+supabase functions deploy delete-account --project-ref gigudjceurfcxcnuhlph
+```
+
+`SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY`는 배포된 함수에 Supabase가 **자동으로 주입**한다. `supabase secrets set`으로 따로 넣을 필요 없고, 무엇보다 **service_role 키는 레포에도 클라이언트(확장 `config.js`, 안드로이드 `SupabaseConfig.kt`)에도 절대 들어가면 안 된다** — anon key와 달리 RLS를 전부 무시하는 키라서, 커밋되는 순간 모든 사용자의 모든 행이 열린다. 함수 코드도 키 값을 로그에 찍지 않는다.
+
+### 호출 방법
+
+확장(supabase-js) — 로그인 세션의 access token이 자동으로 실려 나간다:
+
+```js
+const { data, error } = await supabase.functions.invoke('delete-account');
+// 성공하면 로컬 세션/캐시를 지우고 signOut()
+```
+
+안드로이드(supabase-kt):
+
+```kotlin
+val response = supabase.functions.invoke("delete-account")
+```
+
+응답을 받은 뒤 **클라이언트가 로컬 세션과 로컬 기록을 직접 지워야 한다.** 이미 발급된 access token은 만료 전까지 형식상 유효하기 때문(접근할 행이 cascade로 다 사라져 실제로 할 수 있는 일은 없다). 삭제 후에는 같은 구글 계정으로 다시 로그인하면 새 `user_id`의 빈 계정이 만들어진다.
+
 ## 하루 경계(4시 컷오프)
 
 "하루"는 자정이 아니라 **오전 4시** 기준으로 나뉨(늦게까지 보다 자는 경우 전날 사용량으로 집계). 확장은 `lib/time.js`의 `DAY_CUTOFF_HOUR`, 안드로이드는 `usage/DayWindow.kt`가 각각 구현 — 로직은 포팅됐고 순수 함수라 유닛 테스트로 검증됨. 이 값을 바꾸려면 **양쪽 다** 고쳐야 함.
