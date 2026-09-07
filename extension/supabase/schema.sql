@@ -26,6 +26,14 @@ create table if not exists settings (
   daily_limit_by_day jsonb not null default '{}'::jsonb,
   daily_limit_reset_frequency text not null default 'daily',
   always_block_shorts boolean not null default false,
+  -- Shorts 전용 일일 한도(ms). 전체 한도(daily_limit_ms)와 독립이라 "전체는 2시간, Shorts는
+  -- 10분"처럼 따로 걸 수 있다. 0 = 미설정 = Shorts 한도 없음 (daily_limit_ms의 0과 같은 컨벤션).
+  -- 요일별 오버라이드는 없다 — 값 하나가 모든 요일에 그대로 적용된다.
+  -- always_block_shorts / whitelist와 같은 브라우저 전용 컬럼이다: 안드로이드는
+  -- UsageStatsManager로 앱 단위만 보므로 화면이 Shorts인지 알 수 없어 이 한도를 판정할 수 없다.
+  -- 그래서 안드로이드는 이 컬럼을 select에도 upsert payload에도 넣지 않고(sync/RemoteModels.kt의
+  -- SETTINGS_COLUMNS), PostgREST upsert가 본문에 없는 키는 건드리지 않으므로 값이 보존된다.
+  shorts_limit_ms bigint not null default 0,
   whitelist jsonb not null default '[]'::jsonb,
   emergency_config jsonb not null default '{"dailyUses": 3, "resetFrequency": "daily"}'::jsonb,
   alarm_interval_minutes integer not null default 0,
@@ -48,6 +56,9 @@ alter table settings add column if not exists hardcore_disable_requested_at time
 -- days가 가리키는 "시작 요일"에 속한다. 하루 4시 컷오프(usage 판정용)와는 무관한 실제 시계
 -- 기준 — 확장 lib/schedule.js, 안드로이드 limit/ScheduleRules.kt 둘 다 이 규칙으로 판정한다.
 alter table settings add column if not exists scheduled_blocks jsonb not null default '[]'::jsonb;
+-- Shorts 전용 일일 한도(브라우저 전용, 0 = 미설정). 기본값 0이라 기존 설치는 이 컬럼이 붙어도
+-- 동작이 그대로다 — 값을 넣기 전까지는 Shorts 한도가 없는 것과 같다.
+alter table settings add column if not exists shorts_limit_ms bigint not null default 0;
 
 create table if not exists streaks (
   user_id uuid primary key references auth.users(id) on delete cascade,
