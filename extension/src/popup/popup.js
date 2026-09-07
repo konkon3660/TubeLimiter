@@ -2,7 +2,7 @@ import { getStorage, setStorage } from '../lib/storage.js';
 import { getTodayDate, getWeekStartDate, getMonthStartDate } from '../lib/time.js';
 import { supabase, getCurrentUser } from '../lib/supabaseClient.js';
 import { getLevelProgress } from '../lib/gamification.js';
-import { computeLimitForDate } from '../lib/limits.js';
+import { computeLimitForDate, computeShortsLimit } from '../lib/limits.js';
 import { combinedUsedMillis, remainingEmergencyUses } from '../lib/usageMerge.js';
 import { emergencyResetDate, DEFAULT_EMERGENCY_USES } from '../lib/dateRollover.js';
 import { resolveFocusStopTime } from '../lib/focusMode.js';
@@ -160,13 +160,17 @@ async function renderLocal() {
     console.error('[TubeLimiter] getTrackingStatus 실패:', e);
   }
 
-  const [{ usage_history }, { settingsCache }, { emergency_uses_today }, { focusModeActive, focusModeEndTime, focusModeDelayEndTime, focusStopRequestedAt }, { emergencyModeActive, emergencyEndTime, last_emergency_granted_at }, dailySync, emergencyBucket] = await Promise.all([
+  const [{ usage_history }, { usage_history_shorts }, { settingsCache }, { emergency_uses_today }, { focusModeActive, focusModeEndTime, focusModeDelayEndTime, focusStopRequestedAt }, { emergencyModeActive, emergencyEndTime, last_emergency_granted_at }, dailySync, emergencyBucket] = await Promise.all([
     getStorage(['usage_history']),
+    getStorage(['usage_history_shorts']),
     getStorage(['settingsCache']),
     getStorage(['emergency_uses_today']),
     getStorage(['focusModeActive', 'focusModeEndTime', 'focusModeDelayEndTime', 'focusStopRequestedAt']),
     getStorage(['emergencyModeActive', 'emergencyEndTime', 'last_emergency_granted_at']),
-    getStorage(['dailyUsageSyncDate', 'dailyUsageSyncedMillis', 'dailyUsageCombinedMillis']),
+    getStorage([
+      'dailyUsageSyncDate', 'dailyUsageSyncedMillis', 'dailyUsageCombinedMillis', 'dailyUsageShortsSyncedMillis',
+      'dailyUsageCombinedShortsMillis'
+    ]),
     getStorage(['emergencyUsesBucketDate', 'emergencyUsesBucketRemote', 'emergencyUsesBucketReported'])
   ]);
 
@@ -182,6 +186,18 @@ async function renderLocal() {
 
   document.getElementById('usageTime').textContent = formatMinutes(todayUsage);
   document.getElementById('untilBlock').textContent = Number.isFinite(remaining) ? formatCountdown(remaining) : '무제한';
+
+  // Shorts는 전체 사용량과 같은 기준(로컬 + 다른 기기 몫)으로 보여준다 — 팝업 숫자와 실제
+  // 차단 판정(service-worker.js getEffectiveTodayShortsUsage)이 어긋나면 "아직 남았는데 막혔다"가 된다.
+  const localShorts = (usage_history_shorts || {})[today] || 0;
+  const todayShorts = dailySync.dailyUsageSyncDate === today
+    ? combinedUsedMillis(localShorts, dailySync.dailyUsageShortsSyncedMillis || 0, dailySync.dailyUsageCombinedShortsMillis || 0)
+    : localShorts;
+  const shortsLimitMs = computeShortsLimit(settingsCache);
+  // 한도를 안 걸었으면 "12분 / 무제한"이 아니라 그냥 사용량만 보여준다 (없는 한도를 강조할 이유가 없다).
+  document.getElementById('shortsUsage').textContent = Number.isFinite(shortsLimitMs)
+    ? `${formatMinutes(todayShorts)} / ${formatMinutes(shortsLimitMs)}`
+    : formatMinutes(todayShorts);
 
   const progressCircle = document.getElementById('progressCircle');
   if (Number.isFinite(limitMs) && limitMs > 0) {

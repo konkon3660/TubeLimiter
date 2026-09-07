@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   BLOCK_REASON,
   isUsageLimitExceeded,
+  isShortsLimitExceeded,
   isWhitelistedUrl,
   isShortsUrl,
   resolveBlockDecision,
@@ -20,6 +21,9 @@ function inputs(overrides = {}) {
   return {
     usedMs: 0,
     limitMs: 30 * MIN,
+    // Shorts 한도는 기본이 "미설정 = 무제한"이다 (computeShortsLimit이 0/null을 Infinity로 접는다).
+    shortsUsedMs: 0,
+    shortsLimitMs: Infinity,
     focusModeActive: false,
     scheduleBlockActive: false,
     emergencyModeActive: false,
@@ -204,4 +208,106 @@ test('탭별 예외가 없으면 전역 판정을 그대로 따른다', () => {
   const tabDecision = resolveTabBlock(inputs({ usedMs: 60 * MIN }), tab);
   assert.equal(tabDecision.shouldBlock, true);
   assert.equal(tabDecision.reason, BLOCK_REASON.usageLimit);
+});
+
+// --- Shorts 전용 일일 한도 ---
+// 전체 한도와 독립이고, 넘겨도 Shorts 탭만 막힌다. 우선순위상 "한도" 급이라 긴급 시청으로는
+// 뚫리고 집중 모드/예약 차단은 못 뚫는다 (lib/blockDecision.js 상단 우선순위 주석 참고).
+
+const SHORTS_TAB = { isWhitelisted: false, isShortsTab: true, alwaysBlockShorts: false };
+const WATCH_TAB = { isWhitelisted: false, isShortsTab: false, alwaysBlockShorts: false };
+
+test('Shorts 한도에 정확히 도달한 순간 차단된다 (경계는 >=)', () => {
+  assert.equal(isShortsLimitExceeded(10 * MIN, 10 * MIN), true);
+  assert.equal(isShortsLimitExceeded(10 * MIN - 1, 10 * MIN), false);
+
+  const atLimit = resolveTabBlock(inputs({ shortsUsedMs: 10 * MIN, shortsLimitMs: 10 * MIN }), SHORTS_TAB);
+  assert.equal(atLimit.shouldBlock, true);
+  assert.equal(atLimit.reason, BLOCK_REASON.shortsLimit);
+
+  const justUnder = resolveTabBlock(inputs({ shortsUsedMs: 10 * MIN - 1, shortsLimitMs: 10 * MIN }), SHORTS_TAB);
+  assert.equal(justUnder.shouldBlock, false);
+});
+
+test('Shorts 한도가 미설정(무제한)이면 아무리 봐도 안 막힌다', () => {
+  const decision = resolveTabBlock(inputs({ shortsUsedMs: 5 * 60 * MIN, shortsLimitMs: Infinity }), SHORTS_TAB);
+  assert.equal(decision.shouldBlock, false);
+  // 인자 자체가 없어도(옛 저장소에서 올라온 판정) 무제한으로 떨어져야 한다.
+  assert.equal(isShortsLimitExceeded(5 * 60 * MIN), false);
+  assert.equal(isShortsLimitExceeded(), false);
+});
+
+test('전체 한도가 남아 있어도 Shorts 한도를 넘기면 Shorts 탭만 막힌다', () => {
+  const overShorts = inputs({ usedMs: 5 * MIN, limitMs: 120 * MIN, shortsUsedMs: 12 * MIN, shortsLimitMs: 10 * MIN });
+
+  const shorts = resolveTabBlock(overShorts, SHORTS_TAB);
+  assert.equal(shorts.shouldBlock, true);
+  assert.equal(shorts.reason, BLOCK_REASON.shortsLimit);
+
+  // 일반 영상은 그대로 볼 수 있어야 한다 — 이게 안 되면 그냥 전체 한도를 앞당긴 것과 다를 게 없다.
+  assert.equal(resolveTabBlock(overShorts, WATCH_TAB).shouldBlock, false);
+
+  // 전역 판정(= 표시용 isYoutubeBlocked, 집계 게이트)에도 영향을 주지 않는다.
+  const global = resolveBlockDecision(overShorts);
+  assert.equal(global.shouldBlock, false);
+  assert.equal(global.displayBlocked, false);
+  assert.equal(global.trackingBlocked, false);
+});
+
+test('Shorts 항상 차단이 켜져 있으면 Shorts 한도가 남아 있어도 그 사유로 막힌다', () => {
+  const tab = { isWhitelisted: false, isShortsTab: true, alwaysBlockShorts: true };
+  const decision = resolveTabBlock(inputs({ shortsUsedMs: 0, shortsLimitMs: 10 * MIN }), tab);
+  assert.equal(decision.shouldBlock, true);
+  assert.equal(decision.reason, BLOCK_REASON.alwaysBlockShorts);
+
+  // 둘 다 걸린 상태에서도 "항상 차단"이 먼저다 (한도와 무관한 on/off라 사유가 더 정확하다).
+  const both = resolveTabBlock(inputs({ shortsUsedMs: 12 * MIN, shortsLimitMs: 10 * MIN }), tab);
+  assert.equal(both.reason, BLOCK_REASON.alwaysBlockShorts);
+});
+
+test('Shorts 한도는 긴급 시청으로 뚫린다 (전체 한도와 같은 급)', () => {
+  const decision = resolveTabBlock(
+    inputs({ shortsUsedMs: 12 * MIN, shortsLimitMs: 10 * MIN, emergencyModeActive: true }),
+    SHORTS_TAB
+  );
+  assert.equal(decision.shouldBlock, false);
+});
+
+test('집중 모드·예약 차단 중에는 Shorts 한도가 남아 있어도 긴급 시청으로 못 뚫는다', () => {
+  const focus = resolveTabBlock(
+    inputs({ shortsUsedMs: 12 * MIN, shortsLimitMs: 10 * MIN, focusModeActive: true, emergencyModeActive: true }),
+    SHORTS_TAB
+  );
+  assert.equal(focus.shouldBlock, true);
+  assert.equal(focus.reason, BLOCK_REASON.focusMode);
+
+  const schedule = resolveTabBlock(
+    inputs({ shortsUsedMs: 12 * MIN, shortsLimitMs: 10 * MIN, scheduleBlockActive: true, emergencyModeActive: true }),
+    SHORTS_TAB
+  );
+  assert.equal(schedule.shouldBlock, true);
+  assert.equal(schedule.reason, BLOCK_REASON.scheduledBlock);
+});
+
+test('화이트리스트는 Shorts 한도도 뚫는다 (한도 급 차단이라)', () => {
+  const tab = { isWhitelisted: true, isShortsTab: true, alwaysBlockShorts: false };
+  assert.equal(resolveTabBlock(inputs({ shortsUsedMs: 12 * MIN, shortsLimitMs: 10 * MIN }), tab).shouldBlock, false);
+});
+
+test('전체 한도도 같이 넘겼으면 전역 사유(전체 한도)가 그대로 쓰인다', () => {
+  const decision = resolveTabBlock(
+    inputs({ usedMs: 60 * MIN, limitMs: 30 * MIN, shortsUsedMs: 12 * MIN, shortsLimitMs: 10 * MIN }),
+    SHORTS_TAB
+  );
+  assert.equal(decision.shouldBlock, true);
+  assert.equal(decision.reason, BLOCK_REASON.usageLimit);
+});
+
+test('수동 차단은 Shorts 한도보다 먼저 사유로 잡힌다', () => {
+  const decision = resolveTabBlock(
+    inputs({ manuallyBlocked: true, shortsUsedMs: 12 * MIN, shortsLimitMs: 10 * MIN }),
+    SHORTS_TAB
+  );
+  assert.equal(decision.shouldBlock, true);
+  assert.equal(decision.reason, BLOCK_REASON.manualBlock);
 });

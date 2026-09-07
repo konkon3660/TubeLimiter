@@ -47,6 +47,9 @@ function applyBlockOverlay(reason) {
     scheduledBlock: '예약된 차단 시간이라 유튜브 시청이 제한되었습니다.',
     manualBlock: '유튜브가 수동으로 차단되었습니다.',
     alwaysBlockShorts: 'Shorts 항상 차단 설정으로 인해 시청이 제한되었습니다.',
+    // Shorts 한도는 전체 한도와 별개라, 문구도 "Shorts만 막혔다"는 걸 분명히 알려야 한다 —
+    // 안 그러면 일반 영상은 멀쩡히 되는데 왜 여기만 막히는지 알 수 없다.
+    shortsLimit: 'Shorts 일일 한도를 다 써서 Shorts만 제한되었습니다. 일반 영상은 남은 한도만큼 볼 수 있어요.',
     usageLimit: '일일 사용 시간 제한을 초과하여 유튜브 시청이 제한되었습니다.'
   };
   const message = messages[reason] || '유튜브 시청이 제한되었습니다.';
@@ -56,6 +59,13 @@ function applyBlockOverlay(reason) {
     <p>${message}</p>
     <p>오늘의 스트릭을 지켰는지는 내일 확인할 수 있어요.</p>
   `;
+
+  // 오버레이가 영상을 멈춰 세웠다는 사실을 백그라운드에 바로 알린다. video.pause()가 내는
+  // pause 이벤트는 오버레이가 DOM에 붙은 "뒤에" 도착하므로 그것만으로는 보고가 나가지 않는다.
+  // 이게 없으면 백그라운드는 차단 직전의 "재생 중"을 계속 믿고 시간을 깎는다 — Shorts만 막히는
+  // 차단(Shorts 항상 차단 · Shorts 한도)은 전역 집계 게이트(trackingBlocked)가 안 걸려서
+  // 실제로 그 시간이 오늘 사용량에 쌓인다.
+  reportPlaybackState();
 }
 
 function removeBlockOverlay() {
@@ -192,7 +202,11 @@ function currentPlaybackState() {
 }
 
 function reportPlaybackState() {
-  if (document.getElementById('tube-limiter-overlay')) return;
+  // 오버레이가 떠 있으면 currentPlaybackState()가 false를 돌려준다. 예전엔 여기서 보고 자체를
+  // 접었는데, 그러면 백그라운드가 차단 직전의 "재생 중"을 그대로 믿게 된다. 전역 차단
+  // (집중 모드 · 전체 한도)은 trackingBlocked 게이트가 어차피 집계를 막아 티가 안 났지만,
+  // Shorts만 막는 차단은 그 게이트가 안 걸리므로 멈춰 세운 영상 시간이 계속 쌓인다.
+  // false를 한 번 보고하고 나면 lastReportedPlaying이 같아서 더 보내지도 않는다.
   const playing = currentPlaybackState();
   if (playing === lastReportedPlaying) return;
   try {

@@ -7,6 +7,18 @@
 // 집중 모드와 예약 차단은 "한도와 무관하게" 무조건 차단하는 커밋먼트 장치라 긴급 시청으로
 // 우회할 수 없다 — requestEmergency 핸들러도 이 두 상태에선 애초에 발급을 거부한다.
 // 안드로이드 BlockInputs.blockReason()과 같은 순서다 — 한쪽을 고치면 다른 쪽도 맞춰야 한다.
+//
+// Shorts 관련 두 규칙은 탭 단위(resolveTabBlock)라 위 전역 순서 안에서 이렇게 끼어든다:
+//   집중 모드 > 예약 차단 > 긴급 시청(우회) > 화이트리스트(우회) > Shorts 항상 차단
+//     > 수동 차단 > 전체 한도 > Shorts 한도
+//  - `always_block_shorts`(항상 차단)는 한도와 무관한 on/off라 Shorts 한도가 얼마든, 남았든
+//    말든 Shorts 탭을 막는다 (기존 동작 그대로).
+//  - Shorts 한도 초과는 전체 한도 초과와 "같은 급"의 한도 차단이다. 그래서 긴급 시청으로는
+//    뚫리고, 집중 모드/예약 차단은 여전히 못 뚫는다. 다만 막히는 범위가 Shorts 탭뿐이라
+//    전체 한도가 남아 있으면 일반 영상(/watch)은 계속 볼 수 있다.
+//  - 전역 차단(수동/전체 한도)이 이미 걸려 있으면 그 사유를 그대로 쓴다. 어차피 둘 다 차단이고,
+//    탭 단계에서 "수동 차단 > 한도"라는 전역 순서를 뒤집을 이유가 없다.
+// (Shorts는 화면 내용을 봐야 구분되므로 이 두 규칙 모두 브라우저 전용 — 안드로이드엔 없다.)
 
 // content/content.js가 이 문자열로 차단 사유 문구를 고른다 — 값을 바꾸면 그쪽도 같이 고쳐야 한다.
 export const BLOCK_REASON = Object.freeze({
@@ -14,7 +26,8 @@ export const BLOCK_REASON = Object.freeze({
   scheduledBlock: 'scheduledBlock',
   manualBlock: 'manualBlock',
   usageLimit: 'usageLimit',
-  alwaysBlockShorts: 'alwaysBlockShorts'
+  alwaysBlockShorts: 'alwaysBlockShorts',
+  shortsLimit: 'shortsLimit'
 });
 
 /**
@@ -25,6 +38,15 @@ export const BLOCK_REASON = Object.freeze({
  */
 export function isUsageLimitExceeded(usedMs, limitMs) {
   return usedMs >= limitMs;
+}
+
+/**
+ * Shorts 전용 한도 초과 여부. 경계 규칙은 전체 한도와 똑같이 "정확히 도달하면 차단"(>=)이다.
+ * computeShortsLimit(lib/limits.js)이 미설정을 Infinity로 돌려주므로 여기서 "한도 없음" 분기가
+ * 따로 필요 없다 — 기본값(인자 누락)도 같은 이유로 Infinity다.
+ */
+export function isShortsLimitExceeded(shortsUsedMs = 0, shortsLimitMs = Infinity) {
+  return shortsUsedMs >= shortsLimitMs;
 }
 
 /**
@@ -103,7 +125,15 @@ export function isShortsUrl(url) {
  * 집중 모드와 예약 차단은 화이트리스트보다 먼저 검사한다 — 진짜 커밋먼트 장치가 되려면
  * 예외 통로가 없어야 하므로 화이트리스트로도 뚫리면 안 된다.
  *
- * @param {object} inputs resolveBlockDecision과 같은 입력
+ * Shorts 한도는 이 탭 단계에서만 판정한다. 전역(resolveBlockDecision)에 넣으면 Shorts를 다 쓴
+ * 순간 유튜브 전체가 막혀서 "Shorts만 따로 제한한다"는 기능 자체가 성립하지 않는다.
+ * 같은 이유로 전역 displayBlocked/trackingBlocked에도 영향을 주지 않는다 — 일반 영상은 계속
+ * 볼 수 있어야 하고, 그 시간은 계속 집계돼야 한다 (차단된 Shorts 탭은 오버레이가 영상을
+ * 멈춰 세우므로 재생 보고가 끊겨 자연히 집계에서 빠진다).
+ *
+ * @param {object} inputs resolveBlockDecision과 같은 입력 + Shorts 한도 판정용 두 값
+ * @param {number} [inputs.shortsUsedMs] 오늘 Shorts 사용량(다른 기기 몫 합산 후)
+ * @param {number} [inputs.shortsLimitMs] Shorts 전용 한도 (미설정이면 Infinity)
  * @param {object} tab
  * @param {boolean} tab.isWhitelisted
  * @param {boolean} tab.isShortsTab
@@ -116,9 +146,17 @@ export function resolveTabBlock(inputs, { isWhitelisted = false, isShortsTab = f
   if (inputs?.focusModeActive) return { shouldBlock: true, reason: BLOCK_REASON.focusMode };
   if (inputs?.scheduleBlockActive) return { shouldBlock: true, reason: BLOCK_REASON.scheduledBlock };
   // 사유(reason)는 차단할 때만 쓰이므로 아래 두 갈래에선 전역 사유를 그대로 흘려보낸다.
+  // 긴급 시청은 Shorts 한도도 같이 뚫는다 — 전체 한도와 같은 급의 "한도" 차단이기 때문이다.
   if (inputs?.emergencyModeActive) return { shouldBlock: false, reason };
   if (isWhitelisted) return { shouldBlock: false, reason };
+  // 항상 차단은 한도와 무관한 on/off라 Shorts 한도보다 먼저 본다 (한도가 남아 있어도 막힌다).
   if (alwaysBlockShorts && isShortsTab) return { shouldBlock: true, reason: BLOCK_REASON.alwaysBlockShorts };
+  // 전역 차단(수동/전체 한도)이 이미 걸려 있으면 그 사유가 이긴다. 어차피 결과는 같은 차단이고,
+  // "수동 차단 > 한도"라는 전역 우선순위를 탭 단계에서 뒤집지 않기 위해서다.
+  if (shouldBlock) return { shouldBlock, reason };
+  if (isShortsTab && isShortsLimitExceeded(inputs?.shortsUsedMs, inputs?.shortsLimitMs)) {
+    return { shouldBlock: true, reason: BLOCK_REASON.shortsLimit };
+  }
 
   return { shouldBlock, reason };
 }

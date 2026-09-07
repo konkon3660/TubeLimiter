@@ -351,6 +351,11 @@
         <div class="day-limit-row" data-day="6"><label>토요일</label><input type="number" min="-1"></div>
         <div class="input-hint">-1 = 그 요일은 무제한</div>
       </div>
+      <div class="field-row" style="margin-top:14px;">
+        <label for="shortsLimitInput">Shorts 하루 제한(분, 0=제한 없음)</label>
+        <input type="number" id="shortsLimitInput" min="0" value="0">
+        <div class="input-hint">위 전체 한도와 별개로 Shorts만 따로 제한합니다. 넘기면 Shorts 페이지만 막히고 일반 영상은 남은 전체 한도만큼 계속 볼 수 있어요. 긴급 시청으로는 뚫을 수 있습니다.</div>
+      </div>
       <div id="limitLockHint" class="input-hint" style="display:none; margin-top:8px; color: var(--danger-color);">🔒 하드코어 모드가 켜져 있어 한도를 수정할 수 없습니다. 하드코어 모드를 끄면 수정할 수 있습니다.</div>
     </div>
 

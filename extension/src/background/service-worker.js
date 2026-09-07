@@ -2,7 +2,7 @@ import { getStorage, setStorage } from '../lib/storage.js';
 import { getTodayDate, getWeekStartDate, getMonthStartDate, addDaysToDate } from '../lib/time.js';
 import { supabase, getCurrentUser } from '../lib/supabaseClient.js';
 import { applyDayRollover } from '../lib/gamification.js';
-import { computeLimitForDate } from '../lib/limits.js';
+import { computeLimitForDate, computeShortsLimit } from '../lib/limits.js';
 import { HARDCORE_DISABLE_COOLDOWN_MS } from '../lib/hardcore.js';
 import { FOCUS_STOP_COOLDOWN_MS, resolveFocusStopTime } from '../lib/focusMode.js';
 import { EMERGENCY_GRANT_COOLDOWN_MS, EMERGENCY_DURATION_MS, emergencyOverlapMs } from '../lib/emergency.js';
@@ -15,7 +15,13 @@ import {
 } from '../lib/usageMerge.js';
 import { isScheduleActive, minutesUntilNextScheduleStart } from '../lib/schedule.js';
 import { focusStateBeforeTransition } from '../lib/focusTransition.js';
-import { resolveBlockDecision, resolveTabBlock, isWhitelistedUrl, isShortsUrl } from '../lib/blockDecision.js';
+import {
+  resolveBlockDecision,
+  resolveTabBlock,
+  isWhitelistedUrl,
+  isShortsUrl,
+  isShortsLimitExceeded
+} from '../lib/blockDecision.js';
 import { evaluateAlarms } from '../lib/alarmRules.js';
 import {
   planDateRollover,
@@ -56,6 +62,10 @@ let focusModeDelayTimer = null;
 let focusStopRequestedAt = null;
 let emergencyModeActive = false;
 let emergencyModeTimer = null;
+// Shorts 전용 한도를 넘겼는지. 탭 단위 차단이라 전역 isYoutubeBlocked에는 반영하지 않지만
+// (일반 영상은 계속 봐야 한다), 긴급 시청 발급은 "지금 뭔가 막혀 있어야" 가능하므로 그 관문에서
+// 이 값을 같이 본다 — 안 그러면 Shorts만 막힌 상태를 긴급 시청으로 뚫을 방법이 없어진다.
+let shortsLimitBlocked = false;
 // 예약 차단(요일별 반복 시간대). 사용자가 직접 켜고 끄는 게 아니라 시계에 따라 자동으로
 // 바뀌므로, 집중 모드 시작/종료 알림과 같은 방식으로 "전이"를 감지해 알리려면 직전 값을
 // storage에 남겨둬야 한다 (서비스워커가 재시작돼도 스퓨리어스 "시작" 알림이 안 뜨게).
@@ -67,6 +77,8 @@ let settingsCache = {
   daily_limit_by_day: {},
   daily_limit_reset_frequency: 'daily',
   always_block_shorts: false,
+  // Shorts 전용 일일 한도(ms). 0 = 미설정 = 한도 없음 (schema.sql의 settings 절 참고).
+  shorts_limit_ms: 0,
   whitelist: [],
   emergency_config: { dailyUses: 3, resetFrequency: 'daily' },
   alarm_interval_minutes: 0,
@@ -144,6 +156,11 @@ async function addShortsUsage(elapsedMs) {
   const today = getTodayDate();
   history[today] = (history[today] || 0) + elapsedMs;
   await setStorage({ usage_history_shorts: history });
+}
+
+async function getTodayShortsUsage() {
+  const { usage_history_shorts } = await getStorage(['usage_history_shorts']);
+  return (usage_history_shorts || {})[getTodayDate()] || 0;
 }
 
 // 긴급 시청 기록(날짜별 { uses, ms }). 긴급 시청으로 본 시간은 usage_history에도 그대로
@@ -553,6 +570,9 @@ async function syncUsageToSupabaseInner(force = false) {
     dailyUsageEmergencySyncedMillis: localEmergency,
     dailyUsageEmergencyUsesSyncedCount: localEmergencyUses,
     dailyUsageCombinedMillis: row?.usage_ms ?? localUsage,
+    // Shorts 합계도 같이 남긴다 — Shorts 한도 판정(getEffectiveTodayShortsUsage)과 팝업 표시가
+    // 전체 사용량과 같은 "로컬 + 다른 기기 몫" 기준을 쓰게 하려면 이 값이 있어야 한다.
+    dailyUsageCombinedShortsMillis: row?.shorts_ms ?? localShorts,
     dailyUsageCombinedEmergencyUses: remoteTodayUses
   });
 
@@ -604,6 +624,22 @@ async function getEffectiveTodayUsage(localUsage) {
   const synced = await getStorage(['dailyUsageSyncDate', 'dailyUsageSyncedMillis', 'dailyUsageCombinedMillis']);
   if (synced.dailyUsageSyncDate !== today) return localUsage;
   return combinedUsedMillis(localUsage, synced.dailyUsageSyncedMillis || 0, synced.dailyUsageCombinedMillis || 0);
+}
+
+/**
+ * 오늘 Shorts 사용량도 전체 사용량과 똑같이 다른 기기 몫을 합쳐서 본다. 안 합치면 브라우저를
+ * 두 개(다른 PC) 쓰는 사람이 Shorts 한도를 기기 수만큼 쓸 수 있다.
+ * (안드로이드는 Shorts를 구분 못 해 항상 델타 0을 보내므로 폰 몫은 애초에 섞이지 않는다.)
+ */
+async function getEffectiveTodayShortsUsage(localShorts) {
+  const today = getTodayDate();
+  const synced = await getStorage([
+    'dailyUsageSyncDate', 'dailyUsageShortsSyncedMillis', 'dailyUsageCombinedShortsMillis'
+  ]);
+  if (synced.dailyUsageSyncDate !== today) return localShorts;
+  return combinedUsedMillis(
+    localShorts, synced.dailyUsageShortsSyncedMillis || 0, synced.dailyUsageCombinedShortsMillis || 0
+  );
 }
 
 // --- 긴급 시청 횟수 리셋 ---
@@ -758,7 +794,12 @@ async function checkUsageAndBlock() {
 
   const limitMs = computeLimitForDate(settingsCache, getTodayDate());
   const currentUsage = await getEffectiveTodayUsage(await getTodayUsage());
+  // Shorts 전용 한도는 전체 한도와 독립이라 값도 따로 읽는다 (미설정이면 Infinity).
+  const shortsLimitMs = computeShortsLimit(settingsCache);
+  const shortsUsage = await getEffectiveTodayShortsUsage(await getTodayShortsUsage());
 
+  // 알람(N분마다 / 남은 시간 마일스톤)은 전체 한도 기준 그대로다. Shorts 한도까지 같은 채널로
+  // 알리면 한도가 둘이라 "남은 시간 5분" 알림이 어느 쪽 얘기인지 알 수 없게 된다.
   await checkAlarms(currentUsage, limitMs);
 
   // 예약 차단: 사용자가 켜고 끄는 게 아니라 시계 기준으로 자동 판정된다 (lib/schedule.js,
@@ -786,6 +827,8 @@ async function checkUsageAndBlock() {
   const blockInputs = {
     usedMs: currentUsage,
     limitMs,
+    shortsUsedMs: shortsUsage,
+    shortsLimitMs,
     focusModeActive,
     scheduleBlockActive,
     emergencyModeActive,
@@ -793,12 +836,23 @@ async function checkUsageAndBlock() {
   };
   const decision = resolveBlockDecision(blockInputs);
 
+  // Shorts 한도는 탭 단위 차단이라 전역 판정(displayBlocked/trackingBlocked)에는 들어가지
+  // 않는다 — Shorts를 다 썼다고 일반 영상 시청까지 막히거나 집계가 멈추면 안 된다.
+  // 다만 긴급 시청 발급 관문이 "지금 차단 상태인가"를 보므로, Shorts만 막힌 상태도 발급 가능
+  // 상태로 쳐주려고 이 플래그만 따로 들고 다닌다 (팝업 표시에도 쓴다).
+  const nextShortsLimitBlocked = isShortsLimitExceeded(shortsUsage, shortsLimitMs);
+
   // 표시용(isYoutubeBlocked)과 집계 게이트용(trackingBlocked)을 같이 남긴다. trackUsage는
   // 인메모리 값을 못 믿어 storage에서 다시 읽으므로 둘 다 저장돼 있어야 한다.
-  if (decision.displayBlocked !== isYoutubeBlocked || decision.trackingBlocked !== trackingBlocked) {
+  if (
+    decision.displayBlocked !== isYoutubeBlocked ||
+    decision.trackingBlocked !== trackingBlocked ||
+    nextShortsLimitBlocked !== shortsLimitBlocked
+  ) {
     isYoutubeBlocked = decision.displayBlocked;
     trackingBlocked = decision.trackingBlocked;
-    await setStorage({ isYoutubeBlocked, trackingBlocked });
+    shortsLimitBlocked = nextShortsLimitBlocked;
+    await setStorage({ isYoutubeBlocked, trackingBlocked, shortsLimitBlocked });
   }
 
   const whitelist = settingsCache.whitelist || [];
@@ -953,7 +1007,10 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       // 동기화 때 캐시해둔 서버 버킷 합계로 매번 다시 뺀다.
       const { local: localUses, effective: remainingUses } = await getEffectiveEmergencyUses();
 
-      if (!isYoutubeBlocked) {
+      // Shorts 한도만 넘긴 상태는 전역 isYoutubeBlocked가 false다(일반 영상은 계속 볼 수 있으니).
+      // 그래도 "막힌 게 있는" 상태이므로 발급을 허용한다 — Shorts 한도는 전체 한도와 같은 급의
+      // 한도 차단이라 긴급 시청으로 뚫을 수 있어야 한다.
+      if (!isYoutubeBlocked && !shortsLimitBlocked) {
         sendResponse({ success: false, message: '현재 차단 상태가 아닙니다.' });
         return;
       }
@@ -1137,8 +1194,14 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
 (async () => {
   await loadSettingsCache();
-  const stored = await getStorage(['isYoutubeBlocked', 'isManuallyBlocked', 'focusModeActive', 'focusModeEndTime', 'focusStopRequestedAt']);
+  const stored = await getStorage([
+    'isYoutubeBlocked', 'shortsLimitBlocked', 'isManuallyBlocked',
+    'focusModeActive', 'focusModeEndTime', 'focusStopRequestedAt'
+  ]);
   isYoutubeBlocked = stored.isYoutubeBlocked || false;
+  // 아래 checkUsageAndBlock이 곧 다시 판정하지만, 그 전에 팝업이 긴급 시청을 요청할 수 있으므로
+  // 직전 값으로 깔아둔다 (isYoutubeBlocked를 복원하는 이유와 같다).
+  shortsLimitBlocked = stored.shortsLimitBlocked || false;
   isManuallyBlocked = stored.isManuallyBlocked || false;
   focusModeActive = stored.focusModeActive || false;
   focusModeEndTime = stored.focusModeEndTime || null;

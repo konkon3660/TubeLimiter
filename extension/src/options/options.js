@@ -43,6 +43,9 @@ let hardcorePendingInterval = null;
 function applyLimitLockState(locked) {
   byDayToggle.disabled = locked;
   document.getElementById('dailyLimitInput').disabled = locked;
+  // Shorts 한도도 같은 잠금에 걸린다. 여기서 빠뜨리면 하드코어 모드 중에 Shorts 한도만
+  // 늘려서 커밋먼트를 우회할 수 있는 구멍이 된다 (전체 한도만 잠그는 건 반쪽짜리 잠금).
+  document.getElementById('shortsLimitInput').disabled = locked;
   document.querySelectorAll('.day-limit-row input').forEach((input) => {
     input.disabled = locked;
   });
@@ -293,6 +296,12 @@ function fillForm(settings) {
     row.querySelector('input').value = val === undefined ? 30 : val;
   });
 
+  // 0 = 제한 없음 (schema.sql의 shorts_limit_ms 주석과 같은 컨벤션). 서버에 컬럼이 없던 시절의
+  // 행이면 undefined로 내려오는데, 그것도 0(제한 없음)으로 보여주는 게 맞다.
+  document.getElementById('shortsLimitInput').value = settings.shorts_limit_ms
+    ? settings.shorts_limit_ms / 60000
+    : 0;
+
   document.getElementById('alwaysBlockShortsToggle').checked = !!settings.always_block_shorts;
 
   whitelist = Array.isArray(settings.whitelist) ? [...settings.whitelist] : [];
@@ -324,6 +333,8 @@ function collectSettings() {
     daily_limit_reset_frequency: byDay ? 'by_day' : 'daily',
     daily_limit_ms: Number(document.getElementById('dailyLimitInput').value) * 60000,
     daily_limit_by_day: dailyLimitByDay,
+    // 입력이 비어 있으면 Number('')가 NaN이라 bigint 컬럼 upsert가 통째로 실패한다 — 0(제한 없음)으로 접는다.
+    shorts_limit_ms: Math.max(0, Number(document.getElementById('shortsLimitInput').value) || 0) * 60000,
     always_block_shorts: document.getElementById('alwaysBlockShortsToggle').checked,
     whitelist,
     emergency_config: {
@@ -469,6 +480,7 @@ async function init() {
       daily_limit_ms: 30 * 60000,
       daily_limit_by_day: {},
       daily_limit_reset_frequency: 'daily',
+      shorts_limit_ms: 0,
       always_block_shorts: false,
       whitelist: [],
       emergency_config: { dailyUses: 3, resetFrequency: 'daily' },
