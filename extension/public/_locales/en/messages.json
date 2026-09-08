@@ -724,5 +724,44 @@
   },
   "dashboard_breakdown_emergency_with_uses_other": {
     "message": "Emergency $1 ($2 views)"
+  },
+  "options_whitelist_error_format": {
+    "message": "That is not a valid address. Try \"youtube.com/@channel\", \"@channel\", or a video ID."
+  },
+  "options_whitelist_error_short": {
+    "message": "Too short. Use at least 4 characters."
+  },
+  "options_whitelist_error_broad": {
+    "message": "Too broad - this would let all of YouTube through. Narrow it to a channel or a video."
+  },
+  "options_whitelist_ignored": {
+    "message": "This entry is ignored:"
+  },
+  "options_whitelist_hint": {
+    "message": "Add a channel (@handle), a video ID, or a \"youtube.com/path\". Values that would open all of YouTube are rejected."
+  },
+  "options_hardcore_blocked": {
+    "message": "Hardcore mode will not save changes that weaken blocking:"
+  },
+  "options_hardcore_violation_daily_limit": {
+    "message": "raising the daily limit"
+  },
+  "options_hardcore_violation_by_day_limit": {
+    "message": "raising a per-day limit"
+  },
+  "options_hardcore_violation_shorts_limit": {
+    "message": "raising the Shorts limit"
+  },
+  "options_hardcore_violation_whitelist": {
+    "message": "adding a whitelist entry"
+  },
+  "options_hardcore_violation_emergency": {
+    "message": "granting more emergency passes"
+  },
+  "options_hardcore_violation_shorts_toggle": {
+    "message": "turning off always-block Shorts"
+  },
+  "options_hardcore_violation_schedule": {
+    "message": "removing or shrinking a scheduled block"
   }
 }

@@ -20,6 +20,8 @@
 //    탭 단계에서 "수동 차단 > 한도"라는 전역 순서를 뒤집을 이유가 없다.
 // (Shorts는 화면 내용을 봐야 구분되므로 이 두 규칙 모두 브라우저 전용 — 안드로이드엔 없다.)
 
+import { parseWhitelistEntry, parseWhitelistTarget, whitelistEntryMatches } from './whitelist.js';
+
 // content/content.js가 이 문자열로 차단 사유 문구를 고른다 — 값을 바꾸면 그쪽도 같이 고쳐야 한다.
 export const BLOCK_REASON = Object.freeze({
   focusMode: 'focusMode',
@@ -112,10 +114,23 @@ export function resolveBlockDecision({
   };
 }
 
-/** 화이트리스트는 URL 부분 문자열 매칭이다 (옵션에서 "youtube.com/@channel" 같은 조각을 넣는다). */
+/**
+ * 화이트리스트 판정. 규칙은 lib/whitelist.js가 소유한다 — 저장할 때 쓰는 검증과 **같은 함수**로
+ * 해석해야 "저장은 되는데 안 먹는" 항목이나 그 반대가 안 생긴다.
+ *
+ * 예전에는 `url.includes(entry)` 한 줄이었다. 그래서 `/` 한 글자가 모든 유튜브 URL을 여는
+ * 마스터키였다(documents/QA_REVIEW.md §1.2). 저장 쪽 검증만 붙여도 이 자리를 못 고치는 이유는,
+ * 검증이 없던 시절에 저장된 값과 다른 기기에서 동기화돼 들어온 값이 이미 whitelist 안에 있을 수
+ * 있어서다. 해석에 실패하는 항목은 여기서 조용히 무시된다.
+ */
 export function isWhitelistedUrl(url, whitelist) {
-  if (!url || !Array.isArray(whitelist)) return false;
-  return whitelist.some((entry) => url.includes(entry));
+  if (!url || !Array.isArray(whitelist) || whitelist.length === 0) return false;
+  const target = parseWhitelistTarget(url);
+  if (!target) return false;
+  return whitelist.some((raw) => {
+    const parsed = parseWhitelistEntry(raw);
+    return parsed.ok && whitelistEntryMatches(parsed.entry, target);
+  });
 }
 
 export function isShortsUrl(url) {

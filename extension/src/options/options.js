@@ -8,6 +8,8 @@ import {
 } from '../lib/syncDiagnostics.js';
 import { clearDiagnostics, readDiagnostics } from '../lib/diagnosticsStore.js';
 import { SIGN_OUT_REMOVED_KEYS, ACCOUNT_DELETE_REMOVED_KEYS } from '../lib/accountReset.js';
+import { isHardcoreChangeAllowed } from '../lib/hardcoreLock.js';
+import { normalizeWhitelistEntry, whitelistEntryError } from '../lib/whitelist.js';
 import { applyI18n, t, tCount } from '../lib/i18n.js';
 
 applyI18n();
@@ -40,7 +42,8 @@ byDayToggle.addEventListener('change', () => {
 
 // 하드코어 모드: 켜져 있으면 한도를 못 건드리게 잠근다.
 // 끄는 것도 즉시 반영되면 충동적으로 껐다 켰다 할 수 있으므로, "해제 예약"만 남겨두고
-// 실제로는 24시간 뒤(백그라운드에서) 꺼진다 — checkHardcoreDisableCooldown 참고.
+// 실제로는 1시간 뒤(백그라운드에서) 꺼진다 — lib/hardcore.js의 HARDCORE_DISABLE_COOLDOWN_MS,
+// 반영은 checkHardcoreDisableCooldown 참고.
 const limitLockHint = document.getElementById('limitLockHint');
 const hardcoreOffBlock = document.getElementById('hardcoreOffBlock');
 const hardcoreOnBlock = document.getElementById('hardcoreOnBlock');
@@ -157,6 +160,18 @@ function renderWhitelist() {
 
     row.appendChild(input);
     row.appendChild(removeButton);
+
+    // 검증이 없던 시절에 저장됐거나 다른 기기에서 동기화돼 들어온 항목은 지금 규칙으로 해석이
+    // 안 될 수 있다. 그런 항목은 판정에서 무시되므로(blockDecision.js), 왜 안 먹는지를 여기서
+    // 밝힌다 — 안 그러면 "화이트리스트에 있는데 차단된다"로 보인다.
+    const invalidKey = whitelistEntryError(entry);
+    if (invalidKey) {
+      const warning = document.createElement('p');
+      warning.className = 'whitelist-invalid';
+      warning.textContent = `${t('options_whitelist_ignored')} ${t(invalidKey)}`;
+      row.appendChild(warning);
+    }
+
     whitelistListEl.appendChild(row);
   });
   whitelistListEl.querySelectorAll('input').forEach((input) => {
@@ -173,9 +188,23 @@ function renderWhitelist() {
 }
 document.getElementById('addWhitelistButton').addEventListener('click', () => {
   const input = document.getElementById('whitelistInput');
+  const errorEl = document.getElementById('whitelistError');
   const value = input.value.trim();
   if (!value) return;
-  whitelist.push(value);
+
+  // 검증은 lib/whitelist.js가 소유한다 — 판정(isWhitelistedUrl)이 쓰는 것과 같은 함수라야
+  // "저장은 되는데 안 먹는" 항목이 안 생긴다. 거부 사유는 화면에 그대로 보여준다: 조용히
+  // 안 먹는 항목을 남겨두면 사용자는 화이트리스트가 동작한다고 믿는다.
+  const errorKey = whitelistEntryError(value);
+  if (errorKey) {
+    errorEl.textContent = t(errorKey);
+    errorEl.style.display = '';
+    return;
+  }
+
+  errorEl.textContent = '';
+  errorEl.style.display = 'none';
+  whitelist.push(normalizeWhitelistEntry(value));
   input.value = '';
   renderWhitelist();
 });
@@ -388,6 +417,17 @@ document.getElementById('saveButton').addEventListener('click', async () => {
 
   const settings = collectSettings();
   const statusEl = document.getElementById('saveStatus');
+
+  // 하드코어 잠금은 입력 disabled가 아니라 **저장 직전 판정**이 최종 관문이다. 화면에서 가리는
+  // 것만으로는 다른 탭에 열어둔 옛 옵션 페이지나 갱신 전 상태로 저장하는 경로가 남는다.
+  const lockCheck = isHardcoreChangeAllowed(currentSettings, settings);
+  if (!lockCheck.allowed) {
+    statusEl.textContent = `${t('options_hardcore_blocked')} ${lockCheck.violations
+      .map((violation) => t(violation.messageKey))
+      .join(', ')}`;
+    return;
+  }
+
   statusEl.textContent = t('options_saving');
 
   const { error } = await supabase

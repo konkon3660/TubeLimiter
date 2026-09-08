@@ -176,6 +176,18 @@
         color: var(--gray);
         padding: 8px 0;
       }
+      /* 거부된 입력과 "효력 없는 옛 항목" 안내. 둘 다 같은 톤으로 - 사용자가 고쳐야 할 값이다. */
+      .whitelist-invalid {
+        flex-basis: 100%;
+        margin: 4px 0 0;
+        font-size: 0.85em;
+        color: var(--danger, #c0392b);
+      }
+      .hint {
+        margin: 8px 0 0;
+        font-size: 0.85em;
+        color: var(--gray);
+      }
 
       .schedule-item {
         border: 1px solid var(--border-color);
@@ -596,6 +608,8 @@
           />
           <button id="addWhitelistButton" class="btn-secondary" data-i18n="action_add"></button>
         </div>
+        <p id="whitelistError" class="whitelist-invalid" style="display: none"></p>
+        <p class="hint" data-i18n="options_whitelist_hint"></p>
       </div>
 
       <div class="control-section wide-section">
