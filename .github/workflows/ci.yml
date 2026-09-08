@@ -65,10 +65,15 @@ jobs:
       # and runs on whatever JAVA_HOME is current, so installing under the image's
       # default JDK avoids betting that cmdline-tools supports JDK 25. Gradle picks
       # up its own JDK from the next step regardless.
+      #
+      # The platform is android-37.0, not android-37: platform packages are
+      # minor-versioned now (37.0 / 37.1 / 37.2 are separate downloads), and
+      # `compileSdk = 37` resolves to 37.0. Asking for a bare android-37 fails
+      # with "Failed to find package", which is how the first run died.
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: 'platform-tools platforms;android-37 build-tools;37.0.0'
+          packages: 'platform-tools platforms;android-37.0 build-tools;37.0.0'
 
       # 25 matches the toolchainVersion pinned in gradle/gradle-daemon-jvm.properties
       # so the daemon does not auto-provision a JDK from foojay. Unrelated to the
