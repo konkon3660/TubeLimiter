@@ -63,10 +63,13 @@ import com.tubelimiter.app.permission.PermissionChecker
 import com.tubelimiter.app.permission.allGranted
 import com.tubelimiter.app.permission.requiredPermissions
 import com.tubelimiter.app.service.UsageMonitorService
+import com.tubelimiter.app.sync.RemoteDailyUsageRow
 import com.tubelimiter.app.sync.SyncRepository
 import com.tubelimiter.app.sync.combinedUsedMillis
+import com.tubelimiter.app.sync.mergeHistories
 import com.tubelimiter.app.ui.AuthScreen
 import com.tubelimiter.app.ui.DashboardScreen
+import com.tubelimiter.app.ui.HistorySource
 import com.tubelimiter.app.ui.HomeScreen
 import com.tubelimiter.app.ui.OnboardingScreen
 import com.tubelimiter.app.ui.SettingsScreen
@@ -94,6 +97,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
+/**
+ * 대시보드가 서버에서 읽어올 기간. 히트맵 28일 + 막대그래프 최대 30일을 다 채우면 충분하고, 더
+ * 길게 읽어봐야 그릴 곳이 없이 응답만 커진다 (확장 대시보드의 `HISTORY_LOOKBACK_DAYS`와 같은 값).
+ */
+private const val DASHBOARD_HISTORY_LOOKBACK_DAYS = 30
 
 private enum class Tab(val labelRes: Int, val glyph: String) {
     HOME(R.string.nav_home, "🏠"),
@@ -138,6 +147,10 @@ fun AppRoot() {
     var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     var tab by remember { mutableStateOf(Tab.HOME) }
 
+    // 대시보드가 그릴 서버 기록. null은 "아직 못 얻었다"(로그아웃·오프라인·조회 실패)라는 뜻이고,
+    // 그때는 로컬 기록만으로 그린다 — 대시보드가 통째로 비는 것보다 낫다.
+    var serverHistory by remember { mutableStateOf<List<RemoteDailyUsageRow>?>(null) }
+
     var showAuth by remember { mutableStateOf(false) }
     var authBusy by remember { mutableStateOf(false) }
     var deleteAccountBusy by remember { mutableStateOf(false) }
@@ -172,6 +185,19 @@ fun AppRoot() {
         if (account.userId != null) {
             sync.pullSettings()
             sync.pullStreak()
+        }
+    }
+
+    // 통계 탭을 열 때마다 서버 기록을 한 번 읽는다. 매 틱이 아니라 탭 진입에 묶은 건, 이 조회가
+    // 화면에 그릴 때만 필요하고 차단 판정에는 쓰이지 않기 때문이다(차단은 오늘치 RPC 합계를 쓴다).
+    // 로그아웃하면 즉시 비워서 이전 계정 기록이 화면에 남지 않게 한다.
+    LaunchedEffect(account.userId, tab) {
+        serverHistory = if (tab == Tab.DASHBOARD && account.userId != null) {
+            val since = effectiveDate(System.currentTimeMillis())
+                .minusDays((DASHBOARD_HISTORY_LOOKBACK_DAYS - 1).toLong())
+            sync.fetchDailyUsageSince(since.toString())
+        } else {
+            null
         }
     }
 
@@ -369,22 +395,37 @@ fun AppRoot() {
                 modifier = contentModifier,
             )
 
-            Tab.DASHBOARD -> DashboardScreen(
-                today = today,
-                usageHistory = state.usageHistory,
-                usageHistoryHourly = state.usageHistoryHourly,
-                emergencyMillisHistory = state.emergencyMillisHistory,
-                emergencyUseHistory = state.emergencyUseHistory,
-                limitConfig = settings.limit,
-                streak = state.streak,
-                achievements = state.achievements,
-                hardcoreMode = settings.hardcoreMode,
-                chartRangeDays = settings.chartRangeDays,
-                // Local-only display preference: written directly rather than through
-                // editSettings, since it isn't part of the account-synced settings row.
-                onChartRangeChange = { scope.launch { settingsStore.setChartRangeDays(it) } },
-                modifier = contentModifier,
-            )
+            Tab.DASHBOARD -> {
+                // 로컬 기록과 서버 기록을 날짜별 max로 합친다(합산 금지 — 서버 합계에 이 기기
+                // 몫이 이미 들어 있다). 규칙은 확장 `lib/historyMerge.js`와 같아야 한다.
+                val merged = mergeHistories(
+                    localUsage = state.usageHistory,
+                    localEmergencyMillis = state.emergencyMillisHistory,
+                    localEmergencyUses = state.emergencyUsesByDate(),
+                    serverRows = serverHistory.orEmpty(),
+                )
+                DashboardScreen(
+                    today = today,
+                    usageHistory = merged.usage,
+                    usageHistoryHourly = state.usageHistoryHourly,
+                    emergencyHistory = merged.emergency,
+                    limitHistory = state.limitHistory,
+                    limitConfig = settings.limit,
+                    historySource = when {
+                        serverHistory != null -> HistorySource.MERGED
+                        account.signedIn -> HistorySource.LOCAL_ONLY
+                        else -> HistorySource.SIGNED_OUT
+                    },
+                    streak = state.streak,
+                    achievements = state.achievements,
+                    hardcoreMode = settings.hardcoreMode,
+                    chartRangeDays = settings.chartRangeDays,
+                    // Local-only display preference: written directly rather than through
+                    // editSettings, since it isn't part of the account-synced settings row.
+                    onChartRangeChange = { scope.launch { settingsStore.setChartRangeDays(it) } },
+                    modifier = contentModifier,
+                )
+            }
 
             Tab.SETTINGS -> SettingsScreen(
                 settings = settings,

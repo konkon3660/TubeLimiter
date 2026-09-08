@@ -15,6 +15,8 @@ import com.tubelimiter.app.diagnostics.decodeDiagnosticEvents
 import com.tubelimiter.app.diagnostics.encodeDiagnosticEvents
 import com.tubelimiter.app.gamification.StreakRecord
 import com.tubelimiter.app.limit.AlarmState
+import com.tubelimiter.app.limit.LimitHistoryEntry
+import com.tubelimiter.app.limit.planLimitHistoryUpdate
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -26,6 +28,11 @@ private val KEY_USAGE_HISTORY_HOURLY = stringPreferencesKey("usage_history_hourl
  * while still barring that day from the perfect-day count. */
 private val KEY_EMERGENCY_MILLIS_HISTORY = stringPreferencesKey("emergency_history")
 private val KEY_EMERGENCY_USES_HISTORY = stringPreferencesKey("emergency_uses_history")
+
+/** 그날 실제로 적용됐던 한도(날짜 -> ms, 무제한은 [com.tubelimiter.app.limit.UNLIMITED_LIMIT_SENTINEL]).
+ * 확장의 `limit_history`와 같은 키 이름·같은 규칙이다 — 자세한 이유는
+ * [com.tubelimiter.app.limit.planLimitHistoryUpdate] 참고. */
+private val KEY_LIMIT_HISTORY = stringPreferencesKey("limit_history")
 private val KEY_LAST_ROLLOVER_DATE = stringPreferencesKey("last_rollover_date")
 
 private val KEY_STREAK_CURRENT = intPreferencesKey("streak_current")
@@ -89,6 +96,9 @@ data class RuntimeState(
     /** Per-day emergency-pass time and use count, keyed like [usageHistory]. */
     val emergencyMillisHistory: Map<String, Long> = emptyMap(),
     val emergencyUseHistory: Map<String, Long> = emptyMap(),
+    /** 그날 적용됐던 한도의 스냅샷. 비어 있는 날은 대시보드가 현재 설정으로 추정한다
+     * ([com.tubelimiter.app.limit.resolveLimitForDate]). */
+    val limitHistory: Map<String, Long> = emptyMap(),
     val lastRolloverDate: String? = null,
     val streak: StreakRecord = StreakRecord(),
     val achievements: Set<String> = emptySet(),
@@ -157,6 +167,7 @@ class AppState(private val context: Context) {
         usageHistoryHourly = decodeHourlyMap(this[KEY_USAGE_HISTORY_HOURLY]),
         emergencyMillisHistory = decodeLongMap(this[KEY_EMERGENCY_MILLIS_HISTORY]),
         emergencyUseHistory = decodeLongMap(this[KEY_EMERGENCY_USES_HISTORY]),
+        limitHistory = decodeLongMap(this[KEY_LIMIT_HISTORY]),
         lastRolloverDate = this[KEY_LAST_ROLLOVER_DATE],
         streak = StreakRecord(
             currentStreak = this[KEY_STREAK_CURRENT] ?: 0,
@@ -224,6 +235,24 @@ class AppState(private val context: Context) {
         val history = decodeLongMap(prefs[KEY_EMERGENCY_MILLIS_HISTORY])
         val updated = history + (dateKey to (history[dateKey] ?: 0L) + deltaMillis)
         prefs[KEY_EMERGENCY_MILLIS_HISTORY] = encodeLongMap(pruneHistory(updated, keepKeys + dateKey))
+    }
+
+    /**
+     * 그날 적용된 한도를 스냅샷으로 남긴다. 계획은 순수 함수
+     * ([planLimitHistoryUpdate])가 세우고 여기서는 읽고 쓰기만 한다.
+     *
+     * [keepKeys]에 기록하려는 날짜를 더해서 넘기는 건 [recordUsage]와 같은 규칙이다 — 두 맵이
+     * 같은 보관 기간으로 같이 잘려야 히트맵에 그려지는 날만 추정치로 떨어지는 일이 없다.
+     *
+     * `changed`가 false면 키를 건드리지 않는다. 이 함수는 매 틱마다 불린다.
+     */
+    suspend fun recordLimitHistory(updates: List<LimitHistoryEntry>, keepKeys: Set<String>) = edit { prefs ->
+        val plan = planLimitHistoryUpdate(
+            history = decodeLongMap(prefs[KEY_LIMIT_HISTORY]),
+            updates = updates,
+            keepKeys = keepKeys + updates.map { it.date },
+        )
+        if (plan.changed) prefs[KEY_LIMIT_HISTORY] = encodeLongMap(plan.history)
     }
 
     /** Records that one emergency pass was spent on [dateKey] - a day with any use is never perfect. */
@@ -430,6 +459,9 @@ class AppState(private val context: Context) {
         prefs.remove(KEY_USAGE_HISTORY_HOURLY)
         prefs.remove(KEY_EMERGENCY_MILLIS_HISTORY)
         prefs.remove(KEY_EMERGENCY_USES_HISTORY)
+        // 한도 스냅샷은 위 usage_history를 판정하기 위한 짝이다. 사용량만 지우고 남겨두면
+        // 다음 계정의 새 기록이 지운 계정의 한도로 판정된다.
+        prefs.remove(KEY_LIMIT_HISTORY)
         prefs.remove(KEY_LAST_ROLLOVER_DATE)
 
         prefs.remove(KEY_STREAK_CURRENT)

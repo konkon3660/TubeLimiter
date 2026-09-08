@@ -134,12 +134,17 @@
     <string name="dashboard_badges">뱃지</string>
     <string name="dashboard_perfect_badges">완벽한 날 (긴급 시청 0회)</string>
     <string name="dashboard_heatmap_title">최근 28일</string>
+    <string name="dashboard_history_note_merged">히트맵과 사용시간 그래프는 이 계정에 연결된 모든 기기의 기록을 합쳐서 보여줍니다.</string>
+    <string name="dashboard_history_note_local_only">서버 기록을 불러오지 못해 이 기기에 저장된 기록만 표시하고 있어요.</string>
+    <string name="dashboard_history_note_signed_out">이 기기에 저장된 기록만 보여줍니다. 로그인하면 다른 기기 기록도 함께 표시돼요.</string>
+    <string name="dashboard_heatmap_estimated_note">테두리가 있는 날은 그날의 한도 기록이 없어 현재 설정 기준으로 추정한 판정입니다.</string>
     <string name="dashboard_chart_title">사용시간 추이</string>
     <string name="dashboard_chart_mode_time">사용 시간</string>
     <string name="dashboard_chart_mode_percent" formatted="false">한도 대비 %</string>
     <string name="dashboard_chart_peak_percent">최대 %1$d%%</string>
     <string name="dashboard_chart_peak_duration">최대 %1$s</string>
     <string name="dashboard_hourly_title">시간대별 사용 패턴</string>
+    <string name="dashboard_hourly_note">이 그래프는 이 기기의 기록만 보여줍니다 — 시간대별 기록은 서버에 올라가지 않아요.</string>
     <string name="dashboard_hour_start">0시</string>
     <string name="dashboard_hour_end">23시</string>
 

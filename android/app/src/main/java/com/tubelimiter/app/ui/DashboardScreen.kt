@@ -1,6 +1,7 @@
 package com.tubelimiter.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,23 +47,34 @@ import com.tubelimiter.app.gamification.levelTier
 import com.tubelimiter.app.gamification.milestoneAchievementKey
 import com.tubelimiter.app.gamification.perfectAchievementKey
 import com.tubelimiter.app.limit.LimitConfig
-import com.tubelimiter.app.limit.computeLimitMillis
 import com.tubelimiter.app.limit.isUnlimited
+import com.tubelimiter.app.limit.resolveLimitForDate
+import com.tubelimiter.app.sync.MergedEmergencyDay
 import com.tubelimiter.app.usage.formatDuration
 import com.tubelimiter.app.usage.lastNDates
 import java.time.LocalDate
 
 private const val HEATMAP_DAYS = 28
 
+/**
+ * 히트맵/차트가 어떤 기록으로 그려졌는지. 서버 조회가 조용히 실패해도 화면은 그대로 그려지므로
+ * ([com.tubelimiter.app.sync.SyncRepository.fetchDailyUsageSince]), 이 한 줄이 없으면 "다른
+ * 기기 기록이 빠진 그래프"를 전부인 것처럼 보게 된다.
+ */
+enum class HistorySource { MERGED, LOCAL_ONLY, SIGNED_OUT }
+
 @Composable
 fun DashboardScreen(
     today: LocalDate,
+    /** 로컬 기록과 서버 `daily_usage`를 날짜별 max로 합친 값 ([com.tubelimiter.app.sync.mergeHistories]). */
     usageHistory: Map<String, Long>,
     usageHistoryHourly: Map<String, Map<Int, Long>>,
     /** Per-day emergency-pass time and use count, for telling perfect days from merely successful ones. */
-    emergencyMillisHistory: Map<String, Long>,
-    emergencyUseHistory: Map<String, Long>,
+    emergencyHistory: Map<String, MergedEmergencyDay>,
+    /** 그날 실제 적용됐던 한도의 스냅샷. 없는 날은 [limitConfig]로 추정하고 화면에 그렇게 표시한다. */
+    limitHistory: Map<String, Long>,
     limitConfig: LimitConfig,
+    historySource: HistorySource,
     streak: StreakRecord,
     achievements: Set<String>,
     hardcoreMode: Boolean,
@@ -89,8 +101,8 @@ fun DashboardScreen(
                 )
             }
         }
-        HeatmapCard(today, usageHistory, emergencyMillisHistory, emergencyUseHistory, limitConfig)
-        ChartCard(today, usageHistory, limitConfig, chartRangeDays, onChartRangeChange)
+        HeatmapCard(today, usageHistory, emergencyHistory, limitHistory, limitConfig, historySource)
+        ChartCard(today, usageHistory, limitHistory, limitConfig, chartRangeDays, onChartRangeChange)
         HourlyPatternCard(today, usageHistoryHourly, chartRangeDays)
     }
 }
@@ -244,15 +256,27 @@ private fun BadgeCard(achievements: Set<String>) {
 private fun HeatmapCard(
     today: LocalDate,
     usageHistory: Map<String, Long>,
-    emergencyMillisHistory: Map<String, Long>,
-    emergencyUseHistory: Map<String, Long>,
+    emergencyHistory: Map<String, MergedEmergencyDay>,
+    limitHistory: Map<String, Long>,
     limitConfig: LimitConfig,
+    historySource: HistorySource,
 ) {
     // Same three grades the extension dashboard uses: perfect (deep), success (light), over.
     val perfectColor = Color(0xFF16A34A)
     val successColor = Color(0xFF86EFAC)
     val failColor = Color(0xFFEF4444)
     val emptyColor = MaterialTheme.colorScheme.surfaceVariant
+    val estimatedOutline = MaterialTheme.colorScheme.onSurfaceVariant
+
+    val dates = lastNDates(today, HEATMAP_DAYS)
+    // 한도 스냅샷이 없어 현재 설정으로 근사 판정한 칸이 하나라도 있으면 범례를 붙인다. 확장은
+    // 툴팁 한 줄로 밝히지만 안드로이드 히트맵 칸에는 붙일 툴팁이 없어서, 테두리 + 아래 한 줄로
+    // 같은 사실을 전한다 — 근사치를 사실처럼 보여주면 "설정을 바꾸면 과거 판정이 바뀐다"는
+    // 문제를 그대로 두면서 티만 안 나게 하는 셈이 된다.
+    val hasEstimatedDay = dates.any { date ->
+        usageHistory[date.toString()] != null &&
+            resolveLimitForDate(limitHistory, limitConfig, date).estimated
+    }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -260,7 +284,18 @@ private fun HeatmapCard(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(stringResource(R.string.dashboard_heatmap_title), style = MaterialTheme.typography.titleSmall)
-            lastNDates(today, HEATMAP_DAYS).chunked(7).forEach { week ->
+            Text(
+                text = stringResource(
+                    when (historySource) {
+                        HistorySource.MERGED -> R.string.dashboard_history_note_merged
+                        HistorySource.LOCAL_ONLY -> R.string.dashboard_history_note_local_only
+                        HistorySource.SIGNED_OUT -> R.string.dashboard_history_note_signed_out
+                    },
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            dates.chunked(7).forEach { week ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -268,13 +303,17 @@ private fun HeatmapCard(
                     week.forEach { date ->
                         val key = date.toString()
                         val used = usageHistory[key]
-                        val limit = computeLimitMillis(limitConfig, date)
-                        val emergencyMillis = emergencyMillisHistory[key] ?: 0L
-                        val emergencyUses = (emergencyUseHistory[key] ?: 0L).toInt()
+                        // 그날 실제로 적용됐던 한도로 판정한다. 판정 규칙 자체
+                        // (isPerfectDay/isDaySuccess)는 스트릭과 같은 것을 그대로 쓰고, 바뀐 건
+                        // 넘기는 한도값뿐이다.
+                        val resolved = resolveLimitForDate(limitHistory, limitConfig, date)
+                        val emergency = emergencyHistory[key]
+                        val emergencyMillis = emergency?.millis ?: 0L
+                        val emergencyUses = emergency?.uses ?: 0
                         val color = when {
                             used == null -> emptyColor
-                            isPerfectDay(used, limit, emergencyMillis, emergencyUses) -> perfectColor
-                            isDaySuccess(used, limit, emergencyMillis) -> successColor
+                            isPerfectDay(used, resolved.limitMillis, emergencyMillis, emergencyUses) -> perfectColor
+                            isDaySuccess(used, resolved.limitMillis, emergencyMillis) -> successColor
                             else -> failColor
                         }
                         Box(
@@ -282,10 +321,24 @@ private fun HeatmapCard(
                                 .weight(1f)
                                 .aspectRatio(1f)
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(color),
+                                .background(color)
+                                .then(
+                                    if (used != null && resolved.estimated) {
+                                        Modifier.border(1.dp, estimatedOutline, RoundedCornerShape(4.dp))
+                                    } else {
+                                        Modifier
+                                    },
+                                ),
                         )
                     }
                 }
+            }
+            if (hasEstimatedDay) {
+                Text(
+                    text = stringResource(R.string.dashboard_heatmap_estimated_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -295,6 +348,7 @@ private fun HeatmapCard(
 private fun ChartCard(
     today: LocalDate,
     usageHistory: Map<String, Long>,
+    limitHistory: Map<String, Long>,
     limitConfig: LimitConfig,
     rangeDays: Int,
     onRangeChange: (Int) -> Unit,
@@ -340,7 +394,9 @@ private fun ChartCard(
                 // so they render as an empty bar rather than dividing by a near-infinite limit.
                 val percentValues = dates.map { date ->
                     val used = usageHistory[date.toString()] ?: 0L
-                    val limit = computeLimitMillis(limitConfig, date)
+                    // 히트맵과 같은 값으로 나눈다. 여기만 현재 설정을 쓰면 같은 날이 히트맵에선
+                    // 초과, 막대에선 한도 이내로 보인다.
+                    val limit = resolveLimitForDate(limitHistory, limitConfig, date).limitMillis
                     if (isUnlimited(limit) || limit <= 0L) 0f else (used.toFloat() / limit) * 100f
                 }
                 // A day can blow past 100%; that's meaningful, so the scale grows to fit it
@@ -432,6 +488,10 @@ private fun ChartCard(
  * [usageHistoryHourly] and averaging by rangeDays would silently dilute the pattern for anyone
  * without a full window of hourly history yet. A sum also reads naturally as "total time spent
  * at this hour across the selected days," which is the more direct answer to "when do I watch."
+ *
+ * 히트맵/차트와 달리 **서버 기록과 합치지 않는다** — `daily_usage`에 시간대별 대응 데이터가
+ * 없어서 합칠 것이 없다(확장도 같다). 그래서 카드에 "이 기기 기록만"이라고 밝힌다. 밝히지
+ * 않으면 바로 위 두 카드가 계정 전체를 보여주는 상황에서 이 카드만 조용히 다른 범위가 된다.
  */
 @Composable
 private fun HourlyPatternCard(
@@ -457,6 +517,11 @@ private fun HourlyPatternCard(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(stringResource(R.string.dashboard_hourly_title), style = MaterialTheme.typography.titleSmall)
+            Text(
+                text = stringResource(R.string.dashboard_hourly_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

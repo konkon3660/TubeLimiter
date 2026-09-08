@@ -163,6 +163,35 @@ class SyncRepository(
         }
     }
 
+    /**
+     * 대시보드용 날짜별 기록. [startDateKey](포함) 이후의 `daily_usage` 행을 통째로 읽어
+     * [mergeHistories]가 로컬 기록과 날짜별 max로 합친다. 이게 없으면 앱을 재설치했거나 다른
+     * 기기에서만 본 날이 히트맵에 통째로 비어 보인다 — 계정 기록은 서버에 이미 다 쌓여 있는데도.
+     *
+     * 실패하거나 로그아웃이면 null. 호출부(대시보드)는 조용히 로컬 기록만으로 그린다 —
+     * 대시보드가 통째로 비는 것보다 이 기기 기록이라도 보이는 게 낫다. 조용히 넘어가는 만큼
+     * 진단에는 남긴다.
+     */
+    suspend fun fetchDailyUsageSince(startDateKey: String): List<RemoteDailyUsageRow>? {
+        val userId = activeUserIdOrNull() ?: return null
+        return runCatching {
+            val rows = postgrest["daily_usage"]
+                .select(Columns.list(DAILY_USAGE_HISTORY_COLUMNS)) {
+                    filter {
+                        eq("user_id", userId)
+                        gte("date", startDateKey)
+                    }
+                }
+                .decodeList<RemoteDailyUsageRow>()
+            recordSuccess()
+            rows
+        }.getOrElse {
+            Log.w(TAG, "daily_usage history fetch failed", it)
+            recordFailure(DiagnosticKind.SYNC_USAGE, it, "history")
+            null
+        }
+    }
+
     suspend fun pushStreak(record: StreakRecord, unlockedKeys: Set<String>): Boolean {
         val userId = activeUserIdOrNull() ?: return false
         return runCatching {

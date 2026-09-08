@@ -30,6 +30,7 @@ import com.tubelimiter.app.gamification.applyDayRollover
 import com.tubelimiter.app.limit.AlarmMessage
 import com.tubelimiter.app.limit.BlockInputs
 import com.tubelimiter.app.limit.EMERGENCY_DURATION_MILLIS
+import com.tubelimiter.app.limit.LimitHistoryEntry
 import com.tubelimiter.app.limit.ScheduleWindow
 import com.tubelimiter.app.limit.blockReason
 import com.tubelimiter.app.limit.computeLimitMillis
@@ -169,6 +170,14 @@ class UsageMonitorService : Service() {
         val retained = lastNDates(today, HISTORY_RETENTION_DAYS).map { it.toString() }.toSet()
         stateStore.recordUsage(todayKey, snapshot.usedMillis, retained)
 
+        // 오늘 기록이 생겼으니 그 시간에 적용되던 한도도 같이 남긴다 — 롤오버를 거치기 전이라도
+        // 대시보드가 오늘 칸을 추정치로 그리지 않게 한다. 확장의 `recordTodayLimit`이 사용시간을
+        // 저장하는 자리에서 불리는 것과 같은 시점이다. 값이 그대로면 아무것도 쓰지 않는다.
+        stateStore.recordLimitHistory(
+            updates = listOf(LimitHistoryEntry(todayKey, computeLimitMillis(settings.limit, today))),
+            keepKeys = retained,
+        )
+
         val hourlyDelta = (snapshot.usedMillis - previousTodayMillis).coerceAtLeast(0L)
         if (hourlyDelta > 0L) {
             stateStore.recordHourlyUsage(todayKey, hourOfDay(now), hourlyDelta, retained)
@@ -187,7 +196,7 @@ class UsageMonitorService : Service() {
         }
         lastUsageTickAt = now
 
-        settleFinishedDays(settings, today)
+        settleFinishedDays(settings, today, retained)
         releaseHardcoreIfCooledDown(settings, now)
         resetEmergencyAllowanceIfDue(settings, today)
         advanceFocusMode(now)
@@ -336,7 +345,7 @@ class UsageMonitorService : Service() {
      * used still count as successes — zero usage is inside any limit — so a break does
      * not unfairly end a streak.
      */
-    private suspend fun settleFinishedDays(settings: Settings, today: LocalDate) {
+    private suspend fun settleFinishedDays(settings: Settings, today: LocalDate, retained: Set<String>) {
         val state = stateStore.state.first()
         val lastKey = state.lastRolloverDate
         if (lastKey == null) {
@@ -351,12 +360,38 @@ class UsageMonitorService : Service() {
             return
         }
 
+        // 정산되는 지난 날짜들과 새로 시작하는 오늘의 한도를 남긴다. 지난 날짜는 이미 기록이
+        // 있으면 건드리지 않는다(keepExisting) — 지금 설정은 그날 이후 바뀌었을 수 있어서, 그날
+        // 남겨둔 값이 언제나 더 정확하다. 기록이 없는 날(앱을 안 켠 날)만 아래 applyDayRollover가
+        // 쓰는 것과 같은 값으로 채워 히트맵과 스트릭 판정이 어긋나지 않게 한다.
+        // 확장 `checkDateRolloverInner`의 recordLimitHistory 호출과 같은 자리·같은 규칙이다.
+        // 보관 기간 밖의 날은 아예 적지 않는다 — usage_history가 이미 버린 날이라 그릴 곳이 없다.
+        val settledDates = generateSequence(last) { it.plusDays(1) }
+            .takeWhile { it.isBefore(today) }
+            .take(MAX_ROLLOVER_DAYS)
+            .filter { it.toString() in retained }
+            .toList()
+        stateStore.recordLimitHistory(
+            updates = settledDates.map { date ->
+                LimitHistoryEntry(
+                    date = date.toString(),
+                    limitMillis = computeLimitMillis(settings.limit, date),
+                    keepExisting = true,
+                )
+            } + LimitHistoryEntry(today.toString(), computeLimitMillis(settings.limit, today)),
+            keepKeys = retained,
+        )
+
         var cursor: LocalDate = last
         var record = state.streak
         var processed = 0
         while (cursor.isBefore(today) && processed < MAX_ROLLOVER_DAYS) {
             val key = cursor.toString()
             val used = state.usageHistory[key] ?: 0L
+            // 스트릭 정산은 스냅샷이 아니라 **현재 설정**으로 판정한다 — 확장
+            // `checkDateRolloverInner`와 같은 규칙이다. streaks 행은 두 클라이언트가 공유하므로
+            // 한쪽만 스냅샷으로 바꾸면 같은 날에 대해 서로 다른 스트릭을 계산해 서버 값이
+            // 오간다. 위 keepExisting 기록이 "기록이 없던 날"의 판정 근거를 여기와 맞춰준다.
             val limit = computeLimitMillis(settings.limit, cursor)
 
             // Matching the extension: streaks are only earned while hardcore mode is on.

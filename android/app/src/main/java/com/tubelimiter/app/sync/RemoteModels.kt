@@ -82,7 +82,24 @@ data class RemoteEmergencyUsesRow(
     @SerialName("emergency_uses") val emergencyUses: Int = 0,
 )
 
+/**
+ * 대시보드가 히트맵/차트를 그릴 때 읽는 `daily_usage` 행. [RemoteEmergencyUsesRow]보다 넓게
+ * 읽는 이유는 목적이 달라서다 — 저쪽은 잔여 횟수 게이트용이고, 이쪽은 "재설치했거나 다른
+ * 기기에서만 본 날"을 화면에 되살리기 위한 것이다.
+ *
+ * `shorts_ms`는 뽑지 않는다. 안드로이드는 Shorts를 기록하지도 그리지도 않아 응답만 커진다.
+ */
+@Serializable
+data class RemoteDailyUsageRow(
+    @SerialName("date") val date: String,
+    @SerialName("usage_ms") val usageMs: Long = 0L,
+    @SerialName("emergency_ms") val emergencyMs: Long = 0L,
+    @SerialName("emergency_uses") val emergencyUses: Int = 0,
+)
+
 val EMERGENCY_USES_COLUMNS = listOf("date", "emergency_uses")
+
+val DAILY_USAGE_HISTORY_COLUMNS = listOf("date", "usage_ms", "emergency_ms", "emergency_uses")
 
 val SETTINGS_COLUMNS = listOf(
     "daily_limit_ms",

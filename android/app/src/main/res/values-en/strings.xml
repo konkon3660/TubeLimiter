@@ -126,12 +126,17 @@
     <string name="dashboard_badges">Badges</string>
     <string name="dashboard_perfect_badges">Perfect days (no emergency passes)</string>
     <string name="dashboard_heatmap_title">Last 28 days</string>
+    <string name="dashboard_history_note_merged">The heatmap and watch time chart combine the records from every device on this account.</string>
+    <string name="dashboard_history_note_local_only">Couldn\'t load the server records, so this is only what\'s stored on this device.</string>
+    <string name="dashboard_history_note_signed_out">This is only what\'s stored on this device. Sign in to include your other devices.</string>
+    <string name="dashboard_heatmap_estimated_note">Outlined days have no saved limit, so they\'re judged against your current settings.</string>
     <string name="dashboard_chart_title">Watch time</string>
     <string name="dashboard_chart_mode_time">Time</string>
     <string name="dashboard_chart_mode_percent" formatted="false">% of limit</string>
     <string name="dashboard_chart_peak_percent">Peak %1$d%%</string>
     <string name="dashboard_chart_peak_duration">Peak %1$s</string>
     <string name="dashboard_hourly_title">Time of day</string>
+    <string name="dashboard_hourly_note">This chart shows only this device — the hourly breakdown never leaves it.</string>
     <string name="dashboard_hour_start">00:00</string>
     <string name="dashboard_hour_end">23:00</string>
 
