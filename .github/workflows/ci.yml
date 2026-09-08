@@ -52,11 +52,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      # 25 matches the toolchainVersion pinned in gradle/gradle-daemon-jvm.properties
+      # so the daemon does not auto-provision a JDK from foojay. Unrelated to the
+      # compile target, which stays at Java 17 bytecode.
+      - name: Set up JDK 25
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '25'
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
