@@ -37,6 +37,17 @@ import {
 } from '../lib/dateRollover.js';
 import { planLimitHistoryUpdate, planRolloverLimits } from '../lib/limitHistory.js';
 import { DiagnosticKind, summarizeFailure } from '../lib/syncDiagnostics.js';
+import {
+  ACCOUNT_OWNER_KEY,
+  planAccountSwitch,
+  resolveSettingsCacheAfterPull
+} from '../lib/accountReset.js';
+import {
+  CONTENT_SCRIPT_FILE,
+  probePlaybackState,
+  reinjectContentScripts,
+  resolvePlaybackAfterProbe
+} from '../lib/workerLifecycle.js';
 import { recordDiagnosticFailure, recordSyncSuccess } from '../lib/diagnosticsStore.js';
 import { t, tCount } from '../lib/i18n.js';
 
@@ -83,7 +94,10 @@ let shortsLimitBlocked = false;
 let scheduleBlockActive = false;
 
 // --- 설정 캐시 (로컬 미러, source of truth는 로그인 시 Supabase settings 테이블) ---
-let settingsCache = {
+// 서버에 행이 없거나(가입 직후) 계정이 바뀌었을 때 되돌아갈 기준값. 별도 상수로 둔 이유는
+// settingsCache가 이 값에서 출발한 뒤 서버 값으로 덮여 쓰이기 때문이다 - 되돌릴 자리가 없으면
+// 직전 계정의 설정이 그대로 남는다(QA_REVIEW §1.3).
+const DEFAULT_SETTINGS = Object.freeze({
   daily_limit_ms: DEFAULT_DAILY_LIMIT_MS,
   daily_limit_by_day: {},
   daily_limit_reset_frequency: 'daily',
@@ -97,7 +111,9 @@ let settingsCache = {
   hardcore_mode: false,
   hardcore_disable_requested_at: null,
   scheduled_blocks: []
-};
+});
+
+let settingsCache = { ...DEFAULT_SETTINGS };
 
 async function loadSettingsCache() {
   const local = await getStorage(['settingsCache']);
@@ -152,6 +168,13 @@ async function refreshSettingsFromSupabase(force = false) {
 
   const user = await getActiveUser();
   if (!user) return;
+
+  // 주인이 바뀌었으면 먼저 로컬을 비운다. 로그아웃은 진단 기록만 지우므로, 공용 PC에서 A가
+  // 나가고 B가 들어오면 B의 대시보드에 A의 기록이 그대로 뜨고, A가 이미 보고한 몫이 B의 첫
+  // 델타 기준선이 되어 B의 사용량이 조용히 안 올라간다(QA_REVIEW §1.3). 판정은 순수 함수에
+  // 맡기고(lib/accountReset.js) 여기선 지우기와 표식 갱신만 한다.
+  await applyAccountSwitchGuard(user.id);
+
   const { data, error } = await supabase
     .from('settings')
     .select('*')
@@ -164,9 +187,27 @@ async function refreshSettingsFromSupabase(force = false) {
   }
   // 왕복 자체는 성공했으므로 행이 아직 없어도(가입 직후) 성공으로 친다.
   await recordSyncSuccess();
-  if (!data) return;
-  settingsCache = { ...settingsCache, ...data };
+  // 행이 없다 = 이 계정은 아직 아무 설정도 저장한 적이 없다 = 기본값. 예전엔 여기서 그냥
+  // 빠졌는데, 그러면 갓 가입한 계정이 직전 계정의 하드코어 잠금을 그대로 물려받았다.
+  settingsCache = resolveSettingsCacheAfterPull(settingsCache, data, DEFAULT_SETTINGS);
   await setStorage({ settingsCache });
+}
+
+/**
+ * 이 기기의 로컬 데이터 주인과 지금 로그인한 계정을 비교해, 바뀌었으면 계정에서 온 값을 지운다.
+ * 표식이 없는 기기(이 가드 이전부터 쓰던 기기)는 아무것도 지우지 않고 표식만 남긴다 - 멀쩡히
+ * 쓰던 사람이 확장 업데이트 한 번에 자기 기록을 잃으면 안 된다.
+ */
+async function applyAccountSwitchGuard(currentUserId) {
+  const { [ACCOUNT_OWNER_KEY]: storedOwner } = await getStorage([ACCOUNT_OWNER_KEY]);
+  const plan = planAccountSwitch(storedOwner, currentUserId);
+
+  if (plan.switched) {
+    await chrome.storage.local.remove([...plan.removedKeys]);
+    settingsCache = { ...DEFAULT_SETTINGS };
+    console.warn('[TubeLimiter] 계정이 바뀌어 이 기기의 이전 계정 기록을 지웠습니다.');
+  }
+  if (plan.ownerToStore) await setStorage({ [ACCOUNT_OWNER_KEY]: plan.ownerToStore });
 }
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
@@ -299,12 +340,14 @@ async function isChromeWindowFocused() {
 // 그래서 낙관적으로 가정해야 하는 자리마다 지금 값을 직접 물어봐서 맞춘다.
 async function syncPlaybackStateFromTab(tabId) {
   if (!tabId) return;
-  try {
-    const response = await chrome.tabs.sendMessage(tabId, { action: 'requestPlaybackState' });
-    if (typeof response?.playing === 'boolean') isVideoPlaying = response.playing;
-  } catch {
-    /* content script가 아직 없거나 탭이 닫힘 - 기존 낙관값 유지 */
-  }
+  const probe = await probePlaybackState(tabId, {
+    sendMessage: (id, message) => chrome.tabs.sendMessage(id, message)
+  });
+  // 답이 없으면 "재생 아님"으로 접는다. 예전엔 낙관값(재생 중)을 그대로 뒀는데, content script가
+  // 확장 업데이트로 죽어 있으면(§4.1) 아무도 정정해주지 않아 **보고 있지도 않은 시간이 계속
+  // 깎였다.** 이 방향의 오판은 스스로 낫는다 - content script가 되살아나면 초기화 직후 지금
+  // 상태를 보고하므로 실제로 재생 중이었다면 즉시 정정된다. 근거는 lib/workerLifecycle.js.
+  isVideoPlaying = resolvePlaybackAfterProbe(probe);
 }
 
 // content script의 재생 보고는 activeTabId와 일치할 때만 반영하는데, 서비스워커가 재시작하면
@@ -1406,6 +1449,28 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 });
 
 // --- 초기화 ---
+
+// 확장이 설치·업데이트되면 열려 있던 유튜브 탭의 content script는 chrome.runtime이 무효화돼
+// 죽는다. 크롬은 확장을 자동 업데이트하므로 이 상태는 **사용자가 아무것도 안 해도** 발생하고,
+// 그 탭은 페이지를 새로고침하기 전까지 재생 보고도 오버레이 수신도 끊긴 사각지대가 된다
+// (QA_REVIEW §4.1). 그래서 살아있는지 물어보고, 답이 없는 탭에만 다시 주입한다 - 답하는
+// 인스턴스는 정의상 멀쩡하므로 건너뛰어 리스너·폴링이 두 벌 도는 걸 막는다.
+chrome.runtime.onInstalled.addListener(async () => {
+  const result = await reinjectContentScripts({
+    queryTabs: (query) => chrome.tabs.query(query),
+    isContentScriptAlive: async (tabId) => {
+      const probe = await probePlaybackState(tabId, {
+        sendMessage: (id, message) => chrome.tabs.sendMessage(id, message)
+      });
+      return probe.answered;
+    },
+    injectContentScript: (tabId) =>
+      chrome.scripting.executeScript({ target: { tabId }, files: [CONTENT_SCRIPT_FILE] })
+  });
+  if (result.injected.length > 0) {
+    console.info(`[TubeLimiter] content script 재주입: ${result.injected.length}개 탭`);
+  }
+});
 
 (async () => {
   await loadSettingsCache();
