@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { usageDeltaSinceSync, combinedUsedMillis } from '../src/lib/usageMerge.js';
 
 // increment_daily_usage는 서버에서 usage_ms를 덮어쓰지 않고 델타만큼 더한다. 그래서 이 델타를
@@ -77,4 +80,22 @@ test('겹친 동기화는 같은 구간을 두 번 더해 팝업 값을 부풀�
   // 팝업 값에 그대로 얹힌다 - 대시보드(로컬 700)와 벌어지는 지점.
   assert.equal(server.total, 1200);
   assert.equal(combinedUsedMillis(bLocal, syncedMs, combinedMs), 1200);
+});
+
+// --- 죽은 저장소 키 ---
+//
+// dailyUsageCombinedEmergencyUses는 매 동기화마다 쓰이기만 하고 아무도 읽지 않았다. 잔여 긴급
+// 시청 횟수는 하루가 아니라 리셋 버킷(일/주/월) 단위라 오늘 행 하나로는 주간/월간에서 틀리고,
+// 실제 판정은 refreshEmergencyUsesBucket이 캐시하는 emergencyUsesBucketRemote가 한다.
+// 다시 살아나면 같은 사실을 말하는 값이 둘이 되어 언젠가 갈라진다.
+
+test('오늘치 긴급 시청 횟수 합계를 따로 저장하지 않는다 (버킷 캐시가 유일한 출처)', () => {
+  const source = readFileSync(
+    path.join(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'),
+      'src/background/service-worker.js'
+    ),
+    'utf8'
+  );
+  assert.ok(!/dailyUsageCombinedEmergencyUses\s*:/.test(source));
 });

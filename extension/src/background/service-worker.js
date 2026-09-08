@@ -35,7 +35,7 @@ import {
   emergencyResetDate,
   DEFAULT_EMERGENCY_USES
 } from '../lib/dateRollover.js';
-import { planLimitHistoryUpdate } from '../lib/limitHistory.js';
+import { planLimitHistoryUpdate, planRolloverLimits } from '../lib/limitHistory.js';
 import { DiagnosticKind, summarizeFailure } from '../lib/syncDiagnostics.js';
 import { recordDiagnosticFailure, recordSyncSuccess } from '../lib/diagnosticsStore.js';
 import { t, tCount } from '../lib/i18n.js';
@@ -472,18 +472,18 @@ async function checkDateRolloverInner() {
   // 그 결과대로 Supabase에 반영하고 기준점을 옮기는 일만 한다.
   const plan = planDateRollover(local_current_date, today);
 
-  // 정산되는 지난 날짜들과 새로 시작하는 오늘의 한도를 남긴다. 지난 날짜는 이미 기록이 있으면
-  // 건드리지 않는다(keepExisting) - 지금 settingsCache는 그날 이후 바뀌었을 수 있어서, 그날
-  // 남겨둔 값이 언제나 더 정확하다. 기록이 없는 날(브라우저를 안 켠 날)만 아래 applyDayRollover가
-  // 쓰는 것과 같은 값으로 채워 히트맵과 스트릭 판정이 어긋나지 않게 한다.
-  await recordLimitHistory([
-    ...plan.dates.map((date) => ({
-      date,
-      limitMs: computeLimitForDate(settingsCache, date),
-      keepExisting: true
-    })),
-    { date: today, limitMs: computeLimitForDate(settingsCache, today) }
-  ]);
+  // 정산되는 지난 날짜들과 새로 시작하는 오늘의 한도를 남기고, 그와 **같은 값**으로 아래
+  // applyDayRollover가 성공/실패를 판정한다. 남길 값과 판정할 값을 각각 구하면(예전에는 기록은
+  // keepExisting, 판정은 지금 설정) 브라우저를 며칠 안 켠 사이 한도를 바꿨을 때 히트맵과
+  // 스트릭이 같은 날을 반대로 판정한다 - lib/limitHistory.js의 planRolloverLimits 참고.
+  const { limit_history: limitHistoryBefore } = await getStorage(['limit_history']);
+  const { updates: limitUpdates, limitByDate } = planRolloverLimits(
+    limitHistoryBefore,
+    settingsCache,
+    plan.dates,
+    today
+  );
+  await recordLimitHistory(limitUpdates);
 
   if (plan.dates.length === 0) {
     if (plan.nextStoredDate) await setStorage({ local_current_date: plan.nextStoredDate });
@@ -496,7 +496,8 @@ async function checkDateRolloverInner() {
 
   for (const date of plan.dates) {
     const usageMs = (usage_history || {})[date] || 0;
-    const limitMs = computeLimitForDate(settingsCache, date);
+    // 위에서 기록한 것과 같은 값 - 그날 남아 있던 한도가 있으면 그 값, 없으면 지금 설정 추정치.
+    const limitMs = limitByDate[date];
     const emergency = emergencyEntryFor(emergencyHistory, date);
 
     if (user && settingsCache.hardcore_mode) {
@@ -675,8 +676,12 @@ async function syncUsageToSupabaseInner(force = false) {
     dailyUsageCombinedMillis: row?.usage_ms ?? localUsage,
     // Shorts 합계도 같이 남긴다 — Shorts 한도 판정(getEffectiveTodayShortsUsage)과 팝업 표시가
     // 전체 사용량과 같은 "로컬 + 다른 기기 몫" 기준을 쓰게 하려면 이 값이 있어야 한다.
-    dailyUsageCombinedShortsMillis: row?.shorts_ms ?? localShorts,
-    dailyUsageCombinedEmergencyUses: remoteTodayUses
+    dailyUsageCombinedShortsMillis: row?.shorts_ms ?? localShorts
+    // 긴급 시청 횟수에는 이 자리에 대응하는 키를 두지 않는다. 잔여 횟수는 하루가 아니라 리셋
+    // 버킷(일/주/월) 단위라 오늘 행 하나로는 주간/월간에서 틀리고, 그래서 바로 아래
+    // refreshEmergencyUsesBucket이 버킷 구간 합계를 emergencyUsesBucketRemote에 캐시한다.
+    // 오늘치 합계를 따로 또 저장해두면 아무도 읽지 않거나(예전의 dailyUsageCombinedEmergencyUses)
+    // 언젠가 잘못 읽혀 버킷 합계와 갈라지는 두 번째 진실이 된다.
   });
 
   await refreshEmergencyUsesBucket(

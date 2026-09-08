@@ -6,11 +6,8 @@ import {
   diagnosticKindMessageKey,
   formatDiagnosticTime
 } from '../lib/syncDiagnostics.js';
-import {
-  DIAGNOSTIC_STORAGE_KEYS,
-  clearDiagnostics,
-  readDiagnostics
-} from '../lib/diagnosticsStore.js';
+import { clearDiagnostics, readDiagnostics } from '../lib/diagnosticsStore.js';
+import { SIGN_OUT_REMOVED_KEYS, ACCOUNT_DELETE_REMOVED_KEYS } from '../lib/accountReset.js';
 import { applyI18n, t, tCount } from '../lib/i18n.js';
 
 applyI18n();
@@ -25,18 +22,11 @@ document.getElementById('openAuthButton').addEventListener('click', () => {
 
 document.getElementById('signOutButton').addEventListener('click', async () => {
   await supabase.auth.signOut();
-  // 로그아웃하면 서버 버킷 합계는 더 이상 이 기기 것이 아니다. 남겨두면 다른 기기가 쓴 몫만큼
-  // 남은 긴급 시청 횟수가 깎인 채로 굳는다 — 로그아웃 상태는 로컬 값만으로 동작해야 한다.
-  //
-  // 진단 기록도 지운 계정과의 통신 기록이다. 남겨두면 이미 로그아웃한 계정의 실패 목록이 계속
-  // 보이고, "마지막 성공" 시각이 다음 계정의 24시간 판정에 그대로 끼어든다
-  // (안드로이드 AppState.clearAccountData가 같은 이유로 같이 지운다).
-  await chrome.storage.local.remove([
-    'emergencyUsesBucketDate',
-    'emergencyUsesBucketRemote',
-    'emergencyUsesBucketReported',
-    ...DIAGNOSTIC_STORAGE_KEYS
-  ]);
+  // 지우는 건 진단 기록뿐이다. 특히 긴급 시청 버킷 캐시(emergencyUsesBucket*)는 **남긴다** —
+  // 지우면 잔여 횟수 판정이 로컬 값으로 폴백해서 다른 기기가 이미 쓴 횟수가 되살아나고,
+  // 로그아웃 버튼이 곧 횟수 리필 버튼이 된다. 안드로이드와 맞춰야 하는 계약이라 목록과 근거는
+  // lib/accountReset.js에 모아두고 테스트로 고정한다.
+  await chrome.storage.local.remove([...SIGN_OUT_REMOVED_KEYS]);
   window.location.reload();
 });
 
@@ -497,7 +487,10 @@ document.getElementById('copyDiagnosticsButton').addEventListener('click', async
       lastSuccessLabel(diagnosticsSnapshot.lastSuccessAtMillis)
     ]),
     noFailures: t('diag_report_no_failures'),
-    failureCount: tCount('diag_report_failure_count', diagnosticsSnapshot.events.length)
+    failureCount: tCount('diag_report_failure_count', diagnosticsSnapshot.events.length),
+    // 화면 쪽 formatTimeLabel과 같은 문구를 쓴다 — 같은 줄을 화면에서는 "알 수 없음",
+    // 복사본에서는 "null"로 읽게 되면 안 된다.
+    unknownTime: t('common_unknown')
   });
   try {
     await navigator.clipboard.writeText(report);
@@ -598,11 +591,14 @@ confirmDeleteAccountButton.addEventListener('click', async () => {
   }
 
   // 서버 세션은 이미 죽었으니 네트워크를 타지 않는 로컬 로그아웃만 한다.
+  // (세션 키는 이 호출이 스스로 지운다 — 아래 목록에 동적 이름을 적을 수 없는 이유.)
   await supabase.auth.signOut({ scope: 'local' });
-  // chrome.storage.local엔 이 확장이 쓰는 값(설정 캐시 · 사용/긴급 기록 · 집중/차단 상태 ·
-  // 알람 상태 · 동기화 마커 · 진단 기록 · Supabase 세션)만 들어 있어서 통째로 비우는 게 가장 확실하다.
-  // 진단 기록도 지운 계정과의 통신 기록이라 여기서 같이 사라져야 한다(로그아웃 쪽과 같은 이유).
-  await chrome.storage.local.clear();
+  // clear()가 아니라 **명시 목록**으로 지운다. 저장소에는 계정에서 온 값과 "지금 이 기기를 막고
+  // 있는 상태"가 섞여 있어서, 통째로 비우면 삭제가 잠금 해제 수단이 된다 — 특히 남은 긴급 시청
+  // 횟수(emergency_uses_today)까지 날아가 탈퇴 후 재가입이 횟수를 full로 되돌린다.
+  // 무엇을 지우고 무엇을 남기는지와 그 근거는 lib/accountReset.js에 있다(안드로이드
+  // AppState.clearAccountData와 같은 정책).
+  await chrome.storage.local.remove([...ACCOUNT_DELETE_REMOVED_KEYS]);
   // 다른 설정 변경과 같은 경로로 백그라운드에 알린다. 이미 지운 뒤라 실패해도 되돌릴 게 없다.
   await chrome.runtime.sendMessage({ action: 'settingsUpdated' }).catch(() => {});
 

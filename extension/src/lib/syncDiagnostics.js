@@ -251,6 +251,7 @@ export function formatDiagnosticTime(millis) {
  * @param {string} labels.lastSuccess "최근 성공: <시각>" 한 줄 (시각은 호출자가 이미 넣어둔다)
  * @param {string} labels.noFailures 실패가 하나도 없을 때의 한 줄
  * @param {string} labels.failureCount "최근 실패 N건" 한 줄
+ * @param {string} labels.unknownTime 시각을 읽을 수 없는 줄에 대신 적을 말
  */
 export function buildDiagnosticsReport(events, labels) {
   const header = `${labels.title}\n${labels.lastSuccess}`;
@@ -259,7 +260,11 @@ export function buildDiagnosticsReport(events, labels) {
   const lines = list
     .map((event) => {
       const repeat = event.count > 1 ? ` x${event.count}` : '';
-      return `${formatDiagnosticTime(event.atMillis)} ${event.kind} ${event.code}${repeat}`;
+      // formatDiagnosticTime은 읽을 수 없는 값이면 null을 준다. normalizeDiagnosticEvents는
+      // Number.isFinite만 보므로 1e300처럼 Date가 소화하지 못하는 값도 여기까지 온다 —
+      // 그대로 템플릿에 넣으면 클립보드에 문자 그대로 "null"이 찍힌다.
+      const at = formatDiagnosticTime(event.atMillis) ?? labels.unknownTime;
+      return `${at} ${event.kind} ${event.code}${repeat}`;
     })
     .join('\n');
   return `${header}\n${labels.failureCount}\n${lines}`;

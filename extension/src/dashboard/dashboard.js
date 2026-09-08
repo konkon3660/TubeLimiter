@@ -66,7 +66,10 @@ async function fetchServerHistory(userId, days) {
   try {
     const { data, error } = await supabase
       .from('daily_usage')
-      .select('date, usage_ms, shorts_ms, emergency_ms')
+      // emergency_uses까지 읽어야 다른 기기에서만 긴급 시청을 쓴 날이 히트맵에서 걸러진다.
+      // 발급만 받고 안 본 날은 emergency_ms가 0이라 시간 컬럼만으로는 알 수 없다
+      // (병합 규칙은 lib/historyMerge.js, 안드로이드 sync/HistoryMerge.kt와 같은 계약).
+      .select('date, usage_ms, shorts_ms, emergency_ms, emergency_uses')
       .eq('user_id', userId)
       .gte('date', since);
     if (error) {
@@ -95,9 +98,9 @@ function formatMinutes(ms) {
  * 히트맵 툴팁에 들어갈 판정 근거 한 줄. 긴급 시청분은 스트릭 판정에서 빠지므로(gamification.js의
  * isDaySuccess) 총 사용시간만 보여주면 초과로 뜬 이유를 읽을 수 없다 - 뺀 뒤의 값과 한도를 같이 적는다.
  *
- * emergencyUses가 null이면 "이 기기에 그날 기록이 없어 횟수를 모른다"는 뜻이다(긴급 시청 횟수는
- * 서버로 올라가지 않고 로컬에만 남는다 - documents/BACKEND.md daily_usage 절). 그때 0회로 적으면
- * 없는 사실을 지어내는 셈이라 횟수만 빼고 시간만 보여준다.
+ * emergencyUses가 null이면 "로컬에도 서버에도 그날 횟수가 없다"는 뜻이다 - 이 기기에 기록이 없고,
+ * 서버 행의 emergency_uses도 비어 있는(그 컬럼이 생기기 전에 쓰인) 날. 그때 0회로 적으면 없는
+ * 사실을 지어내는 셈이라 횟수만 빼고 시간만 보여준다.
  *
  * limitEstimated도 같은 이유로 밝힌다: 한도 기록(limit_history)이 없는 옛 날짜는 지금 설정으로
  * 근사 판정할 수밖에 없는데, 그걸 실제 한도인 것처럼 적으면 "설정을 바꾸면 과거 판정이 바뀐다"는
@@ -160,8 +163,9 @@ async function renderHeatmap(usageHistory, settings, emergencyHistory = {}, limi
       // 긴급 시청을 쓴 날은 완벽한 날이 아니라 한 단계 옅게 표시된다.
       const emergency = emergencyHistory[date] || {};
       const emergencyMs = emergency.ms || 0;
-      // null = 서버에만 있는 날이라 횟수를 모른다. 판정할 때는 0회로 보되(실제로 긴급 시청을
-      // 했다면 그 시간이 emergency_ms로 서버에 올라와 완벽한 날에서 걸러진다) 툴팁에는 적지 않는다.
+      // null = 로컬에도 서버에도 횟수가 없는 날(emergency_uses 컬럼 이전에 쓰인 서버 행).
+      // 판정할 때는 0회로 보되 툴팁에는 적지 않는다. 다른 기기에서 쓴 횟수는 이제 서버
+      // emergency_uses로 병합되므로(lib/historyMerge.js) 여기서 null이 되는 날은 거의 없다.
       const emergencyUses = emergency.uses ?? null;
       // 판정 근거를 툴팁에 그대로 적는다. 초과로 뜬 날이 "긴급 시청분을 빼고도 넘긴" 건지
       // "긴급 기록이 없는" 건지 화면에서 바로 구분되지 않으면, 규칙을 아는 사람만 읽을 수 있는

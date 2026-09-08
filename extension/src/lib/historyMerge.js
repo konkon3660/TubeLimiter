@@ -21,6 +21,17 @@ function toNonNegativeNumber(value) {
 }
 
 /**
+ * 서버 행의 긴급 시청 횟수. **모르는 것과 0회는 다르다** — emergency_uses 컬럼이 생기기 전에
+ * 쓰인 행은 이 값이 null로 내려오는데, 그걸 0회로 접으면 "긴급 시청 없이 넘긴 날"이라는 없는
+ * 사실을 만들어낸다. 그런 값만 null로 돌려주고 나머지는 0 이상 숫자로 정규화한다.
+ */
+function serverEmergencyUses(value) {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(0, n) : null;
+}
+
+/**
  * 서버 행 배열을 날짜 -> 행 맵으로 바꾼다.
  * daily_usage.date는 각 클라이언트가 lib/time.js의 getTodayDate()(새벽 4시 컷오프)로 만든
  * 'YYYY-MM-DD' 문자열을 그대로 써 넣은 값이라, 로컬 기록의 키와 이미 같은 컨벤션이다.
@@ -56,13 +67,19 @@ export function mergeMillisByDate(localMap, serverRows, column) {
  * 대시보드가 쓰는 세 가지 기록을 한 번에 합친다.
  *
  * local: { usage: { date: ms }, shorts: { date: ms }, emergency: { date: { uses, ms } } }
- * serverRows: daily_usage에서 select 한 행 배열 ({ date, usage_ms, shorts_ms, emergency_ms })
+ * serverRows: daily_usage에서 select 한 행 배열
+ *   ({ date, usage_ms, shorts_ms, emergency_ms, emergency_uses })
  *
- * 반환 emergency 항목의 uses는 숫자 또는 null이다. 긴급 시청 "시간"은 daily_usage.emergency_ms로
- * 서버에 합산되지만 "횟수"는 서버로 올라가지 않고 각 기기 로컬에만 남기 때문(documents/BACKEND.md
- * daily_usage 절). 그래서 이 기기가 기록한 날은 로컬 횟수가 정답이고(긴급 기록이 없으면 0회),
- * 서버에만 있는 날은 횟수를 알 길이 없어 null로 둔다 — 호출부는 null이면 횟수를 표시하지 않는다.
- * 0회로 채워 넣으면 "긴급 시청 없이 넘긴 날"이라는 없는 사실을 화면에 적게 된다.
+ * 긴급 시청 **횟수도 시간과 똑같이 날짜별 max로 합친다.** 예전에는 "횟수는 서버로 올라가지
+ * 않는다"고 보고 로컬 값만 썼지만, increment_daily_usage가 emergency_uses 델타를 받게 되면서
+ * 그 전제가 사실이 아니게 됐다. 로컬 값만 보면 폰에서 긴급 시청을 발급만 받고 안 본 날
+ * (emergency_ms = 0, emergency_uses = 1)이 확장 히트맵에서 "완벽한 날"로 뜬다 — 시간이 0이라
+ * 시간 쪽 병합으로는 걸러지지 않기 때문. **안드로이드 sync/HistoryMerge.kt와 같은 규칙이어야
+ * 하는 계약이다**(documents/BACKEND.md daily_usage 절).
+ *
+ * 반환 emergency 항목의 uses는 숫자 또는 null이고, null은 "양쪽 다 모르는 날"뿐이다: 이 기기에
+ * 기록이 없고, 서버 행의 emergency_uses도 비어 있는(컬럼이 생기기 전에 쓰인) 날. 호출부는
+ * null이면 횟수를 표시하지 않는다 — 0회로 채우면 없는 사실을 적는 셈이 된다.
  */
 export function mergeHistories(local, serverRows) {
   const localUsage = local?.usage || EMPTY;
@@ -87,8 +104,15 @@ export function mergeHistories(local, serverRows) {
       toNonNegativeNumber(localEntry?.ms),
       toNonNegativeNumber(byDate[date]?.emergency_ms)
     );
+    // 이 기기가 아는 날(긴급 기록이 있거나 사용량 기록이 있는 날)이면 로컬 횟수가 사실이고,
+    // 기록이 없으면 0회다. 서버 값이 있으면 그 둘 중 큰 쪽 = "지금까지 알려진 최대"를 택한다.
     const knownLocally = localEntry !== undefined || localUsage[date] !== undefined;
-    emergency[date] = { ms, uses: knownLocally ? toNonNegativeNumber(localEntry?.uses) : null };
+    const remoteUses = serverEmergencyUses(byDate[date]?.emergency_uses);
+    const uses =
+      knownLocally || remoteUses !== null
+        ? Math.max(knownLocally ? toNonNegativeNumber(localEntry?.uses) : 0, remoteUses ?? 0)
+        : null;
+    emergency[date] = { ms, uses };
   });
 
   return { usage, shorts, emergency };

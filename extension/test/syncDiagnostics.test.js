@@ -282,7 +282,8 @@ const LABELS = {
   title: 'REPORT',
   lastSuccess: 'LAST: 09-07 04:05',
   noFailures: 'NO FAILURES',
-  failureCount: 'FAILURES 2'
+  failureCount: 'FAILURES 2',
+  unknownTime: 'UNKNOWN'
 };
 
 test('실패가 없으면 머리말 두 줄 + 없음 한 줄만 나온다', () => {
@@ -308,6 +309,18 @@ test('복사 텍스트에는 시각·종류·코드·횟수만 들어간다', ()
       '09-07 04:05 auth session_refresh'
     ].join('\n')
   );
+});
+
+test('읽을 수 없는 시각 자리에는 문자 그대로 "null"이 아니라 폴백 문구가 들어간다', () => {
+  // normalizeDiagnosticEvents는 Number.isFinite만 보므로 1e300 같은 값이 여기까지 온다
+  // (Date가 소화하지 못해 formatDiagnosticTime이 null을 준다). 그대로 템플릿에 넣으면
+  // 사용자가 붙여넣는 텍스트에 "null 8:00 sync_usage rpc"가 찍힌다.
+  const report = buildDiagnosticsReport(
+    [{ atMillis: 1e300, kind: DiagnosticKind.SYNC_USAGE, code: 'rpc', count: 1 }],
+    LABELS
+  );
+  assert.equal(report.split('\n').at(-1), 'UNKNOWN sync_usage rpc');
+  assert.ok(!report.includes('null'));
 });
 
 test('복사 텍스트도 sanitize를 거친다 (저장소가 예전 버전 값이어도 새지 않는다)', () => {

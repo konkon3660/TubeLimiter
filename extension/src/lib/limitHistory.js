@@ -104,3 +104,43 @@ export function planLimitHistoryUpdate(
 
   return { history: next, changed };
 }
+
+/**
+ * 자정 롤오버가 정산할 날짜들에 대해 (1) limit_history에 남길 업데이트와 (2) 그날 성공/실패
+ * 판정에 쓸 한도를 **한 번에** 정한다.
+ *
+ * 왜 한 함수인가: 예전에는 기록은 keepExisting으로 "그날 남겨둔 값"을 지키면서 정작 판정은
+ * computeLimitForDate(지금 설정)로 했다. 그래서 브라우저를 며칠 안 켠 사이 한도를 바꾸면
+ * 히트맵(resolveLimitForDate로 기록값을 읽는다)과 스트릭(그때 설정으로 판정된 값)이 같은 날을
+ * 반대로 판정했다. 두 값을 같은 자리에서 내면 갈라질 수가 없다.
+ *
+ * 판정 규칙은 히트맵과 같다 — 기록이 있으면 그 값, 없으면(브라우저를 안 켠 날) 지금 설정으로
+ * 계산한 근사치. 그리고 근사치를 쓴 날은 곧바로 그 값이 기록으로 남으므로(keepExisting이지만
+ * 기록이 없는 날이라 실제로 써진다), 이후 설정을 또 바꿔도 그 날 판정은 더 이상 흔들리지 않는다.
+ *
+ * **안드로이드도 같은 규칙을 쓴다** — `streaks` 행은 두 클라이언트가 공유하므로 한쪽만 다른
+ * 기준으로 성공/실패를 밀어 넣으면 스트릭이 기기마다 다른 값으로 튄다(documents/BACKEND.md).
+ *
+ * 오늘 날짜는 목록에 있든 없든 항상 현재 설정으로 **덮어쓴다**. 하루 사이에도 한도를 바꿀 수
+ * 있어서 마지막 값으로 수렴시키는 게 맞고, 오늘은 아직 판정 대상이 아니라 limitByDate에는 넣지
+ * 않는다.
+ *
+ * @param {object|null|undefined} limitHistory { 'YYYY-MM-DD': ms } 맵
+ * @param {object|null|undefined} settings settingsCache
+ * @param {string[]} dates 정산할 지난 날짜들 (planDateRollover의 결과)
+ * @param {string} today getTodayDate()
+ * @returns {{updates: Array, limitByDate: Object}} limitByDate의 무제한은 Infinity다.
+ */
+export function planRolloverLimits(limitHistory, settings, dates, today) {
+  const updates = [];
+  const limitByDate = {};
+  for (const date of dates || []) {
+    const { limitMs } = resolveLimitForDate(limitHistory, settings, date);
+    limitByDate[date] = limitMs;
+    // 기록이 있으면 그 값 그대로라 keepExisting과 결과가 같고, 없으면 방금 판정에 쓴 근사치가
+    // 그대로 기록된다 - 어느 쪽이든 "판정한 값 = 남는 값"이다.
+    updates.push({ date, limitMs, keepExisting: true });
+  }
+  updates.push({ date: today, limitMs: computeLimitForDate(settings, today) });
+  return { updates, limitByDate };
+}
