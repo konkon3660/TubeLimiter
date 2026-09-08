@@ -79,6 +79,8 @@ fun SettingsScreen(
     onEmergencyResetChange: (EmergencyResetFrequency) -> Unit,
     onAlarmIntervalChange: (Int) -> Unit,
     onAlarmMilestonesChange: (Boolean) -> Unit,
+    /** YouTube Music을 감시 대상에 넣을지 (기본 꺼짐 — [com.tubelimiter.app.usage.watchedPackages]). */
+    onWatchMusicChange: (Boolean) -> Unit,
     onHardcoreEnable: () -> Unit,
     onHardcoreDisableRequest: () -> Unit,
     onHardcoreDisableCancel: () -> Unit,
@@ -251,6 +253,40 @@ fun SettingsScreen(
                     )
                 },
                 onSelect = onEmergencyResetChange,
+            )
+        }
+
+        SettingsCard(stringResource(R.string.settings_watch_targets)) {
+            Text(
+                stringResource(R.string.settings_watch_targets_intro),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.settings_watch_music),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        stringResource(R.string.settings_watch_music_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = settings.watchYouTubeMusic,
+                    onCheckedChange = onWatchMusicChange,
+                )
+            }
+            Text(
+                stringResource(R.string.settings_watch_targets_browser),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 

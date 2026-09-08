@@ -37,6 +37,10 @@
     <string name="permission_notifications_title">Notifications</string>
     <string name="permission_notifications_rationale">The monitoring service has to show one notification to keep running in the background.</string>
     <string name="permission_settings_unavailable">Couldn\'t open that settings screen.</string>
+    <string name="onboarding_action_done">Done</string>
+    <string name="onboarding_coverage_title">What this can and cannot block</string>
+    <string name="onboarding_coverage_apps">TubeLimiter watches the YouTube and YouTube Kids apps. YouTube Music is left out by default; turn it on under Settings &gt; Watched apps.</string>
+    <string name="onboarding_coverage_browser">It cannot block m.youtube.com opened in a phone browser (Chrome, Samsung Internet, and so on). Android only reports usage per app, so the address a browser is on is invisible to this app.</string>
 
     <string name="auth_title_sign_in">Sign in</string>
     <string name="auth_title_sign_up">Sign up</string>
@@ -81,6 +85,12 @@
         <item quantity="one">Nothing has synced for %1$d hour. Settings &gt; Sync status has the details.</item>
         <item quantity="other">Nothing has synced for %1$d hours. Settings &gt; Sync status has the details.</item>
     </plurals>
+    <string name="home_monitor_warning_permissions">A permission monitoring needs is off. YouTube is not being blocked right now.</string>
+    <plurals name="home_monitor_warning_stale">
+        <item quantity="one">Monitoring has been stopped for %1$d hour. YouTube was not blocked during that time.</item>
+        <item quantity="other">Monitoring has been stopped for %1$d hours. YouTube was not blocked during that time.</item>
+    </plurals>
+    <string name="home_monitor_warning_action">Check permissions</string>
     <plurals name="home_streak_subtitle">
         <item quantity="one">day in a row · best %1$d</item>
         <item quantity="other">days in a row · best %1$d</item>
@@ -169,6 +179,11 @@
     <string name="settings_emergency_reset_daily">Daily</string>
     <string name="settings_emergency_reset_weekly">Weekly</string>
     <string name="settings_emergency_reset_monthly">Monthly</string>
+    <string name="settings_watch_targets">Watched apps</string>
+    <string name="settings_watch_targets_intro">The YouTube and YouTube Kids apps are always watched.</string>
+    <string name="settings_watch_music">Limit YouTube Music too</string>
+    <string name="settings_watch_music_hint">Left off, time spent listening does not come out of your video limit.</string>
+    <string name="settings_watch_targets_browser">m.youtube.com in a phone browser cannot be blocked - Android does not let an app see which address another app is on.</string>
     <string name="settings_alarms">Alerts</string>
     <string name="settings_alarm_interval_question">How often should we check in?</string>
     <string name="settings_alarm_interval_off">Off</string>

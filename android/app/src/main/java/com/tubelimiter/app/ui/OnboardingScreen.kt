@@ -12,7 +12,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -58,6 +60,9 @@ fun OnboardingScreen(
     granted: Map<AppPermission, Boolean>,
     onRequest: (AppPermission) -> Unit,
     modifier: Modifier = Modifier,
+    /** 권한이 다 채워진 채로 이 화면에 들어온 경우에만 주는 "나가기". 최초 설치 흐름에서는
+     * 돌아갈 곳이 없으므로 null이다. */
+    onDone: (() -> Unit)? = null,
 ) {
     Column(
         modifier = modifier
@@ -83,6 +88,51 @@ fun OnboardingScreen(
                 isGranted = granted[permission] == true,
                 isNext = permission == firstMissing,
                 onRequest = { onRequest(permission) },
+            )
+        }
+
+        CoverageNoteCard()
+
+        if (onDone != null) {
+            OutlinedButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.onboarding_action_done))
+            }
+        }
+    }
+}
+
+/**
+ * 이 앱이 **못 막는 것**을 권한 카드와 같은 화면에 적는다 (documents/QA_REVIEW.md §1.8).
+ *
+ * 폰 브라우저로 `m.youtube.com`을 여는 건 원천적으로 막을 수 없다 — 이유는
+ * [com.tubelimiter.app.usage.watchedPackages] 주석에 있다. 이걸 안 적으면 사용자는 "네 개나
+ * 허용했으니 다 막히겠지"라고 읽고, 어느 날 브라우저로 유튜브를 보다가 앱 전체를 불신하게 된다.
+ * 겁주지 않고 사실만 적는 건 신뢰를 잃는 게 아니라 얻는 쪽이다(§1.1과 같은 논지).
+ */
+@Composable
+private fun CoverageNoteCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.onboarding_coverage_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = stringResource(R.string.onboarding_coverage_apps),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                text = stringResource(R.string.onboarding_coverage_browser),
+                style = MaterialTheme.typography.bodySmall,
             )
         }
     }

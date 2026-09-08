@@ -31,6 +31,7 @@ private val KEY_HARDCORE = booleanPreferencesKey("hardcore_mode")
 private val KEY_HARDCORE_DISABLE_AT = longPreferencesKey("hardcore_disable_requested_at")
 private val KEY_CHART_RANGE_DAYS = intPreferencesKey("chart_range_days")
 private val KEY_SCHEDULE_WINDOWS = stringPreferencesKey("scheduled_blocks")
+private val KEY_WATCH_MUSIC = booleanPreferencesKey("watch_youtube_music")
 
 const val DEFAULT_EMERGENCY_ALLOWANCE = 3
 
@@ -52,6 +53,15 @@ data class Settings(
     /** Recurring time-of-day curfew windows; synced (unlike whitelist/always_block_shorts, a
      * time-of-day block applies to this native app too). See [com.tubelimiter.app.limit.isScheduleActive]. */
     val scheduleWindows: List<ScheduleWindow> = emptyList(),
+    /**
+     * YouTube Music도 감시 대상에 넣을지. **기본은 꺼짐** — 이유는
+     * [com.tubelimiter.app.usage.watchedPackages] 주석에 있다(작업용 BGM으로 영상 한도가 깎이면
+     * 안 된다).
+     *
+     * 확장 쪽 짝인 화이트리스트가 동기화되지 않는 기기별 값이라, 이것도 동기화하지 않는다
+     * ([replaceAll]에 없는 이유). 폰에는 뮤직 앱이 있고 PC에는 없는 식으로 갈리는 값이다.
+     */
+    val watchYouTubeMusic: Boolean = false,
 )
 
 class AppSettings(private val context: Context) {
@@ -77,6 +87,7 @@ class AppSettings(private val context: Context) {
         hardcoreDisableRequestedAt = this[KEY_HARDCORE_DISABLE_AT],
         chartRangeDays = this[KEY_CHART_RANGE_DAYS] ?: DEFAULT_CHART_RANGE_DAYS,
         scheduleWindows = decodeScheduleWindows(this[KEY_SCHEDULE_WINDOWS]),
+        watchYouTubeMusic = this[KEY_WATCH_MUSIC] ?: false,
     )
 
     suspend fun setDailyLimitMinutes(minutes: Int) = edit { it[KEY_LIMIT_MINUTES] = minutes }
@@ -114,6 +125,8 @@ class AppSettings(private val context: Context) {
 
     suspend fun setScheduleWindows(windows: List<ScheduleWindow>) =
         edit { it[KEY_SCHEDULE_WINDOWS] = encodeScheduleWindows(windows) }
+
+    suspend fun setWatchYouTubeMusic(enabled: Boolean) = edit { it[KEY_WATCH_MUSIC] = enabled }
 
     /** Applies a whole settings snapshot at once, used when the server hands one back. */
     suspend fun replaceAll(settings: Settings) = edit { prefs ->
@@ -153,6 +166,7 @@ class AppSettings(private val context: Context) {
         prefs.remove(KEY_HARDCORE_DISABLE_AT)
         prefs.remove(KEY_CHART_RANGE_DAYS)
         prefs.remove(KEY_SCHEDULE_WINDOWS)
+        prefs.remove(KEY_WATCH_MUSIC)
     }
 
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {

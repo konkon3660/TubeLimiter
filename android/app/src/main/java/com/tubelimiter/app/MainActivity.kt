@@ -50,6 +50,7 @@ import com.tubelimiter.app.data.AppState
 import com.tubelimiter.app.data.RuntimeState
 import com.tubelimiter.app.data.Settings
 import com.tubelimiter.app.diagnostics.buildDiagnosticsReport
+import com.tubelimiter.app.diagnostics.monitorWarning
 import com.tubelimiter.app.diagnostics.shouldClearDiagnosticsAfterSignOut
 import com.tubelimiter.app.diagnostics.staleSyncWarning
 import com.tubelimiter.app.limit.BlockInputs
@@ -80,6 +81,7 @@ import com.tubelimiter.app.ui.theme.TubeLimiterTheme
 import com.tubelimiter.app.usage.UsageStatsReader
 import com.tubelimiter.app.usage.effectiveDate
 import com.tubelimiter.app.usage.startOfEffectiveDayMillis
+import com.tubelimiter.app.usage.watchedPackages
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -148,6 +150,11 @@ fun AppRoot() {
     var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     var tab by remember { mutableStateOf(Tab.HOME) }
 
+    // 권한이 빠졌을 때 홈 경고에서 온보딩으로 돌아가기 위한 스위치. 권한이 실제로 빠져 있으면
+    // 아래 `ready`가 이미 false라 온보딩이 뜨지만, 서비스만 알아챈 상태(액티비티 스냅샷이 아직
+    // 낡은 경우)에서도 같은 화면으로 보내려면 별도의 문이 필요하다.
+    var showPermissions by remember { mutableStateOf(false) }
+
     // 대시보드가 그릴 서버 기록. null은 "아직 못 얻었다"(로그아웃·오프라인·조회 실패)라는 뜻이고,
     // 그때는 로컬 기록만으로 그린다 — 대시보드가 통째로 비는 것보다 낫다.
     var serverHistory by remember { mutableStateOf<List<RemoteDailyUsageRow>?>(null) }
@@ -211,12 +218,14 @@ fun AppRoot() {
     }
 
     // While the screen is up, refresh often enough to watch the numbers move.
-    LaunchedEffect(ready) {
+    LaunchedEffect(ready, settings.watchYouTubeMusic) {
         while (ready) {
             val now = System.currentTimeMillis()
             nowMillis = now
             usedMillis = withContext(Dispatchers.IO) {
                 reader.snapshot(
+                    // 서비스와 **같은 목록**을 봐야 화면 숫자와 차단 판정이 갈라지지 않는다.
+                    packages = watchedPackages(settings.watchYouTubeMusic),
                     windowStart = startOfEffectiveDayMillis(now),
                     windowEnd = now,
                 ).usedMillis
@@ -225,12 +234,19 @@ fun AppRoot() {
         }
     }
 
-    if (!ready) {
+    if (!ready || showPermissions) {
         Scaffold(modifier = Modifier.fillMaxSize(), topBar = { AppHeader() }) { padding ->
             OnboardingScreen(
                 required = required,
                 granted = granted,
                 modifier = Modifier.padding(padding),
+                // 처음 설치했을 때는 되돌아갈 화면이 없다. 권한이 다 채워진 상태로 여기 온
+                // 경우(홈 경고에서 눌러 들어온 경우)에만 나가는 문을 준다.
+                onDone = if (ready) {
+                    { showPermissions = false }
+                } else {
+                    null
+                },
                 onRequest = { permission ->
                     if (permission == AppPermission.NOTIFICATIONS) {
                         notificationLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
@@ -315,6 +331,15 @@ fun AppRoot() {
         nowMillis = nowMillis,
     )
 
+    // 감시가 실제로 돌고 있나. 권한 회수는 서비스가 먼저 알아채고 상태에 적어두므로 그 값을
+    // 읽는다(RuntimeState.monitorMissingPermissions 주석 참고).
+    val monitorWarning = monitorWarning(
+        monitoringEnabled = settings.monitoringEnabled,
+        missingPermissions = state.monitorMissingPermissions,
+        lastHeartbeatAtMillis = state.monitorHeartbeatAtMillis,
+        nowMillis = nowMillis,
+    )
+
     val blockReason = BlockInputs(
         usedMillis = effectiveUsedMillis,
         limitMillis = limitMillis,
@@ -362,6 +387,11 @@ fun AppRoot() {
                 streak = state.streak,
                 scheduleWindow = scheduleWindow,
                 syncWarning = syncWarning,
+                monitorWarning = monitorWarning,
+                onFixPermissions = {
+                    granted = checker.snapshot()
+                    showPermissions = true
+                },
                 nowMillis = nowMillis,
                 onStartFocus = { delayMinutes, durationMinutes ->
                     scope.launch {
@@ -492,6 +522,8 @@ fun AppRoot() {
                 onEmergencyResetChange = { editSettings { settingsStore.setEmergencyResetFrequency(it) } },
                 onAlarmIntervalChange = { editSettings { settingsStore.setAlarmIntervalMinutes(it) } },
                 onAlarmMilestonesChange = { editSettings { settingsStore.setAlarmMilestonesEnabled(it) } },
+                // 감시 대상 목록은 이 기기만의 값이라 서버로 밀지 않는다(Settings.watchYouTubeMusic 주석).
+                onWatchMusicChange = { scope.launch { settingsStore.setWatchYouTubeMusic(it) } },
                 onHardcoreEnable = { editSettings { settingsStore.setHardcoreMode(true) } },
                 onHardcoreDisableRequest = {
                     editSettings { settingsStore.requestHardcoreDisable(System.currentTimeMillis()) }

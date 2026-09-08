@@ -23,6 +23,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +44,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tubelimiter.app.R
+import com.tubelimiter.app.diagnostics.MonitorWarning
 import com.tubelimiter.app.diagnostics.SyncWarning
 import com.tubelimiter.app.gamification.StreakRecord
 import com.tubelimiter.app.gamification.levelProgress
@@ -75,6 +77,11 @@ fun HomeScreen(
     /** 동기화가 오래 실패했을 때 띄울 경고, 아니면 null
      * ([com.tubelimiter.app.diagnostics.staleSyncWarning]가 판정하고, 문구는 여기서 붙인다). */
     syncWarning: SyncWarning?,
+    /** 감시가 멈췄거나 권한이 빠졌을 때 띄울 경고, 아니면 null
+     * ([com.tubelimiter.app.diagnostics.monitorWarning]가 판정한다). */
+    monitorWarning: MonitorWarning?,
+    /** 경고 줄에서 온보딩(권한) 화면으로 돌려보내는 복구 경로. */
+    onFixPermissions: () -> Unit,
     nowMillis: Long,
     onStartFocus: (delayMinutes: Int, durationMinutes: Int) -> Unit,
     onStopFocus: () -> Unit,
@@ -94,6 +101,8 @@ fun HomeScreen(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        // 감시 경고가 동기화 경고보다 위다 — "기록이 안 올라간다"보다 "지금 안 막힌다"가 급하다.
+        if (monitorWarning != null) MonitorWarningBanner(monitorWarning, onFixPermissions)
         if (syncWarning != null) SyncWarningBanner(syncWarning)
         if (hardcoreMode) StreakHeroCard(streak)
         UsageRingCard(usedMillis, limitMillis, emergencyRemaining)
@@ -158,12 +167,48 @@ private fun SyncWarningBanner(warning: SyncWarning) {
             warning.hours,
         )
     }
+    WarningBanner(message)
+}
+
+/**
+ * 감시가 실제로는 안 돌고 있을 때 뜨는 한 줄 (documents/QA_REVIEW.md §1.7).
+ *
+ * 동기화 경고와 같은 급의 얇은 띠지만 **행동 버튼이 하나 붙는다** — 동기화 지연은 사용자가 할
+ * 수 있는 게 없는 반면, 권한 회수는 설정 한 번으로 되돌릴 수 있고 그 사이 유튜브는 전혀 막히지
+ * 않기 때문이다. 버튼은 새 화면을 만들지 않고 온보딩 흐름을 그대로 다시 쓴다.
+ */
+@Composable
+private fun MonitorWarningBanner(warning: MonitorWarning, onFixPermissions: () -> Unit) {
+    when (warning) {
+        is MonitorWarning.PermissionsRevoked -> WarningBanner(
+            message = stringResource(R.string.home_monitor_warning_permissions),
+            actionLabel = stringResource(R.string.home_monitor_warning_action),
+            onAction = onFixPermissions,
+        )
+
+        is MonitorWarning.StaleFor -> WarningBanner(
+            message = pluralStringResource(
+                R.plurals.home_monitor_warning_stale,
+                warning.hours.toInt(),
+                warning.hours,
+            ),
+        )
+    }
+}
+
+/** 두 경고가 같은 시각 언어를 쓰도록 띠 자체는 한 곳에만 둔다. */
+@Composable
+private fun WarningBanner(
+    message: String,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
             .background(Color(0xFFF59E0B).copy(alpha = 0.15f))
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -172,7 +217,18 @@ private fun SyncWarningBanner(warning: SyncWarning) {
             text = message,
             style = MaterialTheme.typography.labelSmall,
             color = Color(0xFFB45309),
+            modifier = Modifier.weight(1f),
         )
+        if (actionLabel != null && onAction != null) {
+            TextButton(onClick = onAction) {
+                Text(
+                    text = actionLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFFB45309),
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
     }
 }
 

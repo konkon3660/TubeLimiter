@@ -17,6 +17,7 @@ import com.tubelimiter.app.gamification.StreakRecord
 import com.tubelimiter.app.limit.AlarmState
 import com.tubelimiter.app.limit.LimitHistoryEntry
 import com.tubelimiter.app.limit.planLimitHistoryUpdate
+import com.tubelimiter.app.permission.AppPermission
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -85,6 +86,11 @@ private val KEY_SCHEDULE_START_NOTIFIED_DATE = stringPreferencesKey("schedule_st
 private val KEY_DIAGNOSTIC_EVENTS = stringPreferencesKey("diagnostic_events")
 private val KEY_LAST_SYNC_SUCCESS_AT = longPreferencesKey("last_sync_success_at")
 
+/** 감시 서비스가 마지막으로 한 바퀴 돈 시각과, 그때 빠져 있던 권한
+ * ([com.tubelimiter.app.diagnostics.monitorWarning]가 판정한다). */
+private val KEY_MONITOR_HEARTBEAT_AT = longPreferencesKey("monitor_heartbeat_at")
+private val KEY_MONITOR_MISSING_PERMISSIONS = stringPreferencesKey("monitor_missing_permissions")
+
 /** How many days of usage history to keep for the dashboard. */
 const val HISTORY_RETENTION_DAYS = 60
 
@@ -132,6 +138,17 @@ data class RuntimeState(
     val diagnosticEvents: List<DiagnosticEvent> = emptyList(),
     /** 마지막으로 서버 왕복이 성공한 시각. 한 번도 없으면 null. */
     val lastSyncSuccessAtMillis: Long? = null,
+    /** 감시 서비스가 마지막으로 살아 있던 시각. 한 번도 안 돌았으면 null. */
+    val monitorHeartbeatAtMillis: Long? = null,
+    /**
+     * 서비스가 마지막 틱에서 확인한, **빠져 있던** 권한들.
+     *
+     * 화면이 직접 [com.tubelimiter.app.permission.PermissionChecker]를 부르지 않고 이 값을 쓰는
+     * 이유: 앱이 떠 있는 동안 다른 화면에서 권한이 꺼지면 액티비티의 스냅샷은 `ON_RESUME`까지
+     * 낡은 채로 있지만, 서비스는 몇 초 안에 알아챈다. 사용자에게 "지금 안 막히고 있다"를
+     * 알려야 하는 쪽은 빠른 쪽이다.
+     */
+    val monitorMissingPermissions: List<AppPermission> = emptyList(),
 ) {
     fun focusActiveAt(nowMillis: Long): Boolean =
         focusEndMillis != null && nowMillis < focusEndMillis
@@ -207,6 +224,12 @@ class AppState(private val context: Context) {
         scheduleStartNotifiedDate = this[KEY_SCHEDULE_START_NOTIFIED_DATE],
         diagnosticEvents = decodeDiagnosticEvents(this[KEY_DIAGNOSTIC_EVENTS]),
         lastSyncSuccessAtMillis = this[KEY_LAST_SYNC_SUCCESS_AT],
+        monitorHeartbeatAtMillis = this[KEY_MONITOR_HEARTBEAT_AT],
+        // 이 빌드가 모르는 이름은 버린다(예전 버전이 남긴 값이 열거형 파싱에서 앱을 세우면 안 된다).
+        // 저장이 Set이라 순서를 잃으므로 열거형 선언 순서로 되돌린다 — 화면 문구가 실행할 때마다
+        // 순서를 바꾸면 안 된다.
+        monitorMissingPermissions = decodeStringSet(this[KEY_MONITOR_MISSING_PERMISSIONS])
+            .let { names -> AppPermission.entries.filter { it.name in names } },
     )
 
     suspend fun recordUsage(dateKey: String, usedMillis: Long, keepKeys: Set<String>) = edit { prefs ->
@@ -433,6 +456,25 @@ class AppState(private val context: Context) {
         )
         prefs[KEY_DIAGNOSTIC_EVENTS] = encodeDiagnosticEvents(updated)
     }
+
+    /**
+     * 감시 서비스의 "나 살아 있다" 한 줄. 매 틱마다 쓰지 않고 호출자가 간격을 두는 이유는
+     * DataStore 쓰기가 파일 전체를 다시 쓰기 때문이다 — 유튜브가 떠 있으면 틱은 5초마다 돈다
+     * ([com.tubelimiter.app.service.UsageMonitorService] 참고).
+     *
+     * 진단 기록과 달리 계정 삭제·로그아웃에서 지우지 않는다. 이건 계정에서 온 값이 아니라
+     * 이 기기의 감시가 언제 돌았는지이고, 지우면 그 순간 경고 판정의 기준점이 사라진다.
+     */
+    suspend fun recordMonitorHeartbeat(atMillis: Long, missingPermissions: List<AppPermission>) =
+        edit { prefs ->
+            prefs[KEY_MONITOR_HEARTBEAT_AT] = atMillis
+            if (missingPermissions.isEmpty()) {
+                prefs.remove(KEY_MONITOR_MISSING_PERMISSIONS)
+            } else {
+                prefs[KEY_MONITOR_MISSING_PERMISSIONS] =
+                    encodeStringSet(missingPermissions.map { it.name }.toSet())
+            }
+        }
 
     suspend fun clearDiagnostics() = edit { prefs ->
         prefs.remove(KEY_DIAGNOSTIC_EVENTS)

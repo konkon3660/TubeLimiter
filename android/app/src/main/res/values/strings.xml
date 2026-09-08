@@ -43,6 +43,10 @@
     <string name="permission_notifications_title">알림</string>
     <string name="permission_notifications_rationale">감지 서비스가 백그라운드에 상주하려면 알림 하나를 띄워야 합니다.</string>
     <string name="permission_settings_unavailable">설정 화면을 열 수 없습니다.</string>
+    <string name="onboarding_action_done">완료</string>
+    <string name="onboarding_coverage_title">막을 수 있는 것과 없는 것</string>
+    <string name="onboarding_coverage_apps">감시 대상은 YouTube와 YouTube Kids 앱입니다. YouTube Music은 기본으로 빼두었고, 설정 &gt; 감시 대상에서 켤 수 있습니다.</string>
+    <string name="onboarding_coverage_browser">폰 브라우저(크롬, 삼성 인터넷 등)로 여는 m.youtube.com은 막지 못합니다. 안드로이드는 앱 단위로만 사용시간을 볼 수 있어서, 브라우저가 어떤 주소를 열었는지는 이 앱에 보이지 않습니다.</string>
 
     <!-- 로그인 / 회원가입 -->
     <string name="auth_title_sign_in">로그인</string>
@@ -89,6 +93,11 @@
     <plurals name="home_sync_warning_stale">
         <item quantity="other">동기화가 %1$d시간째 되지 않고 있어요. 설정 &gt; 동기화 상태에서 확인할 수 있어요.</item>
     </plurals>
+    <string name="home_monitor_warning_permissions">감시에 필요한 권한이 꺼져 있어요. 지금은 유튜브가 차단되지 않습니다.</string>
+    <plurals name="home_monitor_warning_stale">
+        <item quantity="other">감시가 %1$d시간째 멈춰 있었어요. 그동안은 유튜브가 차단되지 않았습니다.</item>
+    </plurals>
+    <string name="home_monitor_warning_action">권한 확인</string>
     <plurals name="home_streak_subtitle">
         <item quantity="other">일 연속 성공 · 최고 %1$d일</item>
     </plurals>
@@ -178,6 +187,11 @@
     <string name="settings_emergency_reset_daily">매일 리셋</string>
     <string name="settings_emergency_reset_weekly">매주 리셋</string>
     <string name="settings_emergency_reset_monthly">매달 리셋</string>
+    <string name="settings_watch_targets">감시 대상</string>
+    <string name="settings_watch_targets_intro">YouTube와 YouTube Kids 앱은 항상 감시합니다.</string>
+    <string name="settings_watch_music">YouTube Music도 함께 제한</string>
+    <string name="settings_watch_music_hint">꺼두면 음악을 듣는 시간은 영상 한도에서 깎이지 않습니다.</string>
+    <string name="settings_watch_targets_browser">폰 브라우저로 여는 m.youtube.com은 막지 못합니다. 안드로이드에서는 앱이 어떤 주소를 열었는지 볼 수 없습니다.</string>
     <string name="settings_alarms">알림</string>
     <string name="settings_alarm_interval_question">몇 분마다 알려줄까요</string>
     <string name="settings_alarm_interval_off">끔</string>

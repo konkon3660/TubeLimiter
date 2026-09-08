@@ -25,6 +25,9 @@ import com.tubelimiter.app.data.HISTORY_RETENTION_DAYS
 import com.tubelimiter.app.data.RuntimeState
 import com.tubelimiter.app.data.Settings
 import com.tubelimiter.app.diagnostics.DiagnosticKind
+import com.tubelimiter.app.diagnostics.monitorGapCode
+import com.tubelimiter.app.diagnostics.monitorGapMillis
+import com.tubelimiter.app.diagnostics.permissionLossCode
 import com.tubelimiter.app.diagnostics.summarizeFailure
 import com.tubelimiter.app.gamification.applyDayRollover
 import com.tubelimiter.app.limit.AlarmMessage
@@ -47,6 +50,9 @@ import com.tubelimiter.app.limit.minutesUntilNextScheduleStart
 import com.tubelimiter.app.limit.planRolloverLimits
 import com.tubelimiter.app.limit.resolveFocusStopTime
 import com.tubelimiter.app.limit.shouldDisableHardcore
+import com.tubelimiter.app.permission.AppPermission
+import com.tubelimiter.app.permission.PermissionChecker
+import com.tubelimiter.app.permission.requiredPermissions
 import com.tubelimiter.app.sync.SyncRepository
 import com.tubelimiter.app.sync.combinedUsedMillis
 import com.tubelimiter.app.sync.emergencyUsesDeltaSinceSync
@@ -58,6 +64,7 @@ import com.tubelimiter.app.usage.formatDuration
 import com.tubelimiter.app.usage.hourOfDay
 import com.tubelimiter.app.usage.lastNDates
 import com.tubelimiter.app.usage.startOfEffectiveDayMillis
+import com.tubelimiter.app.usage.watchedPackages
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -84,6 +91,14 @@ private const val MAX_ROLLOVER_DAYS = 400
 private const val SETTINGS_REFRESH_INTERVAL_MILLIS = 30_000L
 private const val DAILY_USAGE_SYNC_INTERVAL_MILLIS = 30_000L
 
+/**
+ * 심박("서비스가 살아 있다")을 DataStore에 적는 간격. 매 틱(최소 5초)마다 적지 않는 이유는
+ * DataStore 쓰기가 파일을 통째로 다시 쓰기 때문이다. 홈 화면 임계값이 두 시간
+ * ([com.tubelimiter.app.diagnostics.MONITOR_STALE_THRESHOLD_MILLIS])이라 1분 해상도면 충분하다.
+ * 단, 빠진 권한 목록이 바뀌면 간격과 무관하게 즉시 적는다 — 그건 지금 안 막히고 있다는 뜻이다.
+ */
+private const val MONITOR_HEARTBEAT_INTERVAL_MILLIS = 60_000L
+
 class UsageMonitorService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -92,6 +107,7 @@ class UsageMonitorService : Service() {
     private lateinit var settingsStore: AppSettings
     private lateinit var stateStore: AppState
     private lateinit var sync: SyncRepository
+    private lateinit var permissionChecker: PermissionChecker
 
     private var nudgeId = 100
     private var lastSettingsPullAt = 0L
@@ -101,12 +117,21 @@ class UsageMonitorService : Service() {
      * emergency pass covered. Null after a restart - that tick simply attributes nothing. */
     private var lastUsageTickAt: Long? = null
 
+    /** 심박을 마지막으로 저장한 시각과 그때 빠져 있던 권한. 둘 다 메모리에만 두는 건 저장된
+     * 값을 매 틱 다시 읽지 않기 위해서다 — 프로세스가 죽으면 어차피 첫 틱이 다시 채운다. */
+    private var lastHeartbeatWriteAt = 0L
+    private var lastMissingPermissions: List<AppPermission>? = null
+
+    /** 서비스가 죽어 있던 구간을 진단에 남기는 일은 재기동당 한 번이면 된다. */
+    private var checkedRestartGap = false
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         reader = UsageStatsReader(this)
         overlay = BlockOverlay(this)
+        permissionChecker = PermissionChecker(this)
         settingsStore = AppSettings(this)
         stateStore = AppState(this)
         sync = SyncRepository(AuthRepository(this), settingsStore, stateStore)
@@ -157,7 +182,12 @@ class UsageMonitorService : Service() {
         val today = effectiveDate(now)
         val todayKey = today.toString()
 
+        recordMonitorHealth(now)
+
         val snapshot = reader.snapshot(
+            // 유튜브 하나가 아니라 목록이다 — YouTube Music은 설정으로 켤 때만 들어온다
+            // (com.tubelimiter.app.usage.watchedPackages 주석 참고).
+            packages = watchedPackages(settings.watchYouTubeMusic),
             windowStart = startOfEffectiveDayMillis(now),
             windowEnd = now,
         )
@@ -260,6 +290,57 @@ class UsageMonitorService : Service() {
 
         updateOngoingNotification(effectiveUsedMillis, limitMillis, reason != null)
         return if (snapshot.inForeground) POLL_ACTIVE_MILLIS else POLL_IDLE_MILLIS
+    }
+
+    /**
+     * 감시가 실제로 돌고 있다는 흔적을 남기고, 끊긴 구간과 빠진 권한을 진단 기록에 적는다
+     * (documents/QA_REVIEW.md §1.7).
+     *
+     * 권한 회수는 서비스를 죽이지 않는다 — 사용현황 접근이 꺼지면 `queryEvents`가 빈 목록을
+     * 돌려주고, 오버레이 권한이 꺼지면 차단 화면만 안 뜬다. 즉 **틱은 멀쩡히 돌면서 아무것도
+     * 막지 않는 상태**가 되는데, 예전에는 그게 화면에도 기록에도 남지 않았다. 그래서 판정이
+     * 아니라 관측을 여기서 한다.
+     *
+     * 실패해도 삼키는 이유: 심박을 못 적는 것 때문에 사용량 집계와 차단이 멈추면 본말이 전도된다.
+     */
+    private suspend fun recordMonitorHealth(now: Long) {
+        val granted = runCatching { permissionChecker.snapshot() }.getOrNull() ?: return
+        val missing = requiredPermissions(Build.VERSION.SDK_INT).filter { granted[it] != true }
+
+        // 재기동 직후 한 번만: 저장된 심박과 지금 사이가 임계값을 넘으면 그동안 감시가 없었다.
+        // 사용자가 앱을 열면 액티비티가 서비스를 곧바로 되살려 홈 화면 경고는 몇 초 만에
+        // 사라지므로, 남는 흔적은 이 진단 기록뿐이다.
+        if (!checkedRestartGap) {
+            checkedRestartGap = true
+            val previous = runCatching { stateStore.state.first().monitorHeartbeatAtMillis }.getOrNull()
+            monitorGapMillis(previous, now)?.let { gap ->
+                runCatching {
+                    stateStore.recordDiagnosticFailure(
+                        atMillis = now,
+                        kind = DiagnosticKind.MONITOR,
+                        code = monitorGapCode(gap),
+                    )
+                }
+            }
+        }
+
+        // 권한 목록이 **바뀐 순간**에만 기록한다. 매 틱 남기면 링버퍼가 같은 줄로 차서 다른
+        // 실패를 밀어낸다(횟수 합치기가 있긴 하지만, 시각이 계속 갱신돼 언제 빠졌는지 흐려진다).
+        val changed = lastMissingPermissions != missing
+        if (changed && missing.isNotEmpty()) {
+            runCatching {
+                stateStore.recordDiagnosticFailure(
+                    atMillis = now,
+                    kind = DiagnosticKind.MONITOR,
+                    code = permissionLossCode(missing),
+                )
+            }
+        }
+        lastMissingPermissions = missing
+
+        if (!changed && now - lastHeartbeatWriteAt < MONITOR_HEARTBEAT_INTERVAL_MILLIS) return
+        lastHeartbeatWriteAt = now
+        runCatching { stateStore.recordMonitorHeartbeat(now, missing) }
     }
 
     /**
