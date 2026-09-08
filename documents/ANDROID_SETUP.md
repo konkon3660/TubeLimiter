@@ -32,6 +32,7 @@ cd android
 
 - **서명은 opt-in이다.** `android/keystore.properties`(gitignore 대상, **절대 커밋 금지**)에 `storeFile` / `storePassword` / `keyAlias` / `keyPassword`를 넣어두면 릴리스 빌드가 그 키로 서명된다. 파일이 없으면 빌드는 그대로 성공하고 **미서명 APK**가 나온다 — CI나 갓 클론한 작업 트리가 비밀값 없이도 빌드되게 하려는 의도. `storeFile` 경로는 `android/` 기준이고, 그 경로에 파일이 없으면 서명 설정 자체가 안 만들어진다(역시 미서명으로 떨어짐).
 - 릴리스는 R8 축소 + 리소스 축소가 켜져 있다. 동기화가 쓰는 kotlinx.serialization 모델은 리플렉션으로 잡히므로 `app/proguard-rules.pro`에 keep 룰이 있다 — **새 `@Serializable` 모델을 추가하면 여기도 확인할 것.** 안 그러면 디버그에선 되고 릴리스에서만 동기화가 깨진다.
+- **ktor 엔진 keep 룰은 지우면 안 된다.** `createSupabaseClient`가 엔진을 명시하지 않고 `HttpClient()`를 만들어 `HttpClientEngineContainer`를 **ServiceLoader로** 찾는다. 룰이 없으면 R8이 컨테이너 클래스는 남기면서 정작 호출되는 `getFactory()`를 지워버려 **릴리스에서만 모든 네트워크가 죽는다**(실측 확인함: 룰을 빼고 빌드하면 `app/build/outputs/mapping/release/usage.txt`에 `OkHttpEngineContainer: getFactory()`가 제거 대상으로 찍힌다). 확인 방법은 `./gradlew assembleRelease` 후 `usage.txt`에 `EngineContainer` 항목이 **없고** `seeds.txt`에 `getFactory()`가 **있는지** 보는 것. ktor/supabase-kt 버전을 올릴 때마다 다시 확인할 것.
 - `*.jks` / `*.p12` / `keystore.properties` / `release/`는 전부 `android/.gitignore`에 들어 있다.
 
 ### CI

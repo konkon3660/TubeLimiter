@@ -28,7 +28,7 @@ npm run build
 |---|---|
 | `npm test` | `node --test`로 `test/` 전체 실행. 판정 로직은 전부 `src/lib/` 순수 함수라 브라우저 없이 돈다 |
 | `npm run lint` | ESLint(플랫 설정 `eslint.config.js`). 스타일 규칙은 끄고 실제 오류가 되는 규칙만 켜 둠 — 포맷 취향으로 빌드를 깨지 않으려고 |
-| `npm run format` / `format:check` | Prettier. 린트와 분리돼 있어 CI는 `lint`만 본다 |
+| `npm run format` / `format:check` | Prettier. 린트와 분리돼 있지만 CI는 둘 다 본다 — 확장 잡이 `lint` → `format:check` → `test` 순으로 돈다 |
 | `npm run zip` | 스토어 업로드용 패키징. 소스맵 없이 빌드한 뒤 `dist/`를 `release/tubelimiter-<manifest 버전>.zip`으로 압축한다. 버전은 `public/manifest.json`의 `version`이 유일한 원본이고, zip 루트에 `manifest.json`이 바로 오도록 담는다(웹스토어가 요구하는 모양) |
 
 `dist/`와 `release/`는 둘 다 gitignore 대상 — 빌드 산출물은 커밋하지 않는다.

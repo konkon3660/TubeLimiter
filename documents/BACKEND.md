@@ -17,7 +17,7 @@
 | `shorts_limit_ms` | Shorts 전용 일일 한도 | `0` = 미설정 = 한도 없음 (`daily_limit_ms`의 0 컨벤션과 동일). 요일별 오버라이드는 **없다** — 값 하나가 모든 요일에 적용된다. **브라우저 전용**, `always_block_shorts`/`whitelist`와 같은 취급. 판정은 확장 `lib/limits.js`의 `computeShortsLimit`(0·null·음수를 전부 Infinity로 접음 — 음수 한도는 "Shorts 영구 차단"이 되어버린다) |
 | `whitelist` | URL 화이트리스트 (jsonb) | **안드로이드는 지원 불가** (URL 개념 없음, 앱 단위) |
 | `emergency_config` | 긴급 시청 5분 허용 횟수/리셋 주기 | |
-| `alarm_interval_minutes` / `alarm_milestones_enabled` | 사용시간 알림 | |
+| `alarm_interval_minutes` / `alarm_milestones_enabled` | 사용시간 알림 | 발화 판정은 양쪽 순수 함수(`lib/alarmRules.js`의 `evaluateAlarms` ↔ `limit/AlarmRules.kt`)가 같은 규칙으로 한다 — N분 주기, 남은 30·10·5·1분 마일스톤, 그리고 **예약 차단 시작 10분 전 예고**(`SCHEDULE_SOON_LEAD_MINUTES`). 이 상수와 판정 위치를 한쪽에서만 옮기면 한 기기만 예고를 띄운다 |
 | `hardcore_mode` / `hardcore_disable_requested_at` | 하드코어 모드, 끄기 요청 시각 | 끄기는 1시간 쿨다운 후 실제 반영 — 로직은 각 클라이언트가 로컬에서 판정, 이 컬럼은 그 판정에 필요한 상태만 저장 |
 | `scheduled_blocks` | 예약 차단(요일별 반복 시간대 자동 차단), jsonb 배열 | 원소 형태: `{id, label, days[7], startMinute, endMinute, enabled}`. `days`는 `daily_limit_by_day`와 같은 컨벤션(일=0 기준). `startMinute`/`endMinute`는 자정 기준 분(0~1439), `"HH:mm"` 문자열이 아님. **wrap 규칙**: `endMinute <= startMinute`면 자정을 넘기는 구간이고, 그 구간은 `days`가 가리키는 "시작 요일"에 속한다(종료 요일 쪽 `days`는 무관) — 예: `days`에 월요일만 켜져 있고 22:00~07:00이면 월요일 22시~화요일 07시에 활성, 화요일 밤엔 관여 안 함. **4시 사용량 컷오프와는 무관** — 실제 벽시계 요일/시각(확장 `Date#getDay()`, 안드로이드 `LocalDate.now().dayOfWeek`)으로만 판정하고 `getTodayDate()`/`DAY_CUTOFF_HOUR`를 쓰지 않는다. 판정 순수 함수: 확장 `lib/schedule.js`, 안드로이드 `limit/ScheduleRules.kt` — 하나 고치면 다른 쪽도 맞춰야 함. 안드로이드도 지원(브라우저 전용인 `whitelist`/`always_block_shorts`와 달리 시간대 커퓨는 네이티브 앱에도 적용됨). |
 
@@ -45,7 +45,7 @@
 3. **클램프는 날짜별이 아니라 버킷 합계에 한 번만 건다.** 날짜별로 0에서 자르면, 아직 보고 안 된 지난 날이 다른 기기 몫을 상쇄하는 경우 두 클라이언트가 서로 다른 잔여 횟수를 보여준다.
 4. **"내가 보고한 몫"은 지난 날 = 로컬 기록, 오늘 = 실제로 서버에 밀어넣은 값**으로 센다(`reportedEmergencyUsesInBucket`). 아직 안 보낸 오늘분까지 내 몫으로 치면 그만큼이 "다른 기기 몫"에서 빠져 잔여가 실제보다 넉넉해진다 — 우회 구멍이 그대로 남는다.
 5. **네트워크가 긴급 시청을 막으면 안 된다.** 서버 합계는 버킷 키와 함께 로컬(확장 `chrome.storage`, 안드로이드 DataStore)에 캐시하고, 조회 실패 시엔 캐시를 건드리지 않고 빠진다(마지막으로 성공한 값이 남는다). 서버 합계를 아예 얻은 적이 없으면 로컬 값만으로 동작한다 — 서버 합계는 "얻어지면 반영되는 보너스"이지 전제가 아니다.
-6. **로그아웃 처리는 양쪽이 의도적으로 다르다.** 확장은 로그아웃 시 버킷 캐시를 지워 완전히 로컬 값으로 돌아가고(옵션 페이지의 `signOutButton` 핸들러), 안드로이드는 마지막으로 관측한 다른 기기 몫을 **버킷이 끝날 때까지 유지**한다 — 로그아웃이 남은 횟수를 되살리는 탈출구가 되면 안 된다는 판단. 반면 계정 **삭제**(`clearAccountData`)는 양쪽 다 지운다: 계정 행이 cascade로 사라진 마당에 남겨두면 존재하지 않는 기기 때문에 횟수가 깎인다.
+6. **로그아웃은 버킷 캐시를 남기고, 계정 삭제만 지운다 — 양쪽 동일.** 로그아웃에서 캐시를 지우면 잔여 판정이 로컬 값으로 폴백해 다른 기기가 이미 쓴 횟수가 통째로 되살아난다. 즉 로그아웃 버튼이 곧 "횟수 리필 버튼"이 된다(확장에 실제로 있던 구멍이고, `d96801d`에서 닫았다). 캐시에는 버킷 시작일이 같이 붙어 있어 버킷이 끝나면 자동으로 무시되므로, 남겨두는 것만으로 "버킷이 끝나면 사라진다"가 성립한다. 반면 계정 **삭제**는 지운다: 계정 행이 cascade로 사라진 마당에 남겨두면 존재하지 않는 기기 때문에 횟수가 깎인다. **대신 이 기기 자신의 카운트다운(`emergency_uses_today` / 안드로이드 대응 키)은 삭제에서도 남긴다** — 그것까지 지우면 "탈퇴 후 재가입"이 허용 횟수를 full로 되돌리는 우회가 된다. 목록은 확장 `lib/accountReset.js`(`SIGN_OUT_REMOVED_KEYS` / `ACCOUNT_DELETE_REMOVED_KEYS` / `ACCOUNT_DELETE_PRESERVED_KEYS`, 테스트로 고정)와 안드로이드 `AppState.clearAccountData`가 원본이다. **`chrome.storage.local.clear()` 같은 통째 삭제를 쓰면 안 된다** — 남겨야 할 키가 조용히 딸려 나간다.
 
 안드로이드는 이 판정을 `consumeEmergency`의 edit 트랜잭션 안에서 읽어 게이트가 원자적으로 유지된다. 확장은 `requestEmergency` 핸들러가 계정 단위 잔여로 게이트하고 로컬 카운터를 함께 감소시킨다.
 
@@ -55,9 +55,10 @@
 
 - 긴급 시청을 쓴 날은 `current_streak`은 이어지고 완벽한 날 3개 값만 끊긴다 (판정 규칙은 확장 `gamification.js`의 `isDaySuccess`/`isPerfectDay`와 안드로이드 `Gamification.kt`의 동명 함수 — 양쪽 동일 규칙, 한쪽 고치면 다른 쪽도 맞춰야 함. [FEATURES.md](FEATURES.md) 게임화 규칙 참고).
 - 긴급 시청 시간과 횟수는 **날짜별 로컬 기록**(확장 `emergency_history`, 안드로이드 `emergency_history`/`emergency_uses_history` DataStore 키)과 **서버 합계**(`daily_usage.emergency_ms` / `emergency_uses`) 양쪽에 있다. 롤오버 판정(`isDaySuccess`/`isPerfectDay`)은 로컬 기록으로 한다 — 그 날을 실제로 시청한 기기가 자기 몫을 아는 유일한 쪽이기 때문. 서버 합계는 잔여 횟수 게이트(위 daily_usage 절)와 대시보드 병합에 쓴다.
-- 다만 대시보드의 날짜별 병합(`lib/historyMerge.js`)은 시간(`emergency_ms`)만 서버에서 가져오고 **횟수는 로컬 값만 쓴다** — 서버에만 있는 날은 횟수를 `null`로 두고 화면에 표시하지 않는다. 0회로 채우면 "긴급 시청 없이 넘긴 날"이라는 없는 사실을 적게 된다.
+- 대시보드의 날짜별 병합은 시간과 횟수를 **둘 다** 서버에서 가져와 `max(로컬, 서버)`로 합친다(확장 `lib/historyMerge.js`, 안드로이드 `sync/HistoryMerge.kt`). 횟수를 안 읽던 시절에는 폰에서 긴급 시청을 발급만 받고 안 본 날(`emergency_ms = 0`, `emergency_uses = 1`)이 확장 히트맵에서 "완벽한 날"로 둔갑했다. 로컬·서버 어디에도 기록이 없는 날만 횟수를 "모름"으로 두고 화면에 표시하지 않는다 — 0회로 채우면 "긴급 시청 없이 넘긴 날"이라는 없는 사실을 적게 된다.
 
 - 자정(4시 컷오프 기준) 롤오버 때 그날 성공/실패 판정 후 갱신, 두 클라이언트 모두 구현됨(안드로이드 `SyncRepository.pushStreak`, 확장 `gamification.js`).
+- **정산에 쓰는 한도는 그날의 스냅샷이다** (확장 `lib/limitHistory.js`의 `planRolloverLimits`, 안드로이드 `limit/LimitHistory.kt`의 동명 함수 — 한쪽만 고치면 갈라지는 계약). 히트맵은 스냅샷으로 그리는데 정산만 현재 설정으로 하면, 며칠 안 켠 사이 한도를 바꿨을 때 **같은 날을 히트맵과 스트릭이 반대로 판정한다.** 스냅샷이 없는 날(기능 이전, 또는 그 기기에서 시청하지 않은 날)만 현재 설정으로 근사한다. `streaks` 행은 두 클라이언트가 공유하므로 규칙이 갈라지면 나중에 로그인한 기기가 앞선 판정을 덮어쓴다.
 - 병합 규칙: 각 클라이언트는 로그인 직후 pull 해서 로컬보다 서버 기록이 "더 진행된" 경우 그걸 채택(`SyncRepository.mergeStreaks` 참고) — 두 기기를 오가며 써도 기록이 뒤로 가지 않게.
 - 하드코어 모드를 끄면 `current_streak`을 0으로 리셋(확장은 `service-worker.js`에서 직접 update, 안드로이드도 동일 정책 — [FEATURES.md](FEATURES.md) 게임화 규칙 참고).
 
@@ -144,7 +145,9 @@ val response = supabase.functions.invoke("delete-account")
 1. **허용 목록** — `summarizeFailure()`가 예외/오류 이름 + `[45]xx` HTTP 상태 + PostgREST 코드(`PGRSTxxx`)만 뽑아낸다. 상태 코드 정규식은 앞뒤가 영숫자면 잡지 않아 uuid 조각에서 세 자리를 잘라오지 않는다(양쪽 동일 규칙).
 2. **redact** — `sanitizeDiagnosticCode()`가 이메일·UUID·JWT 모양을 `[redacted]`로 바꾸고, 제어문자를 공백으로 접고, 48자로 자른다. 이벤트를 넣는 유일한 통로가 항상 이 함수를 거치므로 저장된 문자열엔 그 패턴이 남을 수 없다.
 
-새 실패 경로를 진단에 연결할 때 원문 문자열을 `code`에 직접 넣으면 이 계약이 깨진다. 반드시 두 함수를 통과시킬 것.
+3. **읽는 쪽에서도 한 번 더** — 저장할 때만 거르면 손상되거나 손으로 편집된 저장소가 그대로 화면과 클립보드로 나간다. 그래서 디코드 경로(확장 `normalizeDiagnosticEvents`, 안드로이드 `decodeDiagnosticEvents` → 같은 이름의 정규화 함수)도 sanitize를 다시 걸고 버퍼 크기로 자른 뒤에야 값을 돌려주며, "복사" 리포트도 그 정규화된 값으로 만든다.
+
+새 실패 경로를 진단에 연결할 때 원문 문자열을 `code`에 직접 넣으면 이 계약이 깨진다. 반드시 이 함수들을 통과시킬 것.
 
 ## 스키마 바꿀 때 체크리스트
 
