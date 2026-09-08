@@ -15,6 +15,8 @@ class AlarmRulesTest {
         limitMinutes: Int = 60,
         intervalMinutes: Int = 0,
         milestonesEnabled: Boolean = true,
+        minutesUntilScheduleStart: Long? = null,
+        scheduleStartNotified: Boolean = false,
     ) = evaluateAlarms(
         previous = previous,
         todayKey = TODAY,
@@ -22,6 +24,8 @@ class AlarmRulesTest {
         limitMillis = if (limitMinutes < 0) UNLIMITED_MILLIS else minutesToMillis(limitMinutes),
         intervalMinutes = intervalMinutes,
         milestonesEnabled = milestonesEnabled,
+        minutesUntilScheduleStart = minutesUntilScheduleStart,
+        scheduleStartNotified = scheduleStartNotified,
     )
 
     @Test
@@ -92,5 +96,55 @@ class AlarmRulesTest {
         val outcome = evaluate(previous = yesterday, usedMinutes = 35)
         assertEquals(TODAY, outcome.state.dateKey)
         assertEquals(1, outcome.messages.size)
+    }
+
+    // --- 예약 차단 예고 (확장 alarmRules.js의 SCHEDULE_SOON_LEAD_MINUTES 판정과 같은 자리) ---
+
+    @Test
+    fun `예고 임계값은 확장과 같은 10분이다`() {
+        assertEquals(10, SCHEDULE_SOON_LEAD_MINUTES)
+    }
+
+    @Test
+    fun `예약 차단 시작이 임계값 안으로 들어오면 예고한다`() {
+        val outcome = evaluate(
+            previous = null,
+            usedMinutes = 5,
+            minutesUntilScheduleStart = SCHEDULE_SOON_LEAD_MINUTES.toLong(),
+        )
+        assertEquals(listOf(AlarmMessage.ScheduleSoon(SCHEDULE_SOON_LEAD_MINUTES)), outcome.messages)
+    }
+
+    @Test
+    fun `남은 분이 아니라 예고 기준값을 문구에 싣는다`() {
+        val outcome = evaluate(previous = null, usedMinutes = 5, minutesUntilScheduleStart = 7)
+        assertEquals(listOf(AlarmMessage.ScheduleSoon(SCHEDULE_SOON_LEAD_MINUTES)), outcome.messages)
+    }
+
+    @Test
+    fun `임계값 밖이거나 예약이 없으면 조용하다`() {
+        assertFalse(evaluate(previous = null, usedMinutes = 5, minutesUntilScheduleStart = 11).changed)
+        assertFalse(evaluate(previous = null, usedMinutes = 5, minutesUntilScheduleStart = 0).changed)
+        assertFalse(evaluate(previous = null, usedMinutes = 5, minutesUntilScheduleStart = null).changed)
+    }
+
+    @Test
+    fun `오늘 이미 예고했으면 다시 알리지 않는다`() {
+        val outcome = evaluate(
+            previous = null,
+            usedMinutes = 5,
+            minutesUntilScheduleStart = 3,
+            scheduleStartNotified = true,
+        )
+        assertFalse(outcome.changed)
+    }
+
+    @Test
+    fun `예고는 마일스톤과 같은 틱에 함께 나갈 수 있다`() {
+        val outcome = evaluate(previous = null, usedMinutes = 35, minutesUntilScheduleStart = 4)
+        assertEquals(
+            listOf(AlarmMessage.RemainingMinutes(30), AlarmMessage.ScheduleSoon(SCHEDULE_SOON_LEAD_MINUTES)),
+            outcome.messages,
+        )
     }
 }

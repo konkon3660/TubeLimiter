@@ -259,7 +259,6 @@
     <string name="nudge_focus_ended">집중 모드가 종료되었습니다.</string>
     <string name="nudge_schedule_started">예약된 차단 시간이 시작되었습니다.</string>
     <string name="nudge_schedule_ended">예약된 차단 시간이 종료되었습니다.</string>
-    <string name="nudge_schedule_upcoming">10분 후 예약된 차단이 시작됩니다.</string>
     <string name="nudge_emergency_blocked_focus">집중 모드 중에는 긴급 시청을 쓸 수 없어요.</string>
     <string name="nudge_emergency_blocked_schedule">예약된 차단 시간에는 긴급 시청을 쓸 수 없어요.</string>
     <plurals name="nudge_emergency_cooldown">
@@ -272,5 +271,9 @@
     </plurals>
     <plurals name="alarm_remaining_minutes">
         <item quantity="other">오늘 남은 시청 시간이 %1$d분입니다.</item>
+    </plurals>
+    <!-- 분은 limit/AlarmRules.kt의 SCHEDULE_SOON_LEAD_MINUTES가 넣는다(상수를 고치면 문구도 따라온다). -->
+    <plurals name="nudge_schedule_upcoming">
+        <item quantity="other">%1$d분 후 예약된 차단이 시작됩니다.</item>
     </plurals>
 </resources>

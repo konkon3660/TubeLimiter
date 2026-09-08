@@ -203,4 +203,109 @@ class LimitHistoryTest {
     fun `음수 한도는 무제한으로 오해되지 않게 0으로 접힌다`() {
         assertEquals(0L, serializeLimitMillis(-5_000L))
     }
+
+    // --- 롤오버 정산 (UsageMonitorService.settleFinishedDays가 쓰는 계획) ---
+    //
+    // 회귀 방지 대상: 스트릭 판정이 그날 기록된 한도가 아니라 "현재 설정"으로 이뤄지면, 며칠 앱을
+    // 안 켠 사이 한도를 바꿨을 때 히트맵(기록값)과 스트릭(현재 설정)이 같은 날을 반대로 판정한다.
+    // 확장 `checkDateRolloverInner`도 같은 규칙(resolveLimitForDate)으로 맞춰져 있다.
+
+    // 정산 대상: 목~토. 오늘은 일요일이라 정산에서 빠진다.
+    private val thursday = LocalDate.parse("2026-09-03")
+    private val friday = LocalDate.parse("2026-09-04")
+    private val saturday = LocalDate.parse("2026-09-05")
+    private val settled = listOf(thursday, friday, saturday)
+    private val retainedAll = (settled + sunday).map { it.toString() }.toSet()
+
+    @Test
+    fun `기록이 있는 날은 지금 설정이 아니라 그날 한도로 정산한다`() {
+        val plan = planRolloverLimits(
+            limitHistory = mapOf(thursday.toString() to 30 * minute),
+            config = twoHours,
+            settledDates = settled,
+            today = sunday,
+            retained = retainedAll,
+        )
+        // 히트맵이 읽는 값과 같아야 한다 — 지금 설정(2시간)이 아니라 기록된 30분.
+        assertEquals(30 * minute, plan.limitsByDate.getValue(thursday.toString()))
+        assertEquals(
+            30 * minute,
+            resolveLimitForDate(
+                mapOf(thursday.toString() to 30 * minute),
+                twoHours,
+                thursday,
+            ).limitMillis,
+        )
+    }
+
+    @Test
+    fun `기록이 없던 날은 방금 남긴 값과 정확히 같은 값으로 정산한다`() {
+        val plan = planRolloverLimits(
+            limitHistory = emptyMap(),
+            config = thirtyMin,
+            settledDates = settled,
+            today = sunday,
+            retained = retainedAll,
+        )
+        settled.forEach { date ->
+            assertEquals(30 * minute, plan.limitsByDate.getValue(date.toString()))
+        }
+        // 그리고 그 값이 그대로 기록으로 남아 히트맵도 같은 판정을 하게 된다.
+        val recorded = plan.historyUpdates.associate { it.date to it.limitMillis }
+        settled.forEach { date -> assertEquals(30 * minute, recorded[date.toString()]) }
+    }
+
+    @Test
+    fun `무제한으로 기록된 날은 정산에서도 무제한이다`() {
+        val plan = planRolloverLimits(
+            limitHistory = mapOf(friday.toString() to UNLIMITED_LIMIT_SENTINEL),
+            config = thirtyMin,
+            settledDates = settled,
+            today = sunday,
+            retained = retainedAll,
+        )
+        assertEquals(UNLIMITED_MILLIS, plan.limitsByDate.getValue(friday.toString()))
+    }
+
+    @Test
+    fun `지난 날짜 기록은 keepExisting이고 오늘은 덮어쓴다`() {
+        val plan = planRolloverLimits(
+            limitHistory = emptyMap(),
+            config = thirtyMin,
+            settledDates = settled,
+            today = sunday,
+            retained = retainedAll,
+        )
+        val bySettleDate = plan.historyUpdates.associateBy { it.date }
+        settled.forEach { date -> assertTrue(bySettleDate.getValue(date.toString()).keepExisting) }
+        assertFalse(bySettleDate.getValue(sunday.toString()).keepExisting)
+    }
+
+    @Test
+    fun `보관 기간 밖의 날은 기록하지 않고 현재 설정으로 근사 판정한다`() {
+        val plan = planRolloverLimits(
+            limitHistory = emptyMap(),
+            config = twoHours,
+            settledDates = settled,
+            today = sunday,
+            // 목요일은 이미 usage_history가 버린 날이라 기록할 곳이 없다.
+            retained = setOf(friday.toString(), saturday.toString(), sunday.toString()),
+        )
+        assertFalse(plan.historyUpdates.any { it.date == thursday.toString() })
+        // 판정은 그래도 이뤄져야 한다 — 기록이 없으니 현재 설정 추정치.
+        assertEquals(120 * minute, plan.limitsByDate.getValue(thursday.toString()))
+    }
+
+    @Test
+    fun `정산할 날이 없으면 오늘 한도만 남는다`() {
+        val plan = planRolloverLimits(
+            limitHistory = emptyMap(),
+            config = thirtyMin,
+            settledDates = emptyList(),
+            today = sunday,
+            retained = retainedAll,
+        )
+        assertTrue(plan.limitsByDate.isEmpty())
+        assertEquals(listOf(sunday.toString()), plan.historyUpdates.map { it.date })
+    }
 }

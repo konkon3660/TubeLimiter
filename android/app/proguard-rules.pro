@@ -41,6 +41,18 @@
 # ---------------------------------------------------------------------------
 # ktor / supabase-kt
 # ---------------------------------------------------------------------------
+# auth/SupabaseConfig.kt의 createSupabaseClient는 엔진을 명시하지 않으므로 ktor가 HttpClient()를
+# 만들면서 엔진 구현을 **ServiceLoader로** 찾는다: ktor-client-core가
+# META-INF/services/io.ktor.client.HttpClientEngineContainer를 읽고 거기 적힌 클래스를
+# 리플렉션으로 인스턴스화한다(ktor-client-okhttp의 OkHttpEngineContainer).
+#
+# 이름으로 참조하는 코드가 어디에도 없기 때문에 R8은 이 컨테이너를 죽은 코드로 보고 지울 수
+# 있고, 그러면 릴리스 APK에서 "Failed to find HTTP client engine implementation"으로 모든
+# Supabase 호출이 실패한다. 디버그 빌드는 minify가 없어 절대 드러나지 않는 종류의 사고다.
+# ServiceLoader가 no-arg 생성자로 만들기 때문에 클래스만이 아니라 멤버까지 남겨야 한다.
+-keep class io.ktor.client.HttpClientEngineContainer
+-keep class * implements io.ktor.client.HttpClientEngineContainer { *; }
+
 -keepclassmembers class io.ktor.** { volatile <fields>; }
 -keepclassmembers class kotlinx.coroutines.** { volatile <fields>; }
 -dontwarn io.ktor.**

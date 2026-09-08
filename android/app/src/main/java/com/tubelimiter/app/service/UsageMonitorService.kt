@@ -44,6 +44,7 @@ import com.tubelimiter.app.limit.isScheduleActive
 import com.tubelimiter.app.limit.isUnlimited
 import com.tubelimiter.app.limit.minutesToMillis
 import com.tubelimiter.app.limit.minutesUntilNextScheduleStart
+import com.tubelimiter.app.limit.planRolloverLimits
 import com.tubelimiter.app.limit.resolveFocusStopTime
 import com.tubelimiter.app.limit.shouldDisableHardcore
 import com.tubelimiter.app.sync.SyncRepository
@@ -202,7 +203,6 @@ class UsageMonitorService : Service() {
         advanceFocusMode(now)
         expireEmergency(now)
         val scheduleWindow = checkScheduleTransition(settings, now)
-        checkScheduleUpcomingNudge(settings, now, todayKey)
         refreshDailyUsageSync(now, today, todayKey, snapshot.usedMillis, settings)
 
         // Re-read after the edits above so the block decision sees current state.
@@ -218,7 +218,14 @@ class UsageMonitorService : Service() {
             snapshot.usedMillis
         }
 
-        runAlarms(state, settings, todayKey, effectiveUsedMillis, limitMillis)
+        runAlarms(
+            state = state,
+            settings = settings,
+            todayKey = todayKey,
+            usedMillis = effectiveUsedMillis,
+            limitMillis = limitMillis,
+            minutesUntilScheduleStart = minutesUntilNextScheduleStart(now, settings.scheduleWindows),
+        )
 
         val inputs = BlockInputs(
             usedMillis = effectiveUsedMillis,
@@ -360,39 +367,32 @@ class UsageMonitorService : Service() {
             return
         }
 
-        // 정산되는 지난 날짜들과 새로 시작하는 오늘의 한도를 남긴다. 지난 날짜는 이미 기록이
-        // 있으면 건드리지 않는다(keepExisting) — 지금 설정은 그날 이후 바뀌었을 수 있어서, 그날
-        // 남겨둔 값이 언제나 더 정확하다. 기록이 없는 날(앱을 안 켠 날)만 아래 applyDayRollover가
-        // 쓰는 것과 같은 값으로 채워 히트맵과 스트릭 판정이 어긋나지 않게 한다.
-        // 확장 `checkDateRolloverInner`의 recordLimitHistory 호출과 같은 자리·같은 규칙이다.
-        // 보관 기간 밖의 날은 아예 적지 않는다 — usage_history가 이미 버린 날이라 그릴 곳이 없다.
+        // 정산할 날짜들. 오늘은 아직 안 끝났으므로 빠진다.
         val settledDates = generateSequence(last) { it.plusDays(1) }
             .takeWhile { it.isBefore(today) }
             .take(MAX_ROLLOVER_DAYS)
-            .filter { it.toString() in retained }
             .toList()
-        stateStore.recordLimitHistory(
-            updates = settledDates.map { date ->
-                LimitHistoryEntry(
-                    date = date.toString(),
-                    limitMillis = computeLimitMillis(settings.limit, date),
-                    keepExisting = true,
-                )
-            } + LimitHistoryEntry(today.toString(), computeLimitMillis(settings.limit, today)),
-            keepKeys = retained,
-        )
 
-        var cursor: LocalDate = last
+        // 기록과 판정을 한 곳에서 계산한다. 지난 날짜는 이미 기록이 있으면 건드리지 않고
+        // (keepExisting), 판정도 그 기록값을 그대로 쓴다 — 며칠 앱을 안 켠 사이 한도를 바꿔도
+        // 히트맵과 스트릭이 같은 날을 반대로 판정하지 않게 하려는 것이다. 자세한 근거와
+        // 확장(`checkDateRolloverInner`)과 규칙을 맞춘 이유는 planRolloverLimits 주석 참고.
+        val limitPlan = planRolloverLimits(
+            limitHistory = state.limitHistory,
+            config = settings.limit,
+            settledDates = settledDates,
+            today = today,
+            retained = retained,
+        )
+        stateStore.recordLimitHistory(updates = limitPlan.historyUpdates, keepKeys = retained)
+
         var record = state.streak
-        var processed = 0
-        while (cursor.isBefore(today) && processed < MAX_ROLLOVER_DAYS) {
+        for (cursor in settledDates) {
             val key = cursor.toString()
             val used = state.usageHistory[key] ?: 0L
-            // 스트릭 정산은 스냅샷이 아니라 **현재 설정**으로 판정한다 — 확장
-            // `checkDateRolloverInner`와 같은 규칙이다. streaks 행은 두 클라이언트가 공유하므로
-            // 한쪽만 스냅샷으로 바꾸면 같은 날에 대해 서로 다른 스트릭을 계산해 서버 값이
-            // 오간다. 위 keepExisting 기록이 "기록이 없던 날"의 판정 근거를 여기와 맞춰준다.
-            val limit = computeLimitMillis(settings.limit, cursor)
+            // 그날 기록된 한도(없으면 현재 설정 추정치). 대시보드 히트맵이 쓰는
+            // resolveLimitForDate와 **같은 함수**를 거친 값이다.
+            val limit = limitPlan.limitsByDate.getValue(key)
 
             // Matching the extension: streaks are only earned while hardcore mode is on.
             if (settings.hardcoreMode) {
@@ -419,8 +419,6 @@ class UsageMonitorService : Service() {
                     nudge(resources.getQuantityString(R.plurals.nudge_perfect_milestone, it, it))
                 }
             }
-            cursor = cursor.plusDays(1)
-            processed += 1
         }
         stateStore.setLastRolloverDate(today.toString())
     }
@@ -497,23 +495,19 @@ class UsageMonitorService : Service() {
         return activeWindow
     }
 
-    /** Same once-a-day dedupe spirit as the alarm milestones, keyed by the effective date. */
-    private suspend fun checkScheduleUpcomingNudge(settings: Settings, now: Long, todayKey: String) {
-        val minutes = minutesUntilNextScheduleStart(now, settings.scheduleWindows) ?: return
-        if (minutes <= 0 || minutes > 10) return
-
-        val state = stateStore.state.first()
-        if (state.scheduleStartNotifiedDate == todayKey) return
-        stateStore.setScheduleStartNotifiedDate(todayKey)
-        nudge(getString(R.string.nudge_schedule_upcoming))
-    }
-
+    /**
+     * 예약 차단 예고까지 [evaluateAlarms] 한 곳에서 판정한다 — 임계값
+     * ([SCHEDULE_SOON_LEAD_MINUTES])도 판정도 확장 `lib/alarmRules.js`와 같은 자리에 있어야
+     * 한쪽만 바뀌는 일이 없다. 오늘 이미 예고했는지는 안드로이드 쪽 저장 형태(날짜 키)라
+     * 읽고 쓰는 것만 여기서 한다.
+     */
     private suspend fun runAlarms(
         state: RuntimeState,
         settings: Settings,
         todayKey: String,
         usedMillis: Long,
         limitMillis: Long,
+        minutesUntilScheduleStart: Long?,
     ) {
         val outcome = evaluateAlarms(
             previous = state.alarm,
@@ -522,8 +516,13 @@ class UsageMonitorService : Service() {
             limitMillis = limitMillis,
             intervalMinutes = settings.alarmIntervalMinutes,
             milestonesEnabled = settings.alarmMilestonesEnabled,
+            minutesUntilScheduleStart = minutesUntilScheduleStart,
+            scheduleStartNotified = state.scheduleStartNotifiedDate == todayKey,
         )
         if (!outcome.changed) return
+        if (outcome.messages.any { it is AlarmMessage.ScheduleSoon }) {
+            stateStore.setScheduleStartNotifiedDate(todayKey)
+        }
         stateStore.saveAlarmState(outcome.state)
         outcome.messages.forEach { nudge(nudgeText(it)) }
     }
@@ -538,6 +537,14 @@ class UsageMonitorService : Service() {
 
         is AlarmMessage.RemainingMinutes -> resources.getQuantityString(
             R.plurals.alarm_remaining_minutes,
+            message.minutes,
+            message.minutes,
+        )
+
+        // 문구에 들어가는 분은 판정이 정한 예고 기준값이다 — 문자열에 숫자를 박아두면 상수를
+        // 고쳐도 문구가 따라오지 않는다(확장 `notify_alarm_schedule_soon`의 `$1`과 같은 이유).
+        is AlarmMessage.ScheduleSoon -> resources.getQuantityString(
+            R.plurals.nudge_schedule_upcoming,
             message.minutes,
             message.minutes,
         )

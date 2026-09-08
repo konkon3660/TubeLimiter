@@ -119,3 +119,62 @@ fun planLimitHistoryUpdate(
 
     return LimitHistoryUpdate(next, changed)
 }
+
+/**
+ * 롤오버 한 번이 남길 한도 기록([historyUpdates])과, 그 기록을 반영한 뒤 각 날짜를 판정할
+ * 한도([limitsByDate], 날짜 키 -> ms).
+ *
+ * **왜 한 함수인가**: 기록과 판정이 같은 값이어야 하기 때문이다. 예전에는 기록은
+ * `keepExisting`으로 그날 값을 지키면서 스트릭 판정만 [computeLimitMillis](=현재 설정)로 했다.
+ * 그래서 며칠 앱을 안 켠 사이 한도를 바꾸면 히트맵(기록값)과 스트릭(현재 설정)이 **같은 날을
+ * 반대로 판정**했다 — 대시보드는 초과인데 스트릭은 성공으로 세는 식이다. 이제 판정도
+ * [resolveLimitForDate]를 거친다: 기록이 있으면 그날 값, 없으면 현재 설정 추정치.
+ *
+ * **확장도 같은 규칙으로 고쳤다**(`checkDateRolloverInner`). `streaks` 행은 두 클라이언트가
+ * 공유하므로 한쪽만 스냅샷을 쓰면 같은 날에 서로 다른 스트릭을 계산해 서버 값이 오간다.
+ *
+ * [retained]에 없는 날짜(보관 기간 밖)에는 기록을 남기지 않는다 — usage_history가 이미 버린
+ * 날이라 히트맵에 그릴 곳이 없다. 그런 날은 자연히 현재 설정 추정치로 판정된다(예전과 동일).
+ * 오늘은 `keepExisting` 없이 덮어쓴다: 하루 사이에 한도를 바꿀 수 있으니 마지막 값으로
+ * 수렴시켜야 하고, 이건 매 틱 기록하는 자리와 같은 규칙이다.
+ *
+ * [limitHistory]는 아직 [historyUpdates]가 반영되지 않은 **쓰기 전** 맵을 넘긴다. 갱신 결과는
+ * 여기서 [planLimitHistoryUpdate]로 다시 계산하므로, 호출자는 DataStore를 두 번 읽지 않아도 된다.
+ */
+data class RolloverLimitPlan(
+    val historyUpdates: List<LimitHistoryEntry>,
+    val limitsByDate: Map<String, Long>,
+)
+
+fun planRolloverLimits(
+    limitHistory: Map<String, Long>,
+    config: LimitConfig,
+    settledDates: List<LocalDate>,
+    today: LocalDate,
+    retained: Set<String>,
+): RolloverLimitPlan {
+    val updates = settledDates
+        .filter { it.toString() in retained }
+        .map { date ->
+            LimitHistoryEntry(
+                date = date.toString(),
+                limitMillis = computeLimitMillis(config, date),
+                keepExisting = true,
+            )
+        } + LimitHistoryEntry(today.toString(), computeLimitMillis(config, today))
+
+    // AppState.recordLimitHistory가 쓰는 keepKeys와 같은 집합이어야 갱신 뒤의 맵이 실제 저장될
+    // 값과 일치한다(그쪽도 keepKeys에 updates의 날짜를 더한다).
+    val recorded = planLimitHistoryUpdate(
+        history = limitHistory,
+        updates = updates,
+        keepKeys = retained + updates.map { it.date },
+    ).history
+
+    return RolloverLimitPlan(
+        historyUpdates = updates,
+        limitsByDate = settledDates.associate { date ->
+            date.toString() to resolveLimitForDate(recorded, config, date).limitMillis
+        },
+    )
+}

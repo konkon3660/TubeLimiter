@@ -151,8 +151,11 @@ class RemoteModelsTest {
             payload.keys,
         )
         // Browser-only columns must stay out so the extension's values survive the upsert.
+        // documents/BACKEND.md가 "이 세 컬럼"이라고 적어둔 그 셋이다 — shorts_limit_ms까지
+        // 명시해야 새 브라우저 전용 컬럼이 payload에 섞여 들어갈 때 이 테스트가 잡아낸다.
         assertTrue("whitelist" !in payload.keys)
         assertTrue("always_block_shorts" !in payload.keys)
+        assertTrue("shorts_limit_ms" !in payload.keys)
     }
 
     @Test

@@ -50,6 +50,7 @@ import com.tubelimiter.app.data.AppState
 import com.tubelimiter.app.data.RuntimeState
 import com.tubelimiter.app.data.Settings
 import com.tubelimiter.app.diagnostics.buildDiagnosticsReport
+import com.tubelimiter.app.diagnostics.shouldClearDiagnosticsAfterSignOut
 import com.tubelimiter.app.diagnostics.staleSyncWarning
 import com.tubelimiter.app.limit.BlockInputs
 import com.tubelimiter.app.limit.blockReason
@@ -441,6 +442,16 @@ fun AppRoot() {
                         val result = authRepository.signOut()
                         if (result is AuthResult.Failed) {
                             Toast.makeText(context, result.error.text(context), Toast.LENGTH_SHORT).show()
+                        }
+                        // 세션이 실제로 사라졌으면 진단 기록도 같이 지운다. 남겨두면 이전 계정의
+                        // "마지막 성공" 시각이 다음 계정의 24시간 경고 판정에 그대로 끼어들어
+                        // 정당한 경고가 죽는다(확장 options.js의 로그아웃과 같은 규칙,
+                        // documents/BACKEND.md "로그아웃/계정 삭제 시 양쪽 다 지운다").
+                        // 판정 근거는 shouldClearDiagnosticsAfterSignOut의 주석 참고 — 실패해도
+                        // 세션이 사라지는 경우가 있어 결과 코드가 아니라 세션 유무로 가른다.
+                        // 긴급 시청 버킷 캐시는 일부러 남긴다(로그아웃이 우회로가 되면 안 된다).
+                        if (shouldClearDiagnosticsAfterSignOut(authRepository.currentUserIdOrNull() != null)) {
+                            stateStore.clearDiagnostics()
                         }
                     }
                 },

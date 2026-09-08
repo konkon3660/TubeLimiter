@@ -249,7 +249,6 @@
     <string name="nudge_focus_ended">Focus mode has ended.</string>
     <string name="nudge_schedule_started">A scheduled block has started.</string>
     <string name="nudge_schedule_ended">The scheduled block has ended.</string>
-    <string name="nudge_schedule_upcoming">A scheduled block starts in 10 minutes.</string>
     <string name="nudge_emergency_blocked_focus">Emergency passes don\'t apply during focus mode.</string>
     <string name="nudge_emergency_blocked_schedule">Emergency passes don\'t apply during a scheduled block.</string>
     <plurals name="nudge_emergency_cooldown">
@@ -265,5 +264,9 @@
     <plurals name="alarm_remaining_minutes">
         <item quantity="one">%1$d minute of watch time left today.</item>
         <item quantity="other">%1$d minutes of watch time left today.</item>
+    </plurals>
+    <plurals name="nudge_schedule_upcoming">
+        <item quantity="one">A scheduled block starts in %1$d minute.</item>
+        <item quantity="other">A scheduled block starts in %1$d minutes.</item>
     </plurals>
 </resources>
