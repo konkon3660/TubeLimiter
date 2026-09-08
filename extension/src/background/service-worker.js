@@ -49,6 +49,17 @@ import {
   resolvePlaybackAfterProbe
 } from '../lib/workerLifecycle.js';
 import { recordDiagnosticFailure, recordSyncSuccess } from '../lib/diagnosticsStore.js';
+import {
+  ACCESS_STATE,
+  readPendingFor,
+  resolveAccessState,
+  resolveSettingsSyncPlan
+} from '../lib/offlineSettings.js';
+import {
+  clearPendingSettings,
+  queuePendingSettings,
+  readPendingSettings
+} from '../lib/pendingSettingsStore.js';
 import { t, tCount } from '../lib/i18n.js';
 
 const MAX_ELAPSED_MS = 10 * 60 * 1000; // 비정상적으로 큰 elapsed 값 방어
@@ -138,16 +149,24 @@ function recordFailure(kind, step, error) {
 }
 
 /**
- * 로그인한 사용자, 없으면 null.
+ * 이 기기가 지금 서버와 어떤 관계인지 + 누구 것인지.
  *
  * supabaseClient의 getCurrentUser()는 세션이 없을 때도 갱신에 실패했을 때도 똑같이 null을 돌려줘서, 토큰 갱신이
  * 며칠째 막힌 상태가 "그냥 로그아웃"과 구별되지 않는다. 세션 자체가 없으면(=진짜 로그아웃)
  * 조용히 넘어가고, 세션은 있는데 사용자를 못 얻은 경우에만 진단에 남긴다 —
  * 안드로이드 SyncRepository.activeUserIdOrNull()과 같은 판정이다.
+ *
+ * 판정 자체는 순수 함수(lib/offlineSettings.js)로 빼뒀다. "로그아웃"과 "오프라인"을 가르는 이
+ * 한 줄이 옵션 화면의 오프라인 편집 경로 전체를 여닫는 스위치라, 화면과 백그라운드가 같은
+ * 규칙을 쓰고 테스트로 고정돼 있어야 한다(QA_REVIEW §3.3).
+ *
+ * @returns {Promise<{state: string, userId: string|null, user: object|null}>}
  */
-async function getActiveUser() {
+async function resolveAccess() {
   const { data, error } = await supabase.auth.getUser();
-  if (!error && data?.user) return data.user;
+  if (!error && data?.user) {
+    return { state: ACCESS_STATE.online, userId: data.user.id, user: data.user };
+  }
 
   // getSession()은 로컬 세션만 읽으므로(만료됐으면 갱신 시도) 여기서 네트워크가 한 번 더 나가지 않는다.
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
@@ -156,7 +175,61 @@ async function getActiveUser() {
   } else if (sessionData?.session) {
     await recordFailure(DiagnosticKind.AUTH, 'get_user', error);
   }
-  return null;
+
+  const resolved = resolveAccessState({
+    user: null,
+    userError: error,
+    session: sessionData?.session ?? null,
+    sessionError
+  });
+  return { ...resolved, user: null };
+}
+
+/** 로그인한 사용자, 없으면 null. (오프라인도 null이다 — 서버에 쓸 수 있는 상태가 아니므로) */
+async function getActiveUser() {
+  return (await resolveAccess()).user;
+}
+
+/**
+ * 오프라인 동안 로컬에만 저장했던 설정 변경을 서버에 올린다.
+ *
+ * 실패하면 대기분을 **그대로 둔다** — 다음 틱(30초)이 다시 시도한다. 지워버리면 사용자가 한
+ * 변경이 조용히 사라지는데, 그건 오프라인 편집을 열어준 이유 자체를 무너뜨린다.
+ *
+ * @returns {Promise<boolean>} 실제로 올렸으면 true
+ */
+async function flushPendingSettings(userId) {
+  const pending = readPendingFor(await readPendingSettings(), userId);
+  if (!pending) return false;
+
+  const plan = resolveSettingsSyncPlan({ pending, cached: settingsCache });
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ user_id: userId, ...plan.patch, updated_at: new Date().toISOString() });
+  if (error) {
+    console.error('[TubeLimiter] 오프라인 편집분 동기화 실패:', error);
+    await recordFailure(DiagnosticKind.SYNC_SETTINGS, 'pending_push', error);
+    return false;
+  }
+
+  // 오프라인에서 하드코어가 실제로 풀린 경우에는 스트릭 리셋도 같이 밀려 있다. 여기서 빠지면
+  // "끄면 연속 기록이 초기화된다"는 경고가 오프라인 해제에 한해 허언이 된다.
+  if (plan.resetStreak) {
+    const { error: streakError } = await supabase
+      .from('streaks')
+      .update({ current_streak: 0, current_perfect_streak: 0 })
+      .eq('user_id', userId);
+    // 설정은 이미 올라갔으므로 대기분은 비운다. 스트릭 리셋만 실패한 건 진단에 남기고 넘어간다 —
+    // 여기서 대기분을 유지하면 설정 upsert가 30초마다 무한히 되풀이된다.
+    if (streakError) await recordFailure(DiagnosticKind.SYNC_STREAK, 'pending_reset', streakError);
+  }
+
+  await clearPendingSettings();
+  await recordSyncSuccess();
+  settingsCache = plan.settings;
+  await setStorage({ settingsCache });
+  notifyUiUpdate();
+  return true;
 }
 
 let lastSettingsRefreshAt = 0;
@@ -174,6 +247,11 @@ async function refreshSettingsFromSupabase(force = false) {
   // 델타 기준선이 되어 B의 사용량이 조용히 안 올라간다(QA_REVIEW §1.3). 판정은 순수 함수에
   // 맡기고(lib/accountReset.js) 여기선 지우기와 표식 갱신만 한다.
   await applyAccountSwitchGuard(user.id);
+
+  // 오프라인 동안 쌓인 편집분이 있으면 **그것부터 서버에 올린다**. pull이 먼저 돌면 방금 사용자가
+  // 바꾼 값이 서버의 옛 값으로 덮여서 "저장했는데 되돌아왔다"가 된다(승자 규칙과 그 한계는
+  // lib/offlineSettings.js의 resolveSettingsSyncPlan 주석 참고).
+  await flushPendingSettings(user.id);
 
   const { data, error } = await supabase
     .from('settings')
@@ -577,10 +655,26 @@ async function checkHardcoreDisableCooldown() {
   const requestedAt = new Date(settingsCache.hardcore_disable_requested_at).getTime();
   if (Date.now() < requestedAt + HARDCORE_DISABLE_COOLDOWN_MS) return;
 
-  const user = await getActiveUser();
-  if (!user) return;
-
   const updated = { hardcore_mode: false, hardcore_disable_requested_at: null };
+  const access = await resolveAccess();
+
+  // 서버가 죽어 있어도 해제는 성립해야 한다. 쿨다운 판정은 원래부터 로컬 시계로 하고 있고
+  // (lib/hardcore.js), 사용자는 이미 1시간을 기다렸다. 여기서 서버를 기다리면 QA_REVIEW §3.3이
+  // 지적한 "차단은 걸려 있는데 풀 수도 없는" 상태가 그대로 남는다 — 로컬로 끄고, 스트릭 리셋까지
+  // 묶어서 대기분에 실어 보낸다(온라인 복귀 시 flushPendingSettings가 올린다).
+  //
+  // 로그아웃(세션 없음)은 여기 해당하지 않는다. 올릴 계정을 모르는 상태에서 잠금을 푸는 건
+  // "로그아웃 = 하드코어 해제"라는 우회로를 새로 여는 것이다.
+  if (access.state === ACCESS_STATE.offline) {
+    await queuePendingSettings(updated, { userId: access.userId, resetStreak: true });
+    settingsCache = { ...settingsCache, ...updated };
+    await setStorage({ settingsCache });
+    notifyUiUpdate();
+    return;
+  }
+  if (access.state !== ACCESS_STATE.online) return;
+
+  const user = access.user;
   const { error } = await supabase.from('settings').update(updated).eq('user_id', user.id);
   if (error) {
     console.error('[TubeLimiter] 하드코어 모드 해제 반영 실패:', error);

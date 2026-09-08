@@ -35,6 +35,7 @@
 // 것인지 표식(ACCOUNT_OWNER_KEY)을 남겨두고, 로그인한 user_id와 다를 때만 비운다.
 
 import { DIAGNOSTIC_STORAGE_KEYS } from './diagnosticsStore.js';
+import { PENDING_SETTINGS_KEY } from './offlineSettings.js';
 
 /**
  * 지금 이 기기의 로컬 데이터가 어느 계정의 것인지 적어두는 표식.
@@ -77,6 +78,10 @@ export const SIGN_OUT_REMOVED_KEYS = Object.freeze([...DIAGNOSTIC_STORAGE_KEYS])
 export const ACCOUNT_DELETE_REMOVED_KEYS = Object.freeze([
   // 계정 설정의 로컬 사본
   'settingsCache',
+  // 아직 서버에 못 올린 오프라인 편집분. 올릴 계정이 사라졌으니 같이 지운다 — 남겨두면 다음
+  // 계정이 로그인했을 때 남의 설정이 올라갈 뻔한 값이 계속 저장소에 남는다
+  // (readPendingFor가 user_id로 한 번 더 거르긴 하지만, 그건 보험이지 보관 이유가 아니다).
+  PENDING_SETTINGS_KEY,
 
   // 대시보드가 그리는 기록 + 그날 판정에 쓰인 한도 스냅샷.
   // 한도만 남기면 다음 계정의 새 기록이 지운 계정의 한도로 판정된다(안드로이드도 같이 지운다).

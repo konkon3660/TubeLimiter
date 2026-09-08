@@ -416,6 +416,16 @@
   "options_action_failed": {
     "message": "That didn't go through: $1"
   },
+  "options_offline_notice": {
+    "message": "Can't reach the server, so you're editing the settings stored in this browser. Blocking keeps working, and your changes sync automatically once the connection is back."
+  },
+  "options_pending_sync_notice": {
+    "message": "Changes saved at $1 are waiting to sync.",
+    "description": "$1: local time the offline edit was saved."
+  },
+  "options_saved_offline": {
+    "message": "Saved on this device — waiting to sync."
+  },
   "options_section_danger": {
     "message": "⚠️ Danger zone"
   },

@@ -1,14 +1,32 @@
-import { setStorage } from '../lib/storage.js';
-import { supabase, getCurrentUser } from '../lib/supabaseClient.js';
+import { getStorage, setStorage } from '../lib/storage.js';
+import { supabase } from '../lib/supabaseClient.js';
 import { HARDCORE_DISABLE_COOLDOWN_MS } from '../lib/hardcore.js';
+import {
+  ACCESS_STATE,
+  PENDING_SETTINGS_KEY,
+  applyPendingSettings,
+  isOfflineFailure,
+  planSettingsSave,
+  readPendingFor,
+  resolveAccessState,
+  resolveSettingsSyncPlan
+} from '../lib/offlineSettings.js';
+import {
+  clearPendingSettings,
+  queuePendingSettings,
+  readPendingSettings
+} from '../lib/pendingSettingsStore.js';
 import {
   buildDiagnosticsReport,
   diagnosticKindMessageKey,
   formatDiagnosticTime
 } from '../lib/syncDiagnostics.js';
 import { clearDiagnostics, readDiagnostics } from '../lib/diagnosticsStore.js';
-import { SIGN_OUT_REMOVED_KEYS, ACCOUNT_DELETE_REMOVED_KEYS } from '../lib/accountReset.js';
-import { isHardcoreChangeAllowed } from '../lib/hardcoreLock.js';
+import {
+  SIGN_OUT_REMOVED_KEYS,
+  ACCOUNT_DELETE_REMOVED_KEYS,
+  resolveSettingsCacheAfterPull
+} from '../lib/accountReset.js';
 import { normalizeWhitelistEntry, whitelistEntryError } from '../lib/whitelist.js';
 import { applyI18n, t, tCount } from '../lib/i18n.js';
 
@@ -17,6 +35,36 @@ applyI18n();
 const signedOutView = document.getElementById('signedOutView');
 const signedInView = document.getElementById('signedInView');
 const accountDeletedView = document.getElementById('accountDeletedView');
+
+// --- 오프라인 모드 ---
+//
+// Supabase 무료 프로젝트가 pause되면 인증부터 실패한다. 예전에는 그때 이 화면이 "로그인하세요"만
+// 띄워서, 차단은 걸려 있는데 한도도 못 바꾸고 하드코어 해제 요청조차 못 하는 상태가 됐다
+// (QA_REVIEW §3.3). 지금은 세션이 로컬에 남아 있으면 **오프라인**으로 보고 로컬 캐시로 화면을
+// 띄운 뒤, 저장은 대기분으로 받아 온라인 복귀 시 올린다.
+//
+// 판정과 승자 규칙은 전부 lib/offlineSettings.js에 있다 — 서비스워커와 같은 규칙을 써야 하고,
+// "오프라인 저장도 하드코어 관문을 탄다"는 화면 코드 안에 두면 검증할 방법이 없기 때문이다.
+
+let accessState = ACCESS_STATE.signedOut;
+let currentUserId = null;
+let pendingSync = null;
+
+/** 서버에 행이 없거나(가입 직후) 로컬 캐시조차 없을 때 폼을 채울 값. */
+const DEFAULT_FORM_SETTINGS = Object.freeze({
+  daily_limit_ms: 30 * 60000,
+  daily_limit_by_day: {},
+  daily_limit_reset_frequency: 'daily',
+  shorts_limit_ms: 0,
+  always_block_shorts: false,
+  whitelist: [],
+  emergency_config: { dailyUses: 3, resetFrequency: 'daily' },
+  alarm_interval_minutes: 0,
+  alarm_milestones_enabled: true,
+  hardcore_mode: false,
+  hardcore_disable_requested_at: null,
+  scheduled_blocks: []
+});
 
 document.getElementById('openAuthButton').addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('auth/auth.html') });
@@ -100,19 +148,73 @@ function renderHardcoreState() {
   }
 }
 
-async function updateHardcoreFields(fields) {
-  const user = await getCurrentUser();
-  if (!user) return;
+/** 설정이 바뀌었다고 백그라운드에 알린다. 서비스워커가 자고 있으면 실패할 수 있는데,
+ * settingsCache 자체는 이미 썼고 storage.onChanged가 깨워서 다시 읽으므로 무시해도 된다. */
+async function notifyBackground() {
+  await chrome.runtime.sendMessage({ action: 'settingsUpdated' }).catch(() => {});
+}
 
-  const patch = { user_id: user.id, ...fields, updated_at: new Date().toISOString() };
-  const { data, error } = await supabase.from('settings').upsert(patch).select().maybeSingle();
+/**
+ * 설정 저장의 **유일한 경로**. 온라인이면 서버 upsert, 오프라인이면 로컬 대기분에 쌓는다.
+ *
+ * 하드코어 관문(isHardcoreChangeAllowed)은 두 경로가 갈라지기 **전에** 탄다 — planSettingsSave가
+ * 그 순서를 강제한다. 여기서 오프라인만 빼주면 "인터넷을 끊고 한도를 늘린다"는 새 우회로를
+ * 우리 손으로 만드는 셈이다.
+ *
+ * @returns {Promise<{ok: boolean, offline?: boolean, violations?: Array, error?: object}>}
+ */
+async function persistSettings(patch) {
+  const plan = planSettingsSave({ accessState, current: currentSettings, patch });
+  if (plan.action === 'blocked') return { ok: false, violations: plan.violations };
+
+  if (plan.action === 'local') {
+    await saveLocally(patch, plan.settings);
+    return { ok: true, offline: true };
+  }
+
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ user_id: currentUserId, ...patch, updated_at: new Date().toISOString() });
   if (error) {
-    alert(t('options_action_failed', [error.message]));
+    // 화면을 연 뒤에 서버가 죽는 경우 — 무료 프로젝트 pause가 정확히 이렇게 온다. 사용자는 방금
+    // 명시적으로 값을 바꿨으므로 버리지 않고 대기분으로 받아둔다. 서버가 답을 한 오류(RLS 거부 등)는
+    // 진짜 실패라 그대로 보여준다.
+    if (isOfflineFailure(error)) {
+      accessState = ACCESS_STATE.offline;
+      await saveLocally(patch, plan.settings);
+      return { ok: true, offline: true };
+    }
+    return { ok: false, error };
+  }
+
+  currentSettings = plan.settings;
+  await setStorage({ settingsCache: currentSettings });
+  await notifyBackground();
+  return { ok: true, offline: false };
+}
+
+/**
+ * 오프라인 저장: 대기분에 쌓고, 로컬 캐시도 같이 갱신한다.
+ * 캐시를 함께 쓰는 이유는 차단 판정이 그 값을 보기 때문이다 — 서버에 못 올렸다고 방금 줄인 한도가
+ * 안 먹으면 사용자 입장에서는 저장이 안 된 것과 같다(storage.onChanged로 백그라운드가 바로 읽는다).
+ */
+async function saveLocally(patch, nextSettings) {
+  pendingSync = await queuePendingSettings(patch, { userId: currentUserId });
+  currentSettings = nextSettings;
+  await setStorage({ settingsCache: currentSettings });
+  await notifyBackground();
+  renderSyncState();
+}
+
+async function updateHardcoreFields(fields) {
+  const result = await persistSettings(fields);
+  if (!result.ok) {
+    const reason = result.violations
+      ? result.violations.map((violation) => t(violation.messageKey)).join(', ')
+      : result.error.message;
+    alert(t('options_action_failed', [reason]));
     return;
   }
-  currentSettings = data || { ...currentSettings, ...patch };
-  await setStorage({ settingsCache: currentSettings });
-  await chrome.runtime.sendMessage({ action: 'settingsUpdated' });
   renderHardcoreState();
 }
 
@@ -120,14 +222,17 @@ document.getElementById('enableHardcoreButton').addEventListener('click', () => 
   updateHardcoreFields({ hardcore_mode: true, hardcore_disable_requested_at: null });
 });
 document.getElementById('requestHardcoreOffButton').addEventListener('click', async () => {
-  const user = await getCurrentUser();
-  if (!user) return;
-  const { data: streak } = await supabase
-    .from('streaks')
-    .select('current_streak')
-    .eq('user_id', user.id)
-    .maybeSingle();
-  const currentStreak = streak?.current_streak || 0;
+  // 스트릭 조회는 경고 문구를 꾸미기 위한 것뿐이다. 서버가 죽어 있으면 조용히 생략한다 —
+  // 여기서 막으면 오프라인에서는 해제 요청 자체를 못 하게 되고, 그게 §3.3의 핵심 증상이다.
+  let currentStreak = 0;
+  if (accessState === ACCESS_STATE.online) {
+    const { data: streak } = await supabase
+      .from('streaks')
+      .select('current_streak')
+      .eq('user_id', currentUserId)
+      .maybeSingle();
+    currentStreak = streak?.current_streak || 0;
+  }
 
   // 영어에서도 "your 1-day streak / your 5-day streak"로 형태가 같아 단복수를 나누지 않는다.
   const streakWarning =
@@ -412,36 +517,26 @@ function collectSettings() {
 }
 
 document.getElementById('saveButton').addEventListener('click', async () => {
-  const user = await getCurrentUser();
-  if (!user) return;
+  if (accessState === ACCESS_STATE.signedOut) return;
 
   const settings = collectSettings();
   const statusEl = document.getElementById('saveStatus');
-
-  // 하드코어 잠금은 입력 disabled가 아니라 **저장 직전 판정**이 최종 관문이다. 화면에서 가리는
-  // 것만으로는 다른 탭에 열어둔 옛 옵션 페이지나 갱신 전 상태로 저장하는 경로가 남는다.
-  const lockCheck = isHardcoreChangeAllowed(currentSettings, settings);
-  if (!lockCheck.allowed) {
-    statusEl.textContent = `${t('options_hardcore_blocked')} ${lockCheck.violations
-      .map((violation) => t(violation.messageKey))
-      .join(', ')}`;
-    return;
-  }
-
   statusEl.textContent = t('options_saving');
 
-  const { error } = await supabase
-    .from('settings')
-    .upsert({ user_id: user.id, ...settings, updated_at: new Date().toISOString() });
-  if (error) {
-    statusEl.textContent = t('options_save_failed', [error.message]);
+  // 하드코어 잠금은 입력 disabled가 아니라 **저장 직전 판정**이 최종 관문이다(온라인·오프라인
+  // 공통). 화면에서 가리는 것만으로는 다른 탭에 열어둔 옛 옵션 페이지나 갱신 전 상태로 저장하는
+  // 경로가 남는다 — 판정은 persistSettings 안의 planSettingsSave가 한다.
+  const result = await persistSettings(settings);
+  if (!result.ok) {
+    statusEl.textContent = result.violations
+      ? `${t('options_hardcore_blocked')} ${result.violations
+          .map((violation) => t(violation.messageKey))
+          .join(', ')}`
+      : t('options_save_failed', [result.error.message]);
     return;
   }
 
-  currentSettings = { ...currentSettings, ...settings };
-  await setStorage({ settingsCache: currentSettings });
-  await chrome.runtime.sendMessage({ action: 'settingsUpdated' });
-  statusEl.textContent = t('options_saved');
+  statusEl.textContent = result.offline ? t('options_saved_offline') : t('options_saved');
   setTimeout(() => (statusEl.textContent = ''), 2000);
 });
 
@@ -652,9 +747,51 @@ document.getElementById('deletedSignUpButton').addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('auth/auth.html') });
 });
 
+// --- 오프라인 · 동기화 대기 표시 ---
+
+const offlineNotice = document.getElementById('offlineNotice');
+const offlineNoticeText = document.getElementById('offlineNoticeText');
+const pendingSyncText = document.getElementById('pendingSyncText');
+
+function renderSyncState() {
+  const offline = accessState === ACCESS_STATE.offline;
+  offlineNotice.style.display = offline || pendingSync ? '' : 'none';
+  offlineNoticeText.style.display = offline ? '' : 'none';
+  pendingSyncText.style.display = pendingSync ? '' : 'none';
+  if (pendingSync) {
+    pendingSyncText.textContent = t('options_pending_sync_notice', [
+      formatTimeLabel(pendingSync.updatedAtMillis)
+    ]);
+  }
+}
+
+// 백그라운드가 온라인 복귀 시 대기분을 올리면 이 키가 사라진다. 화면을 열어둔 채로 서버가
+// 살아나는 경우가 흔하므로("잠깐 끊겼다가 돌아옴"), 그때 표시를 지우고 저장 경로도 서버로 되돌린다.
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== 'local' || !changes[PENDING_SETTINGS_KEY]) return;
+  const next = readPendingFor(changes[PENDING_SETTINGS_KEY].newValue, currentUserId);
+  if (pendingSync && !next && accessState === ACCESS_STATE.offline) {
+    // 대기분을 올렸다는 건 서버에 닿았다는 뜻이다. 착각이었더라도 다음 저장이 실패하면
+    // persistSettings가 다시 오프라인으로 접는다.
+    accessState = ACCESS_STATE.online;
+  }
+  pendingSync = next;
+  renderSyncState();
+});
+
 async function init() {
-  const user = await getCurrentUser();
-  if (!user) {
+  const { data, error } = await supabase.auth.getUser();
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  const access = resolveAccessState({
+    user: data?.user ?? null,
+    userError: error,
+    session: sessionData?.session ?? null,
+    sessionError
+  });
+  accessState = access.state;
+  currentUserId = access.userId;
+
+  if (accessState === ACCESS_STATE.signedOut) {
     signedOutView.style.display = '';
     signedInView.style.display = 'none';
     return;
@@ -662,29 +799,70 @@ async function init() {
   signedOutView.style.display = 'none';
   signedInView.style.display = '';
 
-  deleteConfirmPhrase = user.email || DELETE_FALLBACK_PHRASE;
+  // 오프라인이면 서버에서 이메일을 못 받는다. 세션에 실려 있는 값으로 대신한다.
+  deleteConfirmPhrase =
+    data?.user?.email || sessionData?.session?.user?.email || DELETE_FALLBACK_PHRASE;
   deleteAccountPhraseEl.textContent = deleteConfirmPhrase;
   renderDeleteConfirmState();
 
   await renderDiagnostics();
 
-  const { data } = await supabase.from('settings').select('*').eq('user_id', user.id).maybeSingle();
-  fillForm(
-    data || {
-      daily_limit_ms: 30 * 60000,
-      daily_limit_by_day: {},
-      daily_limit_reset_frequency: 'daily',
-      shorts_limit_ms: 0,
-      always_block_shorts: false,
-      whitelist: [],
-      emergency_config: { dailyUses: 3, resetFrequency: 'daily' },
-      alarm_interval_minutes: 0,
-      alarm_milestones_enabled: true,
-      hardcore_mode: false,
-      hardcore_disable_requested_at: null,
-      scheduled_blocks: []
+  const { settingsCache } = await getStorage(['settingsCache']);
+  pendingSync = readPendingFor(await readPendingSettings(), currentUserId);
+
+  if (accessState === ACCESS_STATE.offline) {
+    // 서버를 못 읽으므로 pull은 없다. 로컬 캐시(+아직 못 올린 대기분)가 유일한 진실이다.
+    // 캐시조차 없으면 기본값으로라도 띄운다 — "아무것도 못 바꾸는 화면"보다 낫다.
+    //
+    // 한계: 이 경우 하드코어 판정의 기준값도 기본값(잠금 없음)이 된다. 다만 캐시가 없으면
+    // 백그라운드의 차단 판정도 같은 기본값을 쓰므로 애초에 잠겨 있지 않은 상태고, 캐시를 직접
+    // 지울 수 있는 사람은 이미 §1.1(확장 비활성화)로 더 빨리 빠져나간다.
+    fillForm(applyPendingSettings(settingsCache || DEFAULT_FORM_SETTINGS, pendingSync));
+    renderSyncState();
+    return;
+  }
+
+  const { data: row, error: pullError } = await supabase
+    .from('settings')
+    .select('*')
+    .eq('user_id', currentUserId)
+    .maybeSingle();
+  if (pullError && isOfflineFailure(pullError)) {
+    // 인증은 통했는데 데이터 조회에서 막힌 경우도 사용자에게는 같은 상황이다.
+    accessState = ACCESS_STATE.offline;
+    fillForm(applyPendingSettings(settingsCache || DEFAULT_FORM_SETTINGS, pendingSync));
+    renderSyncState();
+    return;
+  }
+
+  // 승자 규칙: 대기분이 있으면 그것을 서버에 올리고(사용자가 방금 한 명시적 변경이 이긴다),
+  // 없으면 기존 계약대로 서버를 pull 한다. 백그라운드도 같은 일을 하지만 upsert라 겹쳐도 무해하고,
+  // 화면을 여는 순간 표시가 바로 걷히는 편이 낫다.
+  const plan = resolveSettingsSyncPlan({ pending: pendingSync, cached: settingsCache });
+  if (plan.action === 'push') {
+    const { error: pushError } = await supabase
+      .from('settings')
+      .upsert({ user_id: currentUserId, ...plan.patch, updated_at: new Date().toISOString() });
+    if (!pushError) {
+      // 오프라인에서 하드코어가 실제로 풀렸다면 스트릭 리셋도 같이 밀려 있다. 백그라운드
+      // flushPendingSettings와 같은 처리 — 여기서 빼먹으면 옵션 화면을 먼저 여는 것이
+      // "연속 기록을 지키며 하드코어를 푸는" 방법이 된다.
+      if (plan.resetStreak) {
+        await supabase
+          .from('streaks')
+          .update({ current_streak: 0, current_perfect_streak: 0 })
+          .eq('user_id', currentUserId);
+      }
+      await clearPendingSettings();
+      pendingSync = null;
+      await setStorage({ settingsCache: plan.settings });
+      await notifyBackground();
     }
-  );
+    fillForm(plan.settings);
+  } else {
+    fillForm(resolveSettingsCacheAfterPull(settingsCache || {}, row, DEFAULT_FORM_SETTINGS));
+  }
+  renderSyncState();
 }
 
 init();

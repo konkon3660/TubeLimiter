@@ -189,6 +189,19 @@
         color: var(--gray);
       }
 
+      /* 오프라인 안내: 위험(빨강)이 아니라 "지금 상태" 알림이라 경고색으로 칠한다.
+       차단은 멀쩡히 돌고 있고 편집도 되므로 사용자를 놀라게 할 이유가 없다. */
+      #signedInView .offline-notice {
+        border-color: rgba(245, 158, 11, 0.45);
+        background: rgba(245, 158, 11, 0.07);
+      }
+      .offline-notice p {
+        margin: 0;
+      }
+      .offline-notice p + p {
+        margin-top: 6px;
+      }
+
       .schedule-item {
         border: 1px solid var(--border-color);
         border-radius: 10px;
@@ -474,6 +487,17 @@
     </div>
 
     <div id="signedInView" style="display: none">
+      <!-- 서버에 못 닿을 때(무료 프로젝트 pause 등)의 안내. 화면은 로컬 캐시로 계속 뜨고,
+         저장분은 대기했다가 연결이 돌아오면 올라간다 — 그 사실을 여기서만 알린다. -->
+      <div
+        id="offlineNotice"
+        class="control-section wide-section offline-notice"
+        style="display: none"
+      >
+        <p id="offlineNoticeText" class="input-hint" data-i18n="options_offline_notice"></p>
+        <p id="pendingSyncText" class="input-hint" style="display: none"></p>
+      </div>
+
       <div class="control-section">
         <h4 data-i18n="options_section_daily_limit"></h4>
         <div class="field-row">
