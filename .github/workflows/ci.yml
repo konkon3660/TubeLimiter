@@ -57,6 +57,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # android/local.properties is gitignored, so AGP resolves the SDK from the
+      # ANDROID_HOME the runner exports. compileSdk 37 is newer than the platforms
+      # baked into the image, so it gets installed here.
+      #
+      # This runs BEFORE the JDK step on purpose: sdkmanager is itself a Java tool
+      # and runs on whatever JAVA_HOME is current, so installing under the image's
+      # default JDK avoids betting that cmdline-tools supports JDK 25. Gradle picks
+      # up its own JDK from the next step regardless.
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-37 build-tools;37.0.0'
+
       # 25 matches the toolchainVersion pinned in gradle/gradle-daemon-jvm.properties
       # so the daemon does not auto-provision a JDK from foojay. Unrelated to the
       # compile target, which stays at Java 17 bytecode.
@@ -68,20 +81,6 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-
-      # android/local.properties is gitignored, so AGP resolves the SDK from the
-      # ANDROID_HOME env var that the runner image already exports. compileSdk 37
-      # is newer than the platforms preinstalled on the image, so install it here.
-      # Matching build-tools are fetched by AGP's own SDK auto-download.
-      - name: Install Android SDK platform 37
-        working-directory: .
-        run: |
-          set -euo pipefail
-          echo "ANDROID_HOME=${ANDROID_HOME:-<unset>}"
-          sdkmanager="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort | tail -n 1)"
-          echo "Using $sdkmanager"
-          yes | "$sdkmanager" --licenses > /dev/null 2>&1 || true
-          "$sdkmanager" --install "platform-tools" "platforms;android-37"
 
       # gradlew is committed with mode 100644, so it is not executable on checkout.
       - name: Make gradlew executable
