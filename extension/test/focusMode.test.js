@@ -12,7 +12,10 @@ test('no stop request means the natural end time wins unchanged', () => {
 });
 
 test('a stop request with no natural end resolves to the cooldown end', () => {
-  assert.equal(resolveFocusStopTime(null, 1000, FOCUS_STOP_COOLDOWN_MS), 1000 + FOCUS_STOP_COOLDOWN_MS);
+  assert.equal(
+    resolveFocusStopTime(null, 1000, FOCUS_STOP_COOLDOWN_MS),
+    1000 + FOCUS_STOP_COOLDOWN_MS
+  );
 });
 
 test('cooldown end wins when the natural end is further away', () => {

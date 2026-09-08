@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { EMERGENCY_GRANT_COOLDOWN_MS, EMERGENCY_DURATION_MS, emergencyOverlapMs } from '../src/lib/emergency.js';
+import {
+  EMERGENCY_GRANT_COOLDOWN_MS,
+  EMERGENCY_DURATION_MS,
+  emergencyOverlapMs
+} from '../src/lib/emergency.js';
 
 test('EMERGENCY_GRANT_COOLDOWN_MS is a 15 second cooldown', () => {
   assert.equal(EMERGENCY_GRANT_COOLDOWN_MS, 15 * 1000);
@@ -28,7 +32,10 @@ test('emergencyOverlapMs clips a segment that runs past the grant window', () =>
 });
 
 test('emergencyOverlapMs is zero outside the window or when no grant was ever issued', () => {
-  assert.equal(emergencyOverlapMs(T0 + EMERGENCY_DURATION_MS + 1, T0 + EMERGENCY_DURATION_MS + 60000, T0), 0);
+  assert.equal(
+    emergencyOverlapMs(T0 + EMERGENCY_DURATION_MS + 1, T0 + EMERGENCY_DURATION_MS + 60000, T0),
+    0
+  );
   assert.equal(emergencyOverlapMs(T0 - 120000, T0 - 60000, T0), 0);
   // 긴급 시청을 한 번도 안 쓴 상태 - last_emergency_granted_at이 비어 있다.
   assert.equal(emergencyOverlapMs(T0, T0 + 60000, undefined), 0);

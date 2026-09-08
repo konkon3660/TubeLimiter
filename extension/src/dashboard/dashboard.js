@@ -111,9 +111,9 @@ function formatDayBreakdown(usageMs, limitMs, emergencyMs, emergencyUses, limitE
       emergencyUses === null
         ? t('dashboard_breakdown_emergency', [formatMinutes(emergencyMs)])
         : t(pluralMessageKey('dashboard_breakdown_emergency_with_uses', emergencyUses), [
-          formatMinutes(emergencyMs),
-          String(emergencyUses)
-        ])
+            formatMinutes(emergencyMs),
+            String(emergencyUses)
+          ])
     );
     parts.push(t('dashboard_breakdown_counted', [formatMinutes(ownMs)]));
   }
@@ -127,10 +127,13 @@ function formatDayBreakdown(usageMs, limitMs, emergencyMs, emergencyUses, limitE
 
 /** 그날의 판정을 한 마디로. 툴팁 첫 줄에 날짜와 나란히 들어간다. */
 function dayStatusLabel(usage, limit, emergencyMs, emergencyUses) {
-  if (isPerfectDay(usage, limit, emergencyMs, emergencyUses ?? 0)) return t('dashboard_status_perfect');
+  if (isPerfectDay(usage, limit, emergencyMs, emergencyUses ?? 0))
+    return t('dashboard_status_perfect');
   if (!isDaySuccess(usage, limit, emergencyMs)) return t('dashboard_status_over');
   if (emergencyUses > 0) {
-    return t(pluralMessageKey('dashboard_status_success_with_emergency', emergencyUses), [String(emergencyUses)]);
+    return t(pluralMessageKey('dashboard_status_success_with_emergency', emergencyUses), [
+      String(emergencyUses)
+    ]);
   }
   return t('dashboard_status_success');
 }
@@ -148,7 +151,11 @@ async function renderHeatmap(usageHistory, settings, emergencyHistory = {}, limi
     if (usage !== undefined) {
       // 그날 실제로 적용됐던 한도가 남아 있으면 그 값으로 판정한다. 기록이 없는 옛 날짜만
       // 지금 설정으로 근사 판정하고(estimated), 그런 날은 툴팁에 추정이라고 밝힌다.
-      const { limitMs: limit, estimated: limitEstimated } = resolveLimitForDate(limitHistory, settings, date);
+      const { limitMs: limit, estimated: limitEstimated } = resolveLimitForDate(
+        limitHistory,
+        settings,
+        date
+      );
       // 스트릭과 같은 규칙으로 판정한다: 긴급 시청 시간은 빼고 보되(실패 아님),
       // 긴급 시청을 쓴 날은 완벽한 날이 아니라 한 단계 옅게 표시된다.
       const emergency = emergencyHistory[date] || {};
@@ -159,7 +166,13 @@ async function renderHeatmap(usageHistory, settings, emergencyHistory = {}, limi
       // 판정 근거를 툴팁에 그대로 적는다. 초과로 뜬 날이 "긴급 시청분을 빼고도 넘긴" 건지
       // "긴급 기록이 없는" 건지 화면에서 바로 구분되지 않으면, 규칙을 아는 사람만 읽을 수 있는
       // 히트맵이 된다 (실제로 긴급 시청을 쓴 날이 왜 실패인지 묻는 일이 있었다).
-      const breakdown = formatDayBreakdown(usage, limit, emergencyMs, emergencyUses, limitEstimated);
+      const breakdown = formatDayBreakdown(
+        usage,
+        limit,
+        emergencyMs,
+        emergencyUses,
+        limitEstimated
+      );
       if (isPerfectDay(usage, limit, emergencyMs, emergencyUses ?? 0)) {
         cell.classList.add('perfect');
       } else if (isDaySuccess(usage, limit, emergencyMs)) {
@@ -192,14 +205,21 @@ function createBadge(emoji, className, caption, title) {
 }
 
 async function renderBadges(userId) {
-  const { data: unlocked } = await supabase.from('achievements').select('key').eq('user_id', userId);
+  const { data: unlocked } = await supabase
+    .from('achievements')
+    .select('key')
+    .eq('user_id', userId);
   const unlockedKeys = new Set((unlocked || []).map((r) => r.key));
   const grid = document.getElementById('badgeGrid');
   grid.innerHTML = '';
   STREAK_MILESTONES.forEach((days) => {
     const key = milestoneAchievementKey(days);
     grid.appendChild(
-      createBadge('🏅', 'badge-item' + (unlockedKeys.has(key) ? ' unlocked' : ''), tCount('days', days))
+      createBadge(
+        '🏅',
+        'badge-item' + (unlockedKeys.has(key) ? ' unlocked' : ''),
+        tCount('days', days)
+      )
     );
   });
   // 완벽한 날(긴급 시청 0회) 연속 기록 뱃지 — 스트릭 뱃지와 같은 그리드에 이어서 붙인다.
@@ -243,7 +263,9 @@ function renderChart(usageHistory, settings, limitHistory = {}) {
       labels: dates.map((d) => d.slice(5)),
       datasets: [
         {
-          label: isPercent ? t('dashboard_chart_label_percent') : t('dashboard_chart_label_minutes'),
+          label: isPercent
+            ? t('dashboard_chart_label_percent')
+            : t('dashboard_chart_label_minutes'),
           data: values,
           backgroundColor: '#f97316',
           borderRadius: 4
@@ -402,7 +424,11 @@ async function init() {
   document.getElementById('streakLockedHint').style.display = hardcoreMode ? 'none' : '';
 
   if (hardcoreMode) {
-    const { data: streak } = await supabase.from('streaks').select('*').eq('user_id', user.id).maybeSingle();
+    const { data: streak } = await supabase
+      .from('streaks')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle();
     const currentStreak = streak?.current_streak || 0;
     const bestStreak = streak?.best_streak || 0;
     const totalSuccess = streak?.total_success_days || 0;
@@ -425,10 +451,12 @@ async function init() {
     document.getElementById('perfectDays').textContent = streak?.perfect_days || 0;
     document.getElementById('levelNumber').textContent = level;
     document.getElementById('xpLabel').textContent = `${xpIntoLevel}/${xpForNextLevel} XP`;
-    document.getElementById('xpBarFill').style.width = `${Math.min(100, (xpIntoLevel / xpForNextLevel) * 100)}%`;
+    document.getElementById('xpBarFill').style.width =
+      `${Math.min(100, (xpIntoLevel / xpForNextLevel) * 100)}%`;
 
     const tier = getLevelTier(level);
-    document.getElementById('levelTierBadge').textContent = `${tier.emoji} ${t(TIER_MESSAGE_KEYS[tier.key])}`;
+    document.getElementById('levelTierBadge').textContent =
+      `${tier.emoji} ${t(TIER_MESSAGE_KEYS[tier.key])}`;
     const streakSectionEl = document.getElementById('streakSection');
     streakSectionEl.className = streakSectionEl.className.replace(/\btier-\S+/g, '').trim();
     streakSectionEl.classList.add(`tier-${tier.key}`);

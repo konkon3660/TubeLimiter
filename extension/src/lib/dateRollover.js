@@ -78,7 +78,14 @@ export const DEFAULT_EMERGENCY_USES = 3;
  * @param {string} inputs.monthStart
  * @returns {{shouldReset: boolean, resetDate: string, uses: number}}
  */
-export function planEmergencyReset({ lastResetDate, frequency, dailyUses, today, weekStart, monthStart }) {
+export function planEmergencyReset({
+  lastResetDate,
+  frequency,
+  dailyUses,
+  today,
+  weekStart,
+  monthStart
+}) {
   const resetDate = emergencyResetDate(frequency, { today, weekStart, monthStart });
   return {
     shouldReset: lastResetDate !== resetDate,

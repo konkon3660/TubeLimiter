@@ -25,7 +25,7 @@ test('a falsy syncedMillis (0) is treated as a zero baseline, not skipped', () =
   assert.equal(usageDeltaSinceSync(12_000, '2026-09-03', 0, '2026-09-03'), 12_000);
 });
 
-test('combined usage adds only the other devices\' share on top of the local figure', () => {
+test("combined usage adds only the other devices' share on top of the local figure", () => {
   // This device already told the server about 20s; the server total is 50s, so the
   // other 30s came from elsewhere and should be added to whatever this device sees now.
   assert.equal(combinedUsedMillis(25_000, 20_000, 50_000), 55_000);

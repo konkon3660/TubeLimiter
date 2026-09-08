@@ -129,7 +129,10 @@ test('HTML의 data-i18n 키가 두 로케일에 모두 있다', () => {
 
 test("코드가 t('키')로 직접 부르는 키가 두 로케일에 모두 있다", () => {
   assert.ok(directCallKeys.size > 0, "t('키') 호출을 하나도 못 찾았다 — 정규식이 낡았을 수 있다");
-  for (const lang of [['ko', ko], ['en', en]]) {
+  for (const lang of [
+    ['ko', ko],
+    ['en', en]
+  ]) {
     const missing = [...directCallKeys].filter((key) => !(key in lang[1]));
     assert.deepEqual(missing, [], `${lang[0]}에 없는 키`);
   }
@@ -137,7 +140,10 @@ test("코드가 t('키')로 직접 부르는 키가 두 로케일에 모두 있�
 
 test('tCount/pluralMessageKey가 쓰는 base마다 _one·_other가 두 로케일에 다 있다', () => {
   assert.ok(pluralCallKeys.size > 0);
-  for (const lang of [['ko', ko], ['en', en]]) {
+  for (const lang of [
+    ['ko', ko],
+    ['en', en]
+  ]) {
     const missing = [];
     for (const base of pluralCallKeys) {
       for (const suffix of ['one', 'other']) {

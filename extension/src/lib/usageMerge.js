@@ -4,7 +4,7 @@
 // 서버에 아직 알리지 않은 오늘치 사용량만 델타로 돌려준다.
 // 날짜가 바뀌면(syncedDate !== today) 기준을 0으로 되돌린다.
 export function usageDeltaSinceSync(localUsedMs, syncedDate, syncedMs, today) {
-  const baseline = syncedDate === today ? (syncedMs || 0) : 0;
+  const baseline = syncedDate === today ? syncedMs || 0 : 0;
   return Math.max(0, localUsedMs - baseline);
 }
 

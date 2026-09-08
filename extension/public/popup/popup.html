@@ -1,123 +1,152 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
-  <meta charset="UTF-8">
-  <title>TubeLimiter</title>
-  <link rel="stylesheet" href="/assets/common.css">
-  <link rel="stylesheet" href="/assets/popup_animations.css">
-  <link rel="stylesheet" href="/assets/gamify.css">
-  <style>
-    /* 동기화 지연 경고. 공용 CSS(assets/common.css)에 넣지 않고 여기 둔 이유는 이 한 줄이
+  <head>
+    <meta charset="UTF-8" />
+    <title>TubeLimiter</title>
+    <link rel="stylesheet" href="/assets/common.css" />
+    <link rel="stylesheet" href="/assets/popup_animations.css" />
+    <link rel="stylesheet" href="/assets/gamify.css" />
+    <style>
+      /* 동기화 지연 경고. 공용 CSS(assets/common.css)에 넣지 않고 여기 둔 이유는 이 한 줄이
        팝업 전용이기 때문이다. 경고색(빨강)이 아니라 주의색(주황)에 옅은 배경 — 사용자가
        지금 뭘 잘못한 게 아니라 그냥 알려주는 것이라 시선을 뺏지 않아야 한다. */
-    .sync-warning {
-      margin: 0 0 10px;
-      padding: 8px 10px;
-      border-radius: 8px;
-      border: 1px solid rgba(245, 158, 11, 0.35);
-      background: rgba(245, 158, 11, 0.08);
-      color: var(--warning-color);
-      font-size: 0.82em;
-      line-height: 1.45;
-    }
-  </style>
-</head>
-<body>
-  <div class="header"><div style="position: relative; z-index: 1;">🎯 TubeLimiter</div></div>
+      .sync-warning {
+        margin: 0 0 10px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid rgba(245, 158, 11, 0.35);
+        background: rgba(245, 158, 11, 0.08);
+        color: var(--warning-color);
+        font-size: 0.82em;
+        line-height: 1.45;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header"><div style="position: relative; z-index: 1">🎯 TubeLimiter</div></div>
 
-  <div id="signedOutView" style="display:none;">
-    <div class="auth-box">
-      <p data-i18n="popup_signed_out_desc"></p>
-      <button id="openAuthButton" class="btn-primary" data-i18n="action_sign_in_or_up"></button>
-    </div>
-  </div>
-
-  <div id="signedInView" style="display:none;">
-    <div class="tab-nav">
-      <button class="tab-button active" data-tab="status" data-i18n="popup_tab_status"></button>
-      <button class="tab-button" data-tab="controls" data-i18n="popup_tab_controls"></button>
+    <div id="signedOutView" style="display: none">
+      <div class="auth-box">
+        <p data-i18n="popup_signed_out_desc"></p>
+        <button id="openAuthButton" class="btn-primary" data-i18n="action_sign_in_or_up"></button>
+      </div>
     </div>
 
-    <div id="status" class="tab-content active">
-      <!-- 로그인했는데 마지막 동기화 성공이 24시간을 넘겼을 때만 뜨는 한 줄. 겁주지 않고
-           사실만 말한다 — 그냥 오프라인이었을 수도 있다. 판정은 lib/syncDiagnostics.js. -->
-      <div id="syncWarning" class="sync-warning" style="display:none;"></div>
-
-      <div id="streakSection" style="display:none;">
-        <div class="streak-hero">
-          <div class="streak-number" id="streakNumber">0</div>
-          <!-- "N일 연속 · 최고 M일"은 어순도 단복수도 언어마다 달라 한 줄을 통째로
-               popup.js가 채운다 (조각을 이어붙이면 영어에서 어순이 깨진다). -->
-          <div class="streak-caption" id="streakCaption"></div>
-        </div>
-        <div class="xp-bar-track"><div class="xp-bar-fill" id="xpBarFill" style="width:0%"></div></div>
-        <div class="streak-caption" style="text-align:center; margin-top:4px;">Lv.<span id="levelNumber">1</span> · <span id="xpLabel">0/100 XP</span></div>
+    <div id="signedInView" style="display: none">
+      <div class="tab-nav">
+        <button class="tab-button active" data-tab="status" data-i18n="popup_tab_status"></button>
+        <button class="tab-button" data-tab="controls" data-i18n="popup_tab_controls"></button>
       </div>
 
-      <div class="progress-section-center" style="margin-top:12px;">
-        <div class="progress-circle-small" id="progressCircle">
-          <div class="progress-content">
-            <div class="progress-time" id="untilBlock">—</div>
-            <div class="progress-label" data-i18n="popup_until_block_label"></div>
+      <div id="status" class="tab-content active">
+        <!-- 로그인했는데 마지막 동기화 성공이 24시간을 넘겼을 때만 뜨는 한 줄. 겁주지 않고
+           사실만 말한다 — 그냥 오프라인이었을 수도 있다. 판정은 lib/syncDiagnostics.js. -->
+        <div id="syncWarning" class="sync-warning" style="display: none"></div>
+
+        <div id="streakSection" style="display: none">
+          <div class="streak-hero">
+            <div class="streak-number" id="streakNumber">0</div>
+            <!-- "N일 연속 · 최고 M일"은 어순도 단복수도 언어마다 달라 한 줄을 통째로
+               popup.js가 채운다 (조각을 이어붙이면 영어에서 어순이 깨진다). -->
+            <div class="streak-caption" id="streakCaption"></div>
+          </div>
+          <div class="xp-bar-track">
+            <div class="xp-bar-fill" id="xpBarFill" style="width: 0%"></div>
+          </div>
+          <div class="streak-caption" style="text-align: center; margin-top: 4px">
+            Lv.<span id="levelNumber">1</span> · <span id="xpLabel">0/100 XP</span>
+          </div>
+        </div>
+
+        <div class="progress-section-center" style="margin-top: 12px">
+          <div class="progress-circle-small" id="progressCircle">
+            <div class="progress-content">
+              <div class="progress-time" id="untilBlock">—</div>
+              <div class="progress-label" data-i18n="popup_until_block_label"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="quick-stats-grid">
+          <div class="stat-row">
+            <span class="stat-label" data-i18n="popup_stat_today_usage"></span>
+            <span class="stat-value" id="usageTime">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label" data-i18n="popup_stat_today_shorts"></span>
+            <span class="stat-value" id="shortsUsage">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label" data-i18n="popup_stat_emergency_left"></span>
+            <span class="stat-value" id="emergencyCount">—</span>
+          </div>
+        </div>
+
+        <div class="status-badges">
+          <div class="badge-row">
+            <span class="badge-label" data-i18n="popup_badge_tracking_label"></span>
+            <div id="consumingStatus">
+              <span class="status-badge status-inactive" data-i18n="status_idle"></span>
+            </div>
+          </div>
+          <div class="badge-row">
+            <span class="badge-label" data-i18n="popup_badge_mode_label"></span>
+            <div id="modeStatus">
+              <span class="status-badge status-inactive" data-i18n="status_off"></span>
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="quick-stats-grid">
-        <div class="stat-row">
-          <span class="stat-label" data-i18n="popup_stat_today_usage"></span>
-          <span class="stat-value" id="usageTime">—</span>
+      <div id="controls" class="tab-content">
+        <div class="control-section">
+          <h4 data-i18n="popup_section_emergency"></h4>
+          <button
+            id="emergencyButton"
+            class="btn-primary"
+            data-i18n="action_request_emergency"
+          ></button>
         </div>
-        <div class="stat-row">
-          <span class="stat-label" data-i18n="popup_stat_today_shorts"></span>
-          <span class="stat-value" id="shortsUsage">—</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label" data-i18n="popup_stat_emergency_left"></span>
-          <span class="stat-value" id="emergencyCount">—</span>
-        </div>
-      </div>
 
-      <div class="status-badges">
-        <div class="badge-row">
-          <span class="badge-label" data-i18n="popup_badge_tracking_label"></span>
-          <div id="consumingStatus"><span class="status-badge status-inactive" data-i18n="status_idle"></span></div>
+        <div class="control-section">
+          <h4 data-i18n="popup_section_focus"></h4>
+          <div class="input-group">
+            <label for="focusModeDelayInput" data-i18n="popup_focus_delay_label"></label>
+            <input type="number" id="focusModeDelayInput" min="0" max="120" value="0" />
+          </div>
+          <div class="input-group">
+            <label for="focusModeDurationInput" data-i18n="popup_focus_duration_label"></label>
+            <input type="number" id="focusModeDurationInput" min="1" max="480" value="30" />
+          </div>
+          <button
+            id="startFocusModeButton"
+            class="btn-primary"
+            data-i18n="action_start_focus"
+          ></button>
+          <button
+            id="stopFocusModeButton"
+            class="btn-danger"
+            data-i18n="action_stop_focus"
+          ></button>
+          <button
+            id="cancelFocusStopButton"
+            class="btn-secondary"
+            style="display: none"
+            data-i18n="action_cancel_stop_request"
+          ></button>
         </div>
-        <div class="badge-row">
-          <span class="badge-label" data-i18n="popup_badge_mode_label"></span>
-          <div id="modeStatus"><span class="status-badge status-inactive" data-i18n="status_off"></span></div>
-        </div>
-      </div>
-    </div>
 
-    <div id="controls" class="tab-content">
-      <div class="control-section">
-        <h4 data-i18n="popup_section_emergency"></h4>
-        <button id="emergencyButton" class="btn-primary" data-i18n="action_request_emergency"></button>
-      </div>
-
-      <div class="control-section">
-        <h4 data-i18n="popup_section_focus"></h4>
-        <div class="input-group">
-          <label for="focusModeDelayInput" data-i18n="popup_focus_delay_label"></label>
-          <input type="number" id="focusModeDelayInput" min="0" max="120" value="0">
+        <div class="footer-in-tab">
+          <button
+            id="viewDashboardButton"
+            class="btn-secondary"
+            data-i18n="action_open_dashboard"
+          ></button>
+          <button id="optionsButton" class="btn-secondary" data-i18n="action_open_options"></button>
         </div>
-        <div class="input-group">
-          <label for="focusModeDurationInput" data-i18n="popup_focus_duration_label"></label>
-          <input type="number" id="focusModeDurationInput" min="1" max="480" value="30">
-        </div>
-        <button id="startFocusModeButton" class="btn-primary" data-i18n="action_start_focus"></button>
-        <button id="stopFocusModeButton" class="btn-danger" data-i18n="action_stop_focus"></button>
-        <button id="cancelFocusStopButton" class="btn-secondary" style="display:none;" data-i18n="action_cancel_stop_request"></button>
-      </div>
-
-      <div class="footer-in-tab">
-        <button id="viewDashboardButton" class="btn-secondary" data-i18n="action_open_dashboard"></button>
-        <button id="optionsButton" class="btn-secondary" data-i18n="action_open_options"></button>
       </div>
     </div>
-  </div>
 
-  <script src="/popup/popup.js" type="module"></script>
-</body>
+    <script src="/popup/popup.js" type="module"></script>
+  </body>
 </html>

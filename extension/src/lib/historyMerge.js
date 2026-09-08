@@ -83,7 +83,10 @@ export function mergeHistories(local, serverRows) {
   ]);
   dates.forEach((date) => {
     const localEntry = localEmergency[date];
-    const ms = Math.max(toNonNegativeNumber(localEntry?.ms), toNonNegativeNumber(byDate[date]?.emergency_ms));
+    const ms = Math.max(
+      toNonNegativeNumber(localEntry?.ms),
+      toNonNegativeNumber(byDate[date]?.emergency_ms)
+    );
     const knownLocally = localEntry !== undefined || localUsage[date] !== undefined;
     emergency[date] = { ms, uses: knownLocally ? toNonNegativeNumber(localEntry?.uses) : null };
   });

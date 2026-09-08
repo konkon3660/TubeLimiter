@@ -66,7 +66,7 @@ export function getLevelProgress(totalXp) {
 
 function levelThreshold(level) {
   const n = level - 1;
-  return 100 * (n * (n + 1)) / 2;
+  return (100 * (n * (n + 1))) / 2;
 }
 
 /**
@@ -94,7 +94,11 @@ export function isPerfectDay(usageMs, limitMs, emergencyMs = 0, emergencyUses = 
  * 완벽한 날 스트릭(perfect)도 같은 방식으로 별도 관리된다 — 긴급 시청을 쓴 날은 성공이지만
  * 완벽하진 않으므로 current_streak은 이어지고 current_perfect_streak만 0으로 끊긴다.
  */
-export async function applyDayRollover(supabase, userId, { date, usageMs, limitMs, emergencyMs = 0, emergencyUses = 0 }) {
+export async function applyDayRollover(
+  supabase,
+  userId,
+  { date, usageMs, limitMs, emergencyMs = 0, emergencyUses = 0 }
+) {
   const success = isDaySuccess(usageMs, limitMs, emergencyMs);
   const perfect = isPerfectDay(usageMs, limitMs, emergencyMs, emergencyUses);
 
@@ -130,11 +134,10 @@ export async function applyDayRollover(supabase, userId, { date, usageMs, limitM
   const nextPerfectDays = (prev.perfect_days || 0) + (perfect ? 1 : 0);
   // 안 쓴 시간만큼 XP + 스트릭 이어가는 중이면 스트릭 일수만큼 추가 XP
   const streakBonusXp = success ? nextStreak : 0;
-  let nextXp = prev.xp + unusedTimeXpBonus(usageMs, limitMs) + streakBonusXp + (perfect ? PERFECT_DAY_XP : 0);
+  let nextXp =
+    prev.xp + unusedTimeXpBonus(usageMs, limitMs) + streakBonusXp + (perfect ? PERFECT_DAY_XP : 0);
 
-  const newlyHitMilestones = success
-    ? STREAK_MILESTONES.filter((m) => m === nextStreak)
-    : [];
+  const newlyHitMilestones = success ? STREAK_MILESTONES.filter((m) => m === nextStreak) : [];
   for (const m of newlyHitMilestones) {
     nextXp += milestoneXpBonus(m);
   }
@@ -161,11 +164,21 @@ export async function applyDayRollover(supabase, userId, { date, usageMs, limitM
 
   const unlockedAchievements = [];
   const rows = [
-    ...newlyHitMilestones.map((m) => ({ user_id: userId, key: milestoneAchievementKey(m), unlocked_at: new Date().toISOString() })),
-    ...newlyHitPerfectMilestones.map((m) => ({ user_id: userId, key: perfectAchievementKey(m), unlocked_at: new Date().toISOString() }))
+    ...newlyHitMilestones.map((m) => ({
+      user_id: userId,
+      key: milestoneAchievementKey(m),
+      unlocked_at: new Date().toISOString()
+    })),
+    ...newlyHitPerfectMilestones.map((m) => ({
+      user_id: userId,
+      key: perfectAchievementKey(m),
+      unlocked_at: new Date().toISOString()
+    }))
   ];
   if (rows.length > 0) {
-    const { error } = await supabase.from('achievements').upsert(rows, { onConflict: 'user_id,key', ignoreDuplicates: true });
+    const { error } = await supabase
+      .from('achievements')
+      .upsert(rows, { onConflict: 'user_id,key', ignoreDuplicates: true });
     if (!error) unlockedAchievements.push(...rows.map((r) => r.key));
   }
 

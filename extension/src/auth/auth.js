@@ -13,7 +13,8 @@ let mode = 'signIn';
 
 function render() {
   submitButton.textContent = mode === 'signIn' ? t('auth_sign_in') : t('auth_sign_up');
-  switchModeLink.textContent = mode === 'signIn' ? t('auth_switch_to_sign_up') : t('auth_switch_to_sign_in');
+  switchModeLink.textContent =
+    mode === 'signIn' ? t('auth_switch_to_sign_up') : t('auth_switch_to_sign_in');
 }
 
 switchModeLink.addEventListener('click', () => {

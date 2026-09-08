@@ -1,26 +1,41 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
-  <meta charset="UTF-8">
-  <title data-i18n="auth_page_title"></title>
-  <link rel="stylesheet" href="/assets/common.css">
-  <link rel="stylesheet" href="/assets/gamify.css">
-  <style>
-    body { width: auto; min-width: 320px; }
-  </style>
-</head>
-<body>
-  <div class="header"><div style="position: relative; z-index: 1;">🎯 TubeLimiter</div></div>
+  <head>
+    <meta charset="UTF-8" />
+    <title data-i18n="auth_page_title"></title>
+    <link rel="stylesheet" href="/assets/common.css" />
+    <link rel="stylesheet" href="/assets/gamify.css" />
+    <style>
+      body {
+        width: auto;
+        min-width: 320px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header"><div style="position: relative; z-index: 1">🎯 TubeLimiter</div></div>
 
-  <div class="auth-box">
-    <input type="email" id="email" data-i18n-placeholder="auth_email_placeholder" placeholder="" autocomplete="email" />
-    <input type="password" id="password" data-i18n-placeholder="auth_password_placeholder" placeholder="" autocomplete="current-password" />
-    <div class="auth-error" id="authError"></div>
-    <!-- 두 버튼 문구는 로그인/회원가입 모드에 따라 auth.js가 다시 채운다. -->
-    <button id="submitButton" class="btn-primary" data-i18n="auth_sign_in"></button>
-    <div class="auth-switch" id="switchModeLink" data-i18n="auth_switch_to_sign_up"></div>
-  </div>
+    <div class="auth-box">
+      <input
+        type="email"
+        id="email"
+        data-i18n-placeholder="auth_email_placeholder"
+        placeholder=""
+        autocomplete="email"
+      />
+      <input
+        type="password"
+        id="password"
+        data-i18n-placeholder="auth_password_placeholder"
+        placeholder=""
+        autocomplete="current-password"
+      />
+      <div class="auth-error" id="authError"></div>
+      <!-- 두 버튼 문구는 로그인/회원가입 모드에 따라 auth.js가 다시 채운다. -->
+      <button id="submitButton" class="btn-primary" data-i18n="auth_sign_in"></button>
+      <div class="auth-switch" id="switchModeLink" data-i18n="auth_switch_to_sign_up"></div>
+    </div>
 
-  <script src="/auth/auth.js" type="module"></script>
-</body>
+    <script src="/auth/auth.js" type="module"></script>
+  </body>
 </html>

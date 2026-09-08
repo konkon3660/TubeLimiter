@@ -75,7 +75,12 @@ export function resolveLimitForDate(limitHistory, settings, date) {
  * @param {number} retentionDays 보관 일수
  * @returns {{history: object, changed: boolean}}
  */
-export function planLimitHistoryUpdate(history, updates, today, retentionDays = LIMIT_HISTORY_RETENTION_DAYS) {
+export function planLimitHistoryUpdate(
+  history,
+  updates,
+  today,
+  retentionDays = LIMIT_HISTORY_RETENTION_DAYS
+) {
   const next = { ...(history || {}) };
   let changed = false;
 

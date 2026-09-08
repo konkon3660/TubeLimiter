@@ -137,7 +137,10 @@ test('새 실패는 맨 앞(최신)에 들어간다', () => {
     kind: DiagnosticKind.SYNC_USAGE,
     code: 'b'
   });
-  assert.deepEqual(second.map((e) => e.code), ['b', 'a']);
+  assert.deepEqual(
+    second.map((e) => e.code),
+    ['b', 'a']
+  );
 });
 
 test('같은 (종류, 코드)는 새로 쌓지 않고 count만 올리고 시각을 갱신한다', () => {
@@ -156,7 +159,11 @@ test('같은 (종류, 코드)는 새로 쌓지 않고 count만 올리고 시각�
 
 test('같은 종류라도 코드가 다르면 별개 항목이다', () => {
   const events = appendDiagnosticEvent(
-    appendDiagnosticEvent([], { atMillis: 1, kind: DiagnosticKind.SYNC_USAGE, code: 'rpc/http_500' }),
+    appendDiagnosticEvent([], {
+      atMillis: 1,
+      kind: DiagnosticKind.SYNC_USAGE,
+      code: 'rpc/http_500'
+    }),
     { atMillis: 2, kind: DiagnosticKind.SYNC_USAGE, code: 'rpc/TypeError' }
   );
   assert.equal(events.length, 2);
@@ -164,9 +171,16 @@ test('같은 종류라도 코드가 다르면 별개 항목이다', () => {
 
 test('합산된 항목은 다시 맨 앞으로 올라온다 (뒤에 묻히지 않는다)', () => {
   let events = appendDiagnosticEvent([], { atMillis: 1, kind: DiagnosticKind.AUTH, code: 'a' });
-  events = appendDiagnosticEvent(events, { atMillis: 2, kind: DiagnosticKind.SYNC_USAGE, code: 'b' });
+  events = appendDiagnosticEvent(events, {
+    atMillis: 2,
+    kind: DiagnosticKind.SYNC_USAGE,
+    code: 'b'
+  });
   events = appendDiagnosticEvent(events, { atMillis: 3, kind: DiagnosticKind.AUTH, code: 'a' });
-  assert.deepEqual(events.map((e) => e.code), ['a', 'b']);
+  assert.deepEqual(
+    events.map((e) => e.code),
+    ['a', 'b']
+  );
   assert.equal(events[0].count, 2);
 });
 
@@ -227,7 +241,10 @@ test('count가 이상하면 1로 접는다 (0 · 음수 · 문자열 · 소수)'
     { atMillis: 3, kind: 'auth', code: 'c', count: 'many' },
     { atMillis: 4, kind: 'auth', code: 'd', count: 2.9 }
   ]);
-  assert.deepEqual(events.map((e) => e.count), [1, 1, 1, 2]);
+  assert.deepEqual(
+    events.map((e) => e.count),
+    [1, 1, 1, 2]
+  );
 });
 
 test('저장소에 50건을 넘게 들어 있어도 읽을 때 잘라낸다', () => {
@@ -269,10 +286,7 @@ const LABELS = {
 };
 
 test('실패가 없으면 머리말 두 줄 + 없음 한 줄만 나온다', () => {
-  assert.equal(
-    buildDiagnosticsReport([], LABELS),
-    'REPORT\nLAST: 09-07 04:05\nNO FAILURES'
-  );
+  assert.equal(buildDiagnosticsReport([], LABELS), 'REPORT\nLAST: 09-07 04:05\nNO FAILURES');
 });
 
 test('복사 텍스트에는 시각·종류·코드·횟수만 들어간다', () => {

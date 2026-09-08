@@ -130,7 +130,9 @@ export function summarizeFailure(error) {
   if (error === null || error === undefined) return 'unknown';
   if (typeof error === 'string') {
     // 문자열만 온 경우엔 이름을 알 수 없다. 문자열 자체는 서버 문구일 수 있어 버린다.
-    return sanitizeDiagnosticCode(['Error', extractStatus(error), extractPostgrestCode(error)].filter(Boolean).join('/'));
+    return sanitizeDiagnosticCode(
+      ['Error', extractStatus(error), extractPostgrestCode(error)].filter(Boolean).join('/')
+    );
   }
   if (typeof error !== 'object') return 'unknown';
 
@@ -141,7 +143,9 @@ export function summarizeFailure(error) {
   const status = statusFromField(error.status) || extractStatus(message);
   // PostgrestError.code는 `PGRST116`처럼 분류값이거나 Postgres SQLSTATE다. 값이 아니라 분류만
   // 담기는 자리지만, 그래도 우리가 아는 모양(PGRSTxxx)만 통과시킨다.
-  const postgrest = extractPostgrestCode(typeof error.code === 'string' ? error.code : '') || extractPostgrestCode(message);
+  const postgrest =
+    extractPostgrestCode(typeof error.code === 'string' ? error.code : '') ||
+    extractPostgrestCode(message);
   return sanitizeDiagnosticCode([name, status, postgrest].filter(Boolean).join('/'));
 }
 
@@ -203,7 +207,9 @@ export function appendDiagnosticEvent(events, event, capacity = DIAGNOSTIC_CAPAC
   const code = sanitizeDiagnosticCode(event?.code);
   const at = Number(event?.atMillis);
   const atMillis = Number.isFinite(at) ? at : 0;
-  const increment = Number.isFinite(Number(event?.count)) ? Math.max(1, Math.trunc(Number(event.count))) : 1;
+  const increment = Number.isFinite(Number(event?.count))
+    ? Math.max(1, Math.trunc(Number(event.count)))
+    : 1;
 
   const previous = existing.find((e) => e.kind === kind && e.code === code);
   const merged = { atMillis, kind, code, count: (previous?.count || 0) + increment };

@@ -263,7 +263,11 @@ test('applyDayRollover: settling the same day twice changes nothing', async () =
     limitMs: 60 * MIN_MS
   });
 
-  assert.equal(result.streak, existingStreak, 'should return the same record unchanged, not a copy');
+  assert.equal(
+    result.streak,
+    existingStreak,
+    'should return the same record unchanged, not a copy'
+  );
   assert.deepEqual(result.unlockedAchievements, []);
   assert.equal(calls.streaksUpsert.length, 0, 'must not write when the day was already settled');
   assert.equal(calls.achievementsUpsert.length, 0);
@@ -297,7 +301,10 @@ test('applyDayRollover: hitting a milestone unlocks it once and pays a bonus', a
   assert.equal(result.streak.xp, 3 + 15 + 10);
   assert.equal(calls.achievementsUpsert.length, 1);
   assert.equal(calls.achievementsUpsert[0].rows[0].key, 'streak_3');
-  assert.deepEqual(calls.achievementsUpsert[0].opts, { onConflict: 'user_id,key', ignoreDuplicates: true });
+  assert.deepEqual(calls.achievementsUpsert[0].opts, {
+    onConflict: 'user_id,key',
+    ignoreDuplicates: true
+  });
 });
 
 test('applyDayRollover: a perfect run milestone unlocks its own badge', async () => {
@@ -340,10 +347,17 @@ test('applyDayRollover: an achievements upsert failure withholds the unlocked-ac
     current_perfect_streak: 2,
     best_perfect_streak: 2
   };
-  const { supabase } = makeSupabaseStub({ existingStreak, achievementsUpsertError: new Error('boom') });
+  const { supabase } = makeSupabaseStub({
+    existingStreak,
+    achievementsUpsertError: new Error('boom')
+  });
   const limit = 60 * MIN_MS;
 
-  const result = await applyDayRollover(supabase, 'u1', { date: '2026-09-02', usageMs: limit, limitMs: limit });
+  const result = await applyDayRollover(supabase, 'u1', {
+    date: '2026-09-02',
+    usageMs: limit,
+    limitMs: limit
+  });
 
   // The streak itself still advances and still earns the XP...
   assert.equal(result.streak.current_streak, 3);

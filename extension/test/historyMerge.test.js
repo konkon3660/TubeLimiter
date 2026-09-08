@@ -6,7 +6,12 @@ import { mergeMillisByDate, mergeHistories } from '../src/lib/historyMerge.js';
 // second device showed an empty heatmap. These cover the merge rule that fills that hole:
 // per-date Math.max(local, server), because either side can be the one that is behind.
 
-const row = (date, usage_ms, shorts_ms = 0, emergency_ms = 0) => ({ date, usage_ms, shorts_ms, emergency_ms });
+const row = (date, usage_ms, shorts_ms = 0, emergency_ms = 0) => ({
+  date,
+  usage_ms,
+  shorts_ms,
+  emergency_ms
+});
 
 test('a day only the server knows about shows up in the merged history', () => {
   const merged = mergeMillisByDate({}, [row('2026-09-01', 1_800_000)], 'usage_ms');
@@ -20,18 +25,30 @@ test('a day only the local device knows about survives the merge', () => {
 
 test('the bigger of the two wins when the local figure is ahead', () => {
   // Not yet synced: the service worker throttles daily_usage pushes to 30s.
-  const merged = mergeMillisByDate({ '2026-09-01': 900_000 }, [row('2026-09-01', 600_000)], 'usage_ms');
+  const merged = mergeMillisByDate(
+    { '2026-09-01': 900_000 },
+    [row('2026-09-01', 600_000)],
+    'usage_ms'
+  );
   assert.deepEqual(merged, { '2026-09-01': 900_000 });
 });
 
 test('the bigger of the two wins when the server figure is ahead', () => {
   // The usual case: the server row also carries the other devices' share.
-  const merged = mergeMillisByDate({ '2026-09-01': 600_000 }, [row('2026-09-01', 900_000)], 'usage_ms');
+  const merged = mergeMillisByDate(
+    { '2026-09-01': 600_000 },
+    [row('2026-09-01', 900_000)],
+    'usage_ms'
+  );
   assert.deepEqual(merged, { '2026-09-01': 900_000 });
 });
 
 test('the two sides are never summed, which would double count this device', () => {
-  const merged = mergeMillisByDate({ '2026-09-01': 600_000 }, [row('2026-09-01', 600_000)], 'usage_ms');
+  const merged = mergeMillisByDate(
+    { '2026-09-01': 600_000 },
+    [row('2026-09-01', 600_000)],
+    'usage_ms'
+  );
   assert.deepEqual(merged, { '2026-09-01': 600_000 });
 });
 
@@ -43,12 +60,18 @@ test('empty input on both sides merges to an empty map', () => {
 
 test('shorts use the same rule against their own column', () => {
   const rows = [row('2026-09-01', 900_000, 300_000)];
-  assert.deepEqual(mergeMillisByDate({ '2026-09-01': 120_000 }, rows, 'shorts_ms'), { '2026-09-01': 300_000 });
+  assert.deepEqual(mergeMillisByDate({ '2026-09-01': 120_000 }, rows, 'shorts_ms'), {
+    '2026-09-01': 300_000
+  });
 });
 
 test('bigint columns arriving as strings are still compared as numbers', () => {
   // PostgREST can hand back bigint as a string; '900000' < '600000' lexicographically.
-  const merged = mergeMillisByDate({ '2026-09-01': 600_000 }, [row('2026-09-01', '900000')], 'usage_ms');
+  const merged = mergeMillisByDate(
+    { '2026-09-01': 600_000 },
+    [row('2026-09-01', '900000')],
+    'usage_ms'
+  );
   assert.deepEqual(merged, { '2026-09-01': 900_000 });
 });
 
@@ -64,7 +87,10 @@ test('all three histories merge together in one pass', () => {
     shorts: { '2026-09-01': 120_000 },
     emergency: { '2026-09-01': { uses: 2, ms: 300_000 } }
   };
-  const rows = [row('2026-09-01', 600_000, 400_000, 200_000), row('2026-09-02', 1_200_000, 0, 60_000)];
+  const rows = [
+    row('2026-09-01', 600_000, 400_000, 200_000),
+    row('2026-09-02', 1_200_000, 0, 60_000)
+  ];
   const merged = mergeHistories(local, rows);
 
   assert.deepEqual(merged.usage, { '2026-09-01': 900_000, '2026-09-02': 1_200_000 });
@@ -74,14 +100,19 @@ test('all three histories merge together in one pass', () => {
 });
 
 test('emergency uses come from the local record, never from the server', () => {
-  const local = { usage: { '2026-09-01': 900_000 }, emergency: { '2026-09-01': { uses: 3, ms: 200_000 } } };
+  const local = {
+    usage: { '2026-09-01': 900_000 },
+    emergency: { '2026-09-01': { uses: 3, ms: 200_000 } }
+  };
   const merged = mergeHistories(local, [row('2026-09-01', 900_000, 0, 500_000)]);
   // The server knows more emergency *time* (another device watched too) but no count exists there.
   assert.deepEqual(merged.emergency['2026-09-01'], { ms: 500_000, uses: 3 });
 });
 
 test('a day only the server knows about has an unknown (null) emergency count', () => {
-  const merged = mergeHistories({ usage: {}, emergency: {} }, [row('2026-09-05', 900_000, 0, 120_000)]);
+  const merged = mergeHistories({ usage: {}, emergency: {} }, [
+    row('2026-09-05', 900_000, 0, 120_000)
+  ]);
   assert.deepEqual(merged.emergency['2026-09-05'], { ms: 120_000, uses: null });
 });
 
@@ -91,7 +122,10 @@ test('a locally recorded day with no emergency entry counts as zero uses, not un
 });
 
 test('every day present in the merged usage also has an emergency entry', () => {
-  const local = { usage: { '2026-09-01': 600_000 }, emergency: { '2026-08-30': { uses: 1, ms: 10 } } };
+  const local = {
+    usage: { '2026-09-01': 600_000 },
+    emergency: { '2026-08-30': { uses: 1, ms: 10 } }
+  };
   const merged = mergeHistories(local, [row('2026-09-02', 600_000)]);
   Object.keys(merged.usage).forEach((date) => {
     assert.ok(merged.emergency[date], `missing emergency entry for ${date}`);

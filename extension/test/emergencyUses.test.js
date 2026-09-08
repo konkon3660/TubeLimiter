@@ -54,23 +54,38 @@ test('시계가 앞선 기기가 남긴 미래 날짜는 세지 않는다', () =
 test('기록이 없거나(설치 직후) uses 필드가 비어도 0으로 센다', () => {
   assert.equal(sumEmergencyUsesInBucket(null, '2026-09-01', '2026-09-03'), 0);
   assert.equal(sumEmergencyUsesInBucket({}, '2026-09-01', '2026-09-03'), 0);
-  assert.equal(sumEmergencyUsesInBucket({ '2026-09-03': { ms: 500 } }, '2026-09-01', '2026-09-03'), 0);
+  assert.equal(
+    sumEmergencyUsesInBucket({ '2026-09-03': { ms: 500 } }, '2026-09-01', '2026-09-03'),
+    0
+  );
 });
 
 test('daily 설정이면 버킷은 오늘 하루라 오늘 것만 센다', () => {
-  const start = emergencyResetDate('daily', { today: '2026-09-03', weekStart: '2026-08-31', monthStart: '2026-09-01' });
+  const start = emergencyResetDate('daily', {
+    today: '2026-09-03',
+    weekStart: '2026-08-31',
+    monthStart: '2026-09-01'
+  });
   assert.equal(start, '2026-09-03');
   assert.equal(sumEmergencyUsesInBucket(HISTORY, start, '2026-09-03'), 1);
 });
 
 test('weekly 설정이면 버킷은 그 주 월요일부터다', () => {
-  const start = emergencyResetDate('weekly', { today: '2026-09-03', weekStart: '2026-08-31', monthStart: '2026-09-01' });
+  const start = emergencyResetDate('weekly', {
+    today: '2026-09-03',
+    weekStart: '2026-08-31',
+    monthStart: '2026-09-01'
+  });
   assert.equal(start, '2026-08-31');
   assert.equal(sumEmergencyUsesInBucket(HISTORY, start, '2026-09-03'), 4);
 });
 
 test('monthly 설정이면 버킷은 그 달 1일부터다 (지난달 것은 빠진다)', () => {
-  const start = emergencyResetDate('monthly', { today: '2026-09-03', weekStart: '2026-08-31', monthStart: '2026-09-01' });
+  const start = emergencyResetDate('monthly', {
+    today: '2026-09-03',
+    weekStart: '2026-08-31',
+    monthStart: '2026-09-01'
+  });
   assert.equal(start, '2026-09-01');
   assert.equal(sumEmergencyUsesInBucket(HISTORY, start, '2026-09-03'), 3);
 });
@@ -144,7 +159,9 @@ test('PC에서 3회를 다 쓰면 폰은 새 기기여도 0회를 본다', () =>
 
 test('주간 버킷에서 다른 기기가 이번 주 초에 쓴 몫도 오늘 남은 횟수에 반영된다', () => {
   const bucketStart = emergencyResetDate('weekly', {
-    today: '2026-09-03', weekStart: '2026-08-31', monthStart: '2026-09-01'
+    today: '2026-09-03',
+    weekStart: '2026-08-31',
+    monthStart: '2026-09-01'
   });
 
   // 이 기기는 이번 주에 아무것도 안 썼고(로컬 5회 그대로), 서버 주간 합계는 4회.

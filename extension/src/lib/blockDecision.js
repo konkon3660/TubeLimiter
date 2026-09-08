@@ -97,7 +97,10 @@ export function resolveBlockDecision({
     // 미묘하게 다르다: 긴급 시청 중에도 "차단해둔 상태이긴 한데 지금만 풀린 것"으로 봐야 하므로,
     // 긴급이 뚫어주는 사유(수동 차단)는 여기선 그대로 살아있다. 한도 초과만 긴급 시청 중
     // 제외되는데, 그래야 팝업이 "남은 시간 없음"과 "지금은 볼 수 있음"을 같이 보여준다.
-    displayBlocked: focusModeActive || scheduleBlockActive || manuallyBlocked ||
+    displayBlocked:
+      focusModeActive ||
+      scheduleBlockActive ||
+      manuallyBlocked ||
       (usageLimitExceeded && !emergencyModeActive),
     // 사용시간 집계를 멈춰야 하는지는 "지금 실제로 볼 수 있는가"와 같은 질문이라 shouldBlock과
     // 같은 값이다. 예전엔 이 판정에도 displayBlocked를 썼는데, 그러면 같은 긴급 시청인데도
@@ -140,17 +143,22 @@ export function isShortsUrl(url) {
  * @param {boolean} tab.alwaysBlockShorts
  * @returns {{shouldBlock: boolean, reason: string}}
  */
-export function resolveTabBlock(inputs, { isWhitelisted = false, isShortsTab = false, alwaysBlockShorts = false } = {}) {
+export function resolveTabBlock(
+  inputs,
+  { isWhitelisted = false, isShortsTab = false, alwaysBlockShorts = false } = {}
+) {
   const { shouldBlock, reason } = resolveBlockDecision(inputs);
 
   if (inputs?.focusModeActive) return { shouldBlock: true, reason: BLOCK_REASON.focusMode };
-  if (inputs?.scheduleBlockActive) return { shouldBlock: true, reason: BLOCK_REASON.scheduledBlock };
+  if (inputs?.scheduleBlockActive)
+    return { shouldBlock: true, reason: BLOCK_REASON.scheduledBlock };
   // 사유(reason)는 차단할 때만 쓰이므로 아래 두 갈래에선 전역 사유를 그대로 흘려보낸다.
   // 긴급 시청은 Shorts 한도도 같이 뚫는다 — 전체 한도와 같은 급의 "한도" 차단이기 때문이다.
   if (inputs?.emergencyModeActive) return { shouldBlock: false, reason };
   if (isWhitelisted) return { shouldBlock: false, reason };
   // 항상 차단은 한도와 무관한 on/off라 Shorts 한도보다 먼저 본다 (한도가 남아 있어도 막힌다).
-  if (alwaysBlockShorts && isShortsTab) return { shouldBlock: true, reason: BLOCK_REASON.alwaysBlockShorts };
+  if (alwaysBlockShorts && isShortsTab)
+    return { shouldBlock: true, reason: BLOCK_REASON.alwaysBlockShorts };
   // 전역 차단(수동/전체 한도)이 이미 걸려 있으면 그 사유가 이긴다. 어차피 결과는 같은 차단이고,
   // "수동 차단 > 한도"라는 전역 우선순위를 탭 단계에서 뒤집지 않기 위해서다.
   if (shouldBlock) return { shouldBlock, reason };

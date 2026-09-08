@@ -20,16 +20,36 @@
   color: #64748b;
   letter-spacing: 0.02em;
 }
-#streakSection.tier-seed .xp-bar-fill { background: linear-gradient(90deg, #4ade80, #22c55e); }
-#streakSection.tier-seed .level-tier-badge { color: #16a34a; }
-#streakSection.tier-trainee .xp-bar-fill { background: linear-gradient(90deg, #60a5fa, #3b82f6); }
-#streakSection.tier-trainee .level-tier-badge { color: #2563eb; }
-#streakSection.tier-skilled .xp-bar-fill { background: linear-gradient(90deg, #c084fc, #a855f7); }
-#streakSection.tier-skilled .level-tier-badge { color: #9333ea; }
-#streakSection.tier-master .xp-bar-fill { background: linear-gradient(90deg, #fbbf24, #eab308); }
-#streakSection.tier-master .level-tier-badge { color: #ca8a04; }
-#streakSection.tier-legend .xp-bar-fill { background: linear-gradient(90deg, #f97316, #ef4444, #eab308); }
-#streakSection.tier-legend .level-tier-badge { color: #dc2626; }
+#streakSection.tier-seed .xp-bar-fill {
+  background: linear-gradient(90deg, #4ade80, #22c55e);
+}
+#streakSection.tier-seed .level-tier-badge {
+  color: #16a34a;
+}
+#streakSection.tier-trainee .xp-bar-fill {
+  background: linear-gradient(90deg, #60a5fa, #3b82f6);
+}
+#streakSection.tier-trainee .level-tier-badge {
+  color: #2563eb;
+}
+#streakSection.tier-skilled .xp-bar-fill {
+  background: linear-gradient(90deg, #c084fc, #a855f7);
+}
+#streakSection.tier-skilled .level-tier-badge {
+  color: #9333ea;
+}
+#streakSection.tier-master .xp-bar-fill {
+  background: linear-gradient(90deg, #fbbf24, #eab308);
+}
+#streakSection.tier-master .level-tier-badge {
+  color: #ca8a04;
+}
+#streakSection.tier-legend .xp-bar-fill {
+  background: linear-gradient(90deg, #f97316, #ef4444, #eab308);
+}
+#streakSection.tier-legend .level-tier-badge {
+  color: #dc2626;
+}
 
 .streak-hero {
   text-align: center;
@@ -78,12 +98,16 @@
   color: #64748b;
   font-weight: 600;
 }
-.badge-item.unlocked .badge-caption { color: #b45309; }
+.badge-item.unlocked .badge-caption {
+  color: #b45309;
+}
 .badge-item.perfect-badge.unlocked {
   background: rgba(56, 189, 248, 0.18);
   border-color: rgba(56, 189, 248, 0.5);
 }
-.badge-item.perfect-badge.unlocked .badge-caption { color: #0369a1; }
+.badge-item.perfect-badge.unlocked .badge-caption {
+  color: #0369a1;
+}
 .heatmap {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -96,29 +120,63 @@
   background: var(--card-bg, #eef1f5);
   border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
 }
-.heatmap .day-cell.success { background: #86efac; border-color: #4ade80; }
-.heatmap .day-cell.perfect { background: #16a34a; border-color: #15803d; }
-.heatmap .day-cell.fail { background: #ef4444; border-color: #dc2626; }
-.heatmap .day-cell.today { outline: 2px solid #ffb02e; outline-offset: 1px; }
+.heatmap .day-cell.success {
+  background: #86efac;
+  border-color: #4ade80;
+}
+.heatmap .day-cell.perfect {
+  background: #16a34a;
+  border-color: #15803d;
+}
+.heatmap .day-cell.fail {
+  background: #ef4444;
+  border-color: #dc2626;
+}
+.heatmap .day-cell.today {
+  outline: 2px solid #ffb02e;
+  outline-offset: 1px;
+}
 .heatmap-legend {
   margin-top: 10px;
   font-size: 11px;
   color: #64748b;
 }
 
-body.dark-mode .streak-hero .streak-caption { color: #cbd5e1; }
-body.dark-mode .badge-item { background: rgba(255, 255, 255, 0.06); }
-body.dark-mode .badge-item .badge-caption { color: #cbd5e1; }
-body.dark-mode .xp-bar-track { background: rgba(255, 255, 255, 0.12); }
-body.dark-mode .heatmap .day-cell { background: rgba(255, 255, 255, 0.08); }
-body.dark-mode .heatmap-legend { color: #cbd5e1; }
+body.dark-mode .streak-hero .streak-caption {
+  color: #cbd5e1;
+}
+body.dark-mode .badge-item {
+  background: rgba(255, 255, 255, 0.06);
+}
+body.dark-mode .badge-item .badge-caption {
+  color: #cbd5e1;
+}
+body.dark-mode .xp-bar-track {
+  background: rgba(255, 255, 255, 0.12);
+}
+body.dark-mode .heatmap .day-cell {
+  background: rgba(255, 255, 255, 0.08);
+}
+body.dark-mode .heatmap-legend {
+  color: #cbd5e1;
+}
 
 @media (prefers-color-scheme: dark) {
-  .streak-hero .streak-caption { color: #cbd5e1; }
-  .badge-item .badge-caption { color: #cbd5e1; }
-  .xp-bar-track { background: rgba(255, 255, 255, 0.12); }
-  .heatmap .day-cell { background: rgba(255, 255, 255, 0.08); }
-  .heatmap-legend { color: #cbd5e1; }
+  .streak-hero .streak-caption {
+    color: #cbd5e1;
+  }
+  .badge-item .badge-caption {
+    color: #cbd5e1;
+  }
+  .xp-bar-track {
+    background: rgba(255, 255, 255, 0.12);
+  }
+  .heatmap .day-cell {
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .heatmap-legend {
+    color: #cbd5e1;
+  }
 }
 
 .auth-box {

@@ -47,8 +47,14 @@ test('며칠 안 켰어도 그 사이 날짜를 하루씩 모두 정산한다', 
 });
 
 test('월/연 경계도 그냥 하루씩 넘어간다', () => {
-  assert.deepEqual(planDateRollover('2026-02-27', '2026-03-01').dates, ['2026-02-27', '2026-02-28']);
-  assert.deepEqual(planDateRollover('2025-12-31', '2026-01-02').dates, ['2025-12-31', '2026-01-01']);
+  assert.deepEqual(planDateRollover('2026-02-27', '2026-03-01').dates, [
+    '2026-02-27',
+    '2026-02-28'
+  ]);
+  assert.deepEqual(planDateRollover('2025-12-31', '2026-01-02').dates, [
+    '2025-12-31',
+    '2026-01-01'
+  ]);
 });
 
 test('저장소가 손상돼 기준점이 아주 옛날이어도 상한에서 멈추고 기준점은 오늘로 옮긴다', () => {
@@ -79,14 +85,20 @@ test('주기 설정이 없거나 모르는 값이면 일간으로 본다', () =>
 
 test('버킷이 그대로면 남은 횟수를 건드리지 않는다', () => {
   const plan = planEmergencyReset({
-    lastResetDate: '2026-09-03', frequency: 'daily', dailyUses: 3, ...RESET_DATES
+    lastResetDate: '2026-09-03',
+    frequency: 'daily',
+    dailyUses: 3,
+    ...RESET_DATES
   });
   assert.equal(plan.shouldReset, false);
 });
 
 test('날짜가 바뀌면 설정된 횟수로 되돌린다', () => {
   const plan = planEmergencyReset({
-    lastResetDate: '2026-09-02', frequency: 'daily', dailyUses: 5, ...RESET_DATES
+    lastResetDate: '2026-09-02',
+    frequency: 'daily',
+    dailyUses: 5,
+    ...RESET_DATES
   });
   assert.equal(plan.shouldReset, true);
   assert.equal(plan.resetDate, '2026-09-03');
@@ -95,14 +107,20 @@ test('날짜가 바뀌면 설정된 횟수로 되돌린다', () => {
 
 test('주간 주기는 같은 주 안에서는 날짜가 바뀌어도 리셋하지 않는다', () => {
   const plan = planEmergencyReset({
-    lastResetDate: '2026-08-31', frequency: 'weekly', dailyUses: 3, ...RESET_DATES
+    lastResetDate: '2026-08-31',
+    frequency: 'weekly',
+    dailyUses: 3,
+    ...RESET_DATES
   });
   assert.equal(plan.shouldReset, false);
 });
 
 test('기록이 아예 없으면(설치 직후) 리셋해서 초기 횟수를 깔아준다', () => {
   const plan = planEmergencyReset({
-    lastResetDate: undefined, frequency: 'daily', dailyUses: 3, ...RESET_DATES
+    lastResetDate: undefined,
+    frequency: 'daily',
+    dailyUses: 3,
+    ...RESET_DATES
   });
   assert.equal(plan.shouldReset, true);
   assert.equal(plan.uses, 3);
@@ -110,14 +128,20 @@ test('기록이 아예 없으면(설치 직후) 리셋해서 초기 횟수를 �
 
 test('횟수 설정이 비어 있으면 기본값 3, 0은 0 그대로다', () => {
   const missing = planEmergencyReset({
-    lastResetDate: null, frequency: 'daily', dailyUses: undefined, ...RESET_DATES
+    lastResetDate: null,
+    frequency: 'daily',
+    dailyUses: undefined,
+    ...RESET_DATES
   });
   assert.equal(missing.uses, DEFAULT_EMERGENCY_USES);
   assert.equal(missing.uses, 3);
 
   // "긴급 시청 금지"로 0을 설정한 사용자를 기본값 3으로 되살려주면 안 된다.
   const zero = planEmergencyReset({
-    lastResetDate: null, frequency: 'daily', dailyUses: 0, ...RESET_DATES
+    lastResetDate: null,
+    frequency: 'daily',
+    dailyUses: 0,
+    ...RESET_DATES
   });
   assert.equal(zero.uses, 0);
 });

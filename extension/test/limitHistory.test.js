@@ -47,7 +47,11 @@ test('limit_history 자체가 없어도(이 기능 이전 저장소) 근사치�
 test('무제한은 센티널로 저장되고 Infinity로 되읽힌다 (chrome.storage가 Infinity를 못 담는다)', () => {
   assert.equal(serializeLimitMs(Infinity), UNLIMITED_LIMIT_SENTINEL);
 
-  const { history } = planLimitHistoryUpdate({}, [{ date: WEDNESDAY, limitMs: Infinity }], WEDNESDAY);
+  const { history } = planLimitHistoryUpdate(
+    {},
+    [{ date: WEDNESDAY, limitMs: Infinity }],
+    WEDNESDAY
+  );
   assert.equal(history[WEDNESDAY], UNLIMITED_LIMIT_SENTINEL);
 
   const resolved = resolveLimitForDate(history, THIRTY_MIN_SETTINGS, WEDNESDAY);
@@ -85,7 +89,11 @@ test('손상된 기록은 무제한이 아니라 근사치로 떨어진다 (조�
 
 test('같은 값을 다시 기록하면 changed가 false다 (매 틱마다 storage에 쓰지 않게)', () => {
   const history = { [WEDNESDAY]: 30 * MIN };
-  const result = planLimitHistoryUpdate(history, [{ date: WEDNESDAY, limitMs: 30 * MIN }], WEDNESDAY);
+  const result = planLimitHistoryUpdate(
+    history,
+    [{ date: WEDNESDAY, limitMs: 30 * MIN }],
+    WEDNESDAY
+  );
   assert.equal(result.changed, false);
   assert.deepEqual(result.history, history);
 });

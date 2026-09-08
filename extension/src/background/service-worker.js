@@ -7,7 +7,11 @@ import { applyDayRollover } from '../lib/gamification.js';
 import { computeLimitForDate, computeShortsLimit } from '../lib/limits.js';
 import { HARDCORE_DISABLE_COOLDOWN_MS } from '../lib/hardcore.js';
 import { FOCUS_STOP_COOLDOWN_MS, resolveFocusStopTime } from '../lib/focusMode.js';
-import { EMERGENCY_GRANT_COOLDOWN_MS, EMERGENCY_DURATION_MS, emergencyOverlapMs } from '../lib/emergency.js';
+import {
+  EMERGENCY_GRANT_COOLDOWN_MS,
+  EMERGENCY_DURATION_MS,
+  emergencyOverlapMs
+} from '../lib/emergency.js';
 import {
   usageDeltaSinceSync,
   combinedUsedMillis,
@@ -43,7 +47,9 @@ const DEFAULT_DAILY_LIMIT_MS = 30 * 60 * 1000;
 // 재생 여부만으로는 걸러지지 않으므로, 실제 시청 페이지(watch/shorts)인지 URL로 구분한다.
 // 차단 대상 범위(유튜브 전체)와는 별개 기준이라 checkUsageAndBlock 쪽은 그대로 둔다.
 function isTrackableYoutubeUrl(url) {
-  return !!url && url.includes('youtube.com') && (url.includes('/watch') || url.includes('/shorts'));
+  return (
+    !!url && url.includes('youtube.com') && (url.includes('/watch') || url.includes('/shorts'))
+  );
 }
 
 let activeTabId = null;
@@ -146,7 +152,11 @@ async function refreshSettingsFromSupabase(force = false) {
 
   const user = await getActiveUser();
   if (!user) return;
-  const { data, error } = await supabase.from('settings').select('*').eq('user_id', user.id).maybeSingle();
+  const { data, error } = await supabase
+    .from('settings')
+    .select('*')
+    .eq('user_id', user.id)
+    .maybeSingle();
   if (error) {
     console.error('[TubeLimiter] 설정 동기화 실패:', error);
     await recordFailure(DiagnosticKind.SYNC_SETTINGS, 'pull', error);
@@ -406,7 +416,8 @@ async function trackUsageInner({ assumeFocused = false, focusedOverride = null }
   // 자체가 이미 브라우저를 보고 있다는 뜻이므로 이 경우엔 포커스 조회를 건너뛴다.
   // 창 포커스 전환 이벤트는 전환이 끝난 뒤에 오므로 지금 조회하면 직전 구간을 새 상태로
   // 판정해버린다 - 그런 호출은 전환 직전의 포커스 값을 focusedOverride로 직접 넘겨준다.
-  const wasFocused = focusedOverride !== null ? focusedOverride : (assumeFocused || (await isChromeWindowFocused()));
+  const wasFocused =
+    focusedOverride !== null ? focusedOverride : assumeFocused || (await isChromeWindowFocused());
   const now = Date.now();
   const elapsed = now - startTime;
   // 재생/포커스 상태가 바뀐 구간이 다음 구간에 섞이지 않도록 항상 여기서 리셋.
@@ -424,7 +435,10 @@ async function trackUsageInner({ assumeFocused = false, focusedOverride = null }
   await recordTodayLimit();
   await addHourlyUsage(elapsed, now);
   // 이 구간 중 긴급 시청 창과 겹친 만큼은 긴급분으로도 따로 남긴다 (usage_history엔 이미 포함).
-  const emergencyPortion = Math.min(elapsed, emergencyOverlapMs(startTime, now, emergencyGrantedAt));
+  const emergencyPortion = Math.min(
+    elapsed,
+    emergencyOverlapMs(startTime, now, emergencyGrantedAt)
+  );
   if (emergencyPortion > 0) {
     await addEmergencyUsage(emergencyPortion);
   }
@@ -587,18 +601,20 @@ async function syncUsageToSupabaseInner(force = false) {
   if (!user) return;
 
   const today = getTodayDate();
-  const [{ usage_history }, { usage_history_shorts }, emergencyHistory, synced] = await Promise.all([
-    getStorage(['usage_history']),
-    getStorage(['usage_history_shorts']),
-    getEmergencyHistory(),
-    getStorage([
-      'dailyUsageSyncDate',
-      'dailyUsageSyncedMillis',
-      'dailyUsageShortsSyncedMillis',
-      'dailyUsageEmergencySyncedMillis',
-      'dailyUsageEmergencyUsesSyncedCount'
-    ])
-  ]);
+  const [{ usage_history }, { usage_history_shorts }, emergencyHistory, synced] = await Promise.all(
+    [
+      getStorage(['usage_history']),
+      getStorage(['usage_history_shorts']),
+      getEmergencyHistory(),
+      getStorage([
+        'dailyUsageSyncDate',
+        'dailyUsageSyncedMillis',
+        'dailyUsageShortsSyncedMillis',
+        'dailyUsageEmergencySyncedMillis',
+        'dailyUsageEmergencyUsesSyncedCount'
+      ])
+    ]
+  );
 
   const localUsage = (usage_history || {})[today] || 0;
   const localShorts = (usage_history_shorts || {})[today] || 0;
@@ -607,11 +623,29 @@ async function syncUsageToSupabaseInner(force = false) {
   // 긴급 시청 "횟수"도 시간과 같은 델타 방식으로 올린다. 여기까지 올려야 다른 기기가 남은
   // 횟수를 제대로 알 수 있다 — 안 올리면 기기를 바꿔서 횟수를 다시 채우는 우회가 가능하다.
   const localEmergencyUses = todayEmergency.uses;
-  const usageDelta = usageDeltaSinceSync(localUsage, synced.dailyUsageSyncDate, synced.dailyUsageSyncedMillis, today);
-  const shortsDelta = usageDeltaSinceSync(localShorts, synced.dailyUsageSyncDate, synced.dailyUsageShortsSyncedMillis, today);
-  const emergencyDelta = usageDeltaSinceSync(localEmergency, synced.dailyUsageSyncDate, synced.dailyUsageEmergencySyncedMillis, today);
+  const usageDelta = usageDeltaSinceSync(
+    localUsage,
+    synced.dailyUsageSyncDate,
+    synced.dailyUsageSyncedMillis,
+    today
+  );
+  const shortsDelta = usageDeltaSinceSync(
+    localShorts,
+    synced.dailyUsageSyncDate,
+    synced.dailyUsageShortsSyncedMillis,
+    today
+  );
+  const emergencyDelta = usageDeltaSinceSync(
+    localEmergency,
+    synced.dailyUsageSyncDate,
+    synced.dailyUsageEmergencySyncedMillis,
+    today
+  );
   const emergencyUsesDelta = usageDeltaSinceSync(
-    localEmergencyUses, synced.dailyUsageSyncDate, synced.dailyUsageEmergencyUsesSyncedCount, today
+    localEmergencyUses,
+    synced.dailyUsageSyncDate,
+    synced.dailyUsageEmergencyUsesSyncedCount,
+    today
   );
 
   const { data, error } = await supabase.rpc('increment_daily_usage', {
@@ -645,7 +679,13 @@ async function syncUsageToSupabaseInner(force = false) {
     dailyUsageCombinedEmergencyUses: remoteTodayUses
   });
 
-  await refreshEmergencyUsesBucket(user, today, emergencyHistory, localEmergencyUses, remoteTodayUses);
+  await refreshEmergencyUsesBucket(
+    user,
+    today,
+    emergencyHistory,
+    localEmergencyUses,
+    remoteTodayUses
+  );
 }
 
 // 남은 긴급 시청 횟수는 버킷(일/주/월) 단위인데 서버 daily_usage는 날짜별 행이라, weekly/monthly
@@ -653,7 +693,13 @@ async function syncUsageToSupabaseInner(force = false) {
 // (오늘 행 하나만 보면 주간/월간에서 틀린다). 매 틱마다 select를 날릴 순 없으니 동기화
 // 스로틀(30초)에 얹고, 서비스워커는 자주 깼다 죽으므로 결과는 chrome.storage에 캐시한다.
 // 조회에 실패하면 캐시를 그대로 둔다 — 실패를 0으로 덮어쓰면 잔여 횟수가 엉뚱하게 흔들린다.
-async function refreshEmergencyUsesBucket(user, today, emergencyHistory, syncedTodayUses, remoteTodayUses) {
+async function refreshEmergencyUsesBucket(
+  user,
+  today,
+  emergencyHistory,
+  syncedTodayUses,
+  remoteTodayUses
+) {
   // 리셋 판정(planEmergencyReset)이 쓰는 것과 같은 규칙 — 리셋 키가 곧 버킷 시작일이다.
   const bucketStart = emergencyResetDate(settingsCache.emergency_config?.resetFrequency, {
     today,
@@ -685,7 +731,9 @@ async function refreshEmergencyUsesBucket(user, today, emergencyHistory, syncedT
     emergencyUsesBucketDate: bucketStart,
     emergencyUsesBucketRemote: remoteBucketUses,
     emergencyUsesBucketReported: reportedEmergencyUsesInBucket(
-      localBucketUses, emergencyEntryFor(emergencyHistory, today).uses, syncedTodayUses
+      localBucketUses,
+      emergencyEntryFor(emergencyHistory, today).uses,
+      syncedTodayUses
     )
   });
 }
@@ -693,9 +741,17 @@ async function refreshEmergencyUsesBucket(user, today, emergencyHistory, syncedT
 /** 로컬 오늘 사용량 위에 다른 기기 몫을 더한 값. 아직 동기화 전이면 로컬 값 그대로. */
 async function getEffectiveTodayUsage(localUsage) {
   const today = getTodayDate();
-  const synced = await getStorage(['dailyUsageSyncDate', 'dailyUsageSyncedMillis', 'dailyUsageCombinedMillis']);
+  const synced = await getStorage([
+    'dailyUsageSyncDate',
+    'dailyUsageSyncedMillis',
+    'dailyUsageCombinedMillis'
+  ]);
   if (synced.dailyUsageSyncDate !== today) return localUsage;
-  return combinedUsedMillis(localUsage, synced.dailyUsageSyncedMillis || 0, synced.dailyUsageCombinedMillis || 0);
+  return combinedUsedMillis(
+    localUsage,
+    synced.dailyUsageSyncedMillis || 0,
+    synced.dailyUsageCombinedMillis || 0
+  );
 }
 
 /**
@@ -706,11 +762,15 @@ async function getEffectiveTodayUsage(localUsage) {
 async function getEffectiveTodayShortsUsage(localShorts) {
   const today = getTodayDate();
   const synced = await getStorage([
-    'dailyUsageSyncDate', 'dailyUsageShortsSyncedMillis', 'dailyUsageCombinedShortsMillis'
+    'dailyUsageSyncDate',
+    'dailyUsageShortsSyncedMillis',
+    'dailyUsageCombinedShortsMillis'
   ]);
   if (synced.dailyUsageSyncDate !== today) return localShorts;
   return combinedUsedMillis(
-    localShorts, synced.dailyUsageShortsSyncedMillis || 0, synced.dailyUsageCombinedShortsMillis || 0
+    localShorts,
+    synced.dailyUsageShortsSyncedMillis || 0,
+    synced.dailyUsageCombinedShortsMillis || 0
   );
 }
 
@@ -741,12 +801,18 @@ async function getEffectiveEmergencyUses() {
     'emergencyUsesBucketRemote',
     'emergencyUsesBucketReported'
   ]);
-  const local = stored.emergency_uses_today ?? (settingsCache.emergency_config?.dailyUses ?? DEFAULT_EMERGENCY_USES);
-  if (stored.emergencyUsesBucketDate !== currentEmergencyBucketStart()) return { local, effective: local };
+  const local =
+    stored.emergency_uses_today ??
+    settingsCache.emergency_config?.dailyUses ??
+    DEFAULT_EMERGENCY_USES;
+  if (stored.emergencyUsesBucketDate !== currentEmergencyBucketStart())
+    return { local, effective: local };
   return {
     local,
     effective: remainingEmergencyUses(
-      local, stored.emergencyUsesBucketReported || 0, stored.emergencyUsesBucketRemote || 0
+      local,
+      stored.emergencyUsesBucketReported || 0,
+      stored.emergencyUsesBucketRemote || 0
     )
   };
 }
@@ -771,18 +837,22 @@ async function checkAndResetEmergencyUses() {
 // --- 알람 (N분마다 / 남은 시간 마일스톤) ---
 
 function notify(id, title, message) {
-  chrome.notifications.create(id, {
-    type: 'basic',
-    iconUrl: chrome.runtime.getURL('assets/icon128.png'),
-    title,
-    message
-  }, () => {
-    // chrome.notifications.create는 실패해도 예외를 던지지 않고 조용히 넘어간다
-    // (권한 거부, OS 알림 차단 등). lastError 안 찍으면 왜 안 뜨는지 알 방법이 없다.
-    if (chrome.runtime.lastError) {
-      console.error('[TubeLimiter] 알림 생성 실패:', chrome.runtime.lastError.message);
+  chrome.notifications.create(
+    id,
+    {
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('assets/icon128.png'),
+      title,
+      message
+    },
+    () => {
+      // chrome.notifications.create는 실패해도 예외를 던지지 않고 조용히 넘어간다
+      // (권한 거부, OS 알림 차단 등). lastError 안 찍으면 왜 안 뜨는지 알 방법이 없다.
+      if (chrome.runtime.lastError) {
+        console.error('[TubeLimiter] 알림 생성 실패:', chrome.runtime.lastError.message);
+      }
     }
-  });
+  );
 
   // OS 알림은 방해금지 모드 등에 묻히기 쉬우니, 지금 보고 있는 유튜브 화면 좌상단에도
   // 직접 띄운다. 탭이 없거나 콘텐츠 스크립트가 없으면 그냥 무시.
@@ -795,8 +865,10 @@ function notify(id, title, message) {
 // "업데이트"만 하고 토스트 배너를 다시 띄우지 않아, 하루 첫 알림 말고는 안 보일 수 있다.
 // (마일스톤은 분 단위로 한 번씩만 뜨므로 고정 id로 충분하다.)
 function alarmNotificationId(notification) {
-  if (notification.kind === ALARM_KIND.milestone) return `tube-limiter-milestone-${notification.minutes}`;
-  if (notification.kind === ALARM_KIND.scheduleSoon) return `tube-limiter-schedule-soon-${Date.now()}`;
+  if (notification.kind === ALARM_KIND.milestone)
+    return `tube-limiter-milestone-${notification.minutes}`;
+  if (notification.kind === ALARM_KIND.scheduleSoon)
+    return `tube-limiter-schedule-soon-${Date.now()}`;
   return `tube-limiter-interval-${Date.now()}`;
 }
 
@@ -824,11 +896,18 @@ async function checkAlarms(currentUsage, limitMs) {
     intervalMinutes: settingsCache.alarm_interval_minutes || 0,
     milestonesEnabled: settingsCache.alarm_milestones_enabled !== false,
     // 이미 활성 중이거나 예약이 없으면 null이라 예약 알림은 자연히 조용해진다.
-    minutesUntilScheduleStart: minutesUntilNextScheduleStart(new Date(), settingsCache.scheduled_blocks || [])
+    minutesUntilScheduleStart: minutesUntilNextScheduleStart(
+      new Date(),
+      settingsCache.scheduled_blocks || []
+    )
   });
 
   for (const notification of notifications) {
-    notify(alarmNotificationId(notification), 'TubeLimiter', alarmNotificationMessage(notification));
+    notify(
+      alarmNotificationId(notification),
+      'TubeLimiter',
+      alarmNotificationMessage(notification)
+    );
   }
 
   if (changed) await setStorage({ alarm_state: state });
@@ -838,9 +917,14 @@ async function checkAlarms(currentUsage, limitMs) {
 
 async function checkUsageAndBlock() {
   const storedState = await getStorage([
-    'isManuallyBlocked', 'focusModeActive', 'focusModeEndTime', 'focusStopRequestedAt',
-    'emergencyModeActive', 'emergencyEndTime',
-    'focusModeDelayEndTime', 'focusModeDelayDuration'
+    'isManuallyBlocked',
+    'focusModeActive',
+    'focusModeEndTime',
+    'focusStopRequestedAt',
+    'emergencyModeActive',
+    'emergencyEndTime',
+    'focusModeDelayEndTime',
+    'focusModeDelayDuration'
   ]);
   isManuallyBlocked = storedState.isManuallyBlocked || false;
   focusModeActive = storedState.focusModeActive || false;
@@ -851,27 +935,48 @@ async function checkUsageAndBlock() {
   // 자연 종료 시각과 "종료 요청 후 쿨다운이 끝나는 시각" 중 더 빠른 쪽에 실제로 끈다
   // (resolveFocusStopTime, extension/src/lib/focusMode.js 참고).
   if (focusModeActive) {
-    const stopAtMillis = resolveFocusStopTime(focusModeEndTime, focusStopRequestedAt, FOCUS_STOP_COOLDOWN_MS);
+    const stopAtMillis = resolveFocusStopTime(
+      focusModeEndTime,
+      focusStopRequestedAt,
+      FOCUS_STOP_COOLDOWN_MS
+    );
     if (stopAtMillis != null && Date.now() >= stopAtMillis) {
       focusModeActive = false;
       focusModeEndTime = null;
       focusStopRequestedAt = null;
-      await setStorage({ focusModeActive: false, focusModeEndTime: null, focusStopRequestedAt: null });
+      await setStorage({
+        focusModeActive: false,
+        focusModeEndTime: null,
+        focusStopRequestedAt: null
+      });
       notify(`tube-limiter-focus-end-${Date.now()}`, 'TubeLimiter', t('notify_focus_end'));
     }
   }
 
   // 지연 시작 집중 모드: 서비스워커가 중간에 종료되면 setTimeout이 못 돌아오므로 여기서 복구
-  if (!focusModeActive && storedState.focusModeDelayEndTime && Date.now() >= storedState.focusModeDelayEndTime) {
+  if (
+    !focusModeActive &&
+    storedState.focusModeDelayEndTime &&
+    Date.now() >= storedState.focusModeDelayEndTime
+  ) {
     focusModeActive = true;
     focusModeEndTime = Date.now() + (storedState.focusModeDelayDuration || 30) * 60 * 1000;
     focusStopRequestedAt = null;
-    await setStorage({ focusModeActive: true, focusModeEndTime, focusModeDelayEndTime: null, focusStopRequestedAt: null });
+    await setStorage({
+      focusModeActive: true,
+      focusModeEndTime,
+      focusModeDelayEndTime: null,
+      focusStopRequestedAt: null
+    });
     notify(`tube-limiter-focus-start-${Date.now()}`, 'TubeLimiter', t('notify_focus_start'));
   }
 
   // 긴급 시청 만료: 마찬가지로 setTimeout이 못 돌아오면 여기서 복구 (안 하면 이후 모든 차단이 영구히 풀림)
-  if (emergencyModeActive && storedState.emergencyEndTime && Date.now() >= storedState.emergencyEndTime) {
+  if (
+    emergencyModeActive &&
+    storedState.emergencyEndTime &&
+    Date.now() >= storedState.emergencyEndTime
+  ) {
     emergencyModeActive = false;
     await setStorage({ emergencyModeActive: false, emergencyEndTime: null });
   }
@@ -889,7 +994,10 @@ async function checkUsageAndBlock() {
   // 예약 차단: 사용자가 켜고 끄는 게 아니라 시계 기준으로 자동 판정된다 (lib/schedule.js,
   // 4시 사용량 컷오프와 무관한 실제 벽시계 요일/시각). 집중 모드와 같은 급으로 취급해서
   // 긴급 시청으로도 우회할 수 없게 한다 (아래 우선순위 참고).
-  const { active: scheduleActiveNow } = isScheduleActive(new Date(), settingsCache.scheduled_blocks || []);
+  const { active: scheduleActiveNow } = isScheduleActive(
+    new Date(),
+    settingsCache.scheduled_blocks || []
+  );
   scheduleBlockActive = scheduleActiveNow;
 
   // 서비스워커 재시작에도 살아남는 "직전 값"과 비교해 시작/종료 전이에만 알림을 띄운다
@@ -960,7 +1068,10 @@ async function sendBlockMessage(tabId, shouldBlock, reason) {
   try {
     await chrome.tabs.sendMessage(tabId, message);
   } catch (e) {
-    if (e.message.includes('Receiving end does not exist') || e.message.includes('Could not establish connection')) {
+    if (
+      e.message.includes('Receiving end does not exist') ||
+      e.message.includes('Could not establish connection')
+    ) {
       try {
         await chrome.scripting.executeScript({ target: { tabId }, files: ['content/content.js'] });
         await chrome.tabs.sendMessage(tabId, message);
@@ -1065,7 +1176,9 @@ let lastFocusedWindowId = null; // 서비스워커가 막 재시작했으면 직
 
 chrome.windows.onFocusChanged.addListener(async (windowId) => {
   const focusedBefore = focusStateBeforeTransition(
-    lastFocusedWindowId, windowId, chrome.windows.WINDOW_ID_NONE
+    lastFocusedWindowId,
+    windowId,
+    chrome.windows.WINDOW_ID_NONE
   );
   lastFocusedWindowId = windowId;
   await trackUsage({ focusedOverride: focusedBefore });
@@ -1102,7 +1215,8 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       // 집중 모드는 "한도와 무관하게" 무조건 차단하는 게 핵심이므로, 긴급 시청으로도
       // 우회할 수 없게 막는다 (사용 시청-한도 차단, 수동 차단은 기존대로 우회 가능).
       const { focusModeActive: fmActive, focusModeEndTime: fmEndTime } = await getStorage([
-        'focusModeActive', 'focusModeEndTime'
+        'focusModeActive',
+        'focusModeEndTime'
       ]);
       if (fmActive && (!fmEndTime || Date.now() < fmEndTime)) {
         sendResponse({ success: false, message: t('emergency_error_focus_mode') });
@@ -1134,7 +1248,10 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       }
 
       const grantedAt = Date.now();
-      await setStorage({ emergency_uses_today: Math.max(0, localUses - 1), last_emergency_granted_at: grantedAt });
+      await setStorage({
+        emergency_uses_today: Math.max(0, localUses - 1),
+        last_emergency_granted_at: grantedAt
+      });
       // 그날 긴급 시청을 썼다는 사실 자체를 남긴다 — 부여받고 안 봐도 완벽한 날은 아니다.
       await addEmergencyUse();
       // 다음 30초 틱을 기다리면 그 사이에 다른 기기가 같은 횟수를 또 쓸 수 있으므로 바로 올린다.
@@ -1177,9 +1294,15 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
         focusModeActive = true;
         focusModeEndTime = Date.now() + duration * 60 * 1000;
         focusStopRequestedAt = null;
-        await setStorage({ focusModeActive: true, focusModeEndTime, focusModeDelayEndTime: null, focusStopRequestedAt: null });
+        await setStorage({
+          focusModeActive: true,
+          focusModeEndTime,
+          focusModeDelayEndTime: null,
+          focusStopRequestedAt: null
+        });
         await checkUsageAndBlock();
-        if (viaDelay) notify(`tube-limiter-focus-start-${Date.now()}`, 'TubeLimiter', t('notify_focus_start'));
+        if (viaDelay)
+          notify(`tube-limiter-focus-start-${Date.now()}`, 'TubeLimiter', t('notify_focus_start'));
       };
 
       if (delay > 0) {
@@ -1197,9 +1320,9 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   if (request.action === 'stopFocusMode') {
     (async () => {
       // 서비스워커가 재시작되었을 수 있으니 인메모리 값을 믿지 말고 storage에서 다시 읽는다.
-      const { focusModeActive: fmActive, focusStopRequestedAt: existingRequest } = await getStorage([
-        'focusModeActive', 'focusStopRequestedAt'
-      ]);
+      const { focusModeActive: fmActive, focusStopRequestedAt: existingRequest } = await getStorage(
+        ['focusModeActive', 'focusStopRequestedAt']
+      );
       focusModeActive = fmActive || false;
 
       // 아직 시작 전(지연 대기 중)인 예약을 취소하는 건 즉시 처리한다 - 이미 차단을 시작한
@@ -1282,8 +1405,12 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 (async () => {
   await loadSettingsCache();
   const stored = await getStorage([
-    'isYoutubeBlocked', 'shortsLimitBlocked', 'isManuallyBlocked',
-    'focusModeActive', 'focusModeEndTime', 'focusStopRequestedAt'
+    'isYoutubeBlocked',
+    'shortsLimitBlocked',
+    'isManuallyBlocked',
+    'focusModeActive',
+    'focusModeEndTime',
+    'focusStopRequestedAt'
   ]);
   isYoutubeBlocked = stored.isYoutubeBlocked || false;
   // 아래 checkUsageAndBlock이 곧 다시 판정하지만, 그 전에 팝업이 긴급 시청을 요청할 수 있으므로

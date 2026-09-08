@@ -32,7 +32,9 @@ function restoreState(previous, date) {
   return {
     ...previous,
     lastIntervalNotifyMs: previous.lastIntervalNotifyMs || 0,
-    notifiedMilestones: Array.isArray(previous.notifiedMilestones) ? [...previous.notifiedMilestones] : [],
+    notifiedMilestones: Array.isArray(previous.notifiedMilestones)
+      ? [...previous.notifiedMilestones]
+      : [],
     scheduleStartNotified: !!previous.scheduleStartNotified
   };
 }
@@ -55,14 +57,17 @@ function restoreState(previous, date) {
  *   (같은 id면 크롬이 배너를 다시 안 띄우고 조용히 업데이트만 한다) 그건 Date.now()가 필요해
  *   순수 함수 밖의 일이다.
  */
-export function evaluateAlarms(previous, {
-  date,
-  usedMs = 0,
-  limitMs = Infinity,
-  intervalMinutes = 0,
-  milestonesEnabled = true,
-  minutesUntilScheduleStart = null
-} = {}) {
+export function evaluateAlarms(
+  previous,
+  {
+    date,
+    usedMs = 0,
+    limitMs = Infinity,
+    intervalMinutes = 0,
+    milestonesEnabled = true,
+    minutesUntilScheduleStart = null
+  } = {}
+) {
   const state = restoreState(previous, date);
   const notifications = [];
   let changed = false;
@@ -83,7 +88,11 @@ export function evaluateAlarms(previous, {
     const remaining = limitMs - usedMs;
     for (const minutes of ALARM_MILESTONE_MINUTES) {
       // remaining > 0 조건 때문에 한도를 이미 넘긴 뒤엔 조용하다 (그땐 차단 화면이 뜬다).
-      if (remaining > 0 && remaining <= minutes * 60 * 1000 && !state.notifiedMilestones.includes(minutes)) {
+      if (
+        remaining > 0 &&
+        remaining <= minutes * 60 * 1000 &&
+        !state.notifiedMilestones.includes(minutes)
+      ) {
         state.notifiedMilestones.push(minutes);
         changed = true;
         notifications.push({ kind: ALARM_KIND.milestone, minutes });
@@ -94,8 +103,12 @@ export function evaluateAlarms(previous, {
   // 예약 차단 시작 10분 전 알림. 하루 한 번만 알리면 충분하므로 날짜별로 한 번만 dedupe한다.
   // minutes에는 실제 남은 분이 아니라 예고 기준값(10)을 담는다 — 문구가 "10분 후"로 고정이라
   // 7분 남았을 때 "7분 후"로 바뀌면 하루 한 번만 알린다는 규칙과 어긋나 보인다.
-  if (minutesUntilScheduleStart !== null && minutesUntilScheduleStart > 0 &&
-      minutesUntilScheduleStart <= SCHEDULE_SOON_LEAD_MINUTES && !state.scheduleStartNotified) {
+  if (
+    minutesUntilScheduleStart !== null &&
+    minutesUntilScheduleStart > 0 &&
+    minutesUntilScheduleStart <= SCHEDULE_SOON_LEAD_MINUTES &&
+    !state.scheduleStartNotified
+  ) {
     state.scheduleStartNotified = true;
     changed = true;
     notifications.push({ kind: ALARM_KIND.scheduleSoon, minutes: SCHEDULE_SOON_LEAD_MINUTES });

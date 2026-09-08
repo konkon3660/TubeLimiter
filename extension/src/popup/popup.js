@@ -60,10 +60,12 @@ const focusModeDelayInput = document.getElementById('focusModeDelayInput');
 
 // 팝업은 열 때마다 DOM이 새로 생성되어 입력값이 HTML 기본값으로 리셋된다.
 // 지연(분)을 입력해놓고 팝업이 닫혔다 열리면 0으로 되돌아가 의도치 않게 즉시 차단되므로 storage에 보존한다.
-getStorage(['focusModeFormDuration', 'focusModeFormDelay']).then(({ focusModeFormDuration, focusModeFormDelay }) => {
-  if (focusModeFormDuration != null) focusModeDurationInput.value = focusModeFormDuration;
-  if (focusModeFormDelay != null) focusModeDelayInput.value = focusModeFormDelay;
-});
+getStorage(['focusModeFormDuration', 'focusModeFormDelay']).then(
+  ({ focusModeFormDuration, focusModeFormDelay }) => {
+    if (focusModeFormDuration != null) focusModeDurationInput.value = focusModeFormDuration;
+    if (focusModeFormDelay != null) focusModeDelayInput.value = focusModeFormDelay;
+  }
+);
 focusModeDurationInput.addEventListener('input', () => {
   setStorage({ focusModeFormDuration: focusModeDurationInput.value });
 });
@@ -136,7 +138,11 @@ function startEmergencyCountdown(emergencyEndTime) {
       renderLocal();
       return;
     }
-    setBadge(modeStatus, 'status-active', t('popup_mode_emergency', [formatCountdown(remainingMs)]));
+    setBadge(
+      modeStatus,
+      'status-active',
+      t('popup_mode_emergency', [formatCountdown(remainingMs)])
+    );
   };
   tick();
   emergencyCountdownTimer = setInterval(tick, 1000);
@@ -188,27 +194,53 @@ async function renderLocal() {
     console.error('[TubeLimiter] getTrackingStatus 실패:', e);
   }
 
-  const [{ usage_history }, { usage_history_shorts }, { settingsCache }, { emergency_uses_today }, { focusModeActive, focusModeEndTime, focusModeDelayEndTime, focusStopRequestedAt }, { emergencyModeActive, emergencyEndTime, last_emergency_granted_at }, dailySync, emergencyBucket] = await Promise.all([
+  const [
+    { usage_history },
+    { usage_history_shorts },
+    { settingsCache },
+    { emergency_uses_today },
+    { focusModeActive, focusModeEndTime, focusModeDelayEndTime, focusStopRequestedAt },
+    { emergencyModeActive, emergencyEndTime, last_emergency_granted_at },
+    dailySync,
+    emergencyBucket
+  ] = await Promise.all([
     getStorage(['usage_history']),
     getStorage(['usage_history_shorts']),
     getStorage(['settingsCache']),
     getStorage(['emergency_uses_today']),
-    getStorage(['focusModeActive', 'focusModeEndTime', 'focusModeDelayEndTime', 'focusStopRequestedAt']),
+    getStorage([
+      'focusModeActive',
+      'focusModeEndTime',
+      'focusModeDelayEndTime',
+      'focusStopRequestedAt'
+    ]),
     getStorage(['emergencyModeActive', 'emergencyEndTime', 'last_emergency_granted_at']),
     getStorage([
-      'dailyUsageSyncDate', 'dailyUsageSyncedMillis', 'dailyUsageCombinedMillis', 'dailyUsageShortsSyncedMillis',
+      'dailyUsageSyncDate',
+      'dailyUsageSyncedMillis',
+      'dailyUsageCombinedMillis',
+      'dailyUsageShortsSyncedMillis',
       'dailyUsageCombinedShortsMillis'
     ]),
-    getStorage(['emergencyUsesBucketDate', 'emergencyUsesBucketRemote', 'emergencyUsesBucketReported'])
+    getStorage([
+      'emergencyUsesBucketDate',
+      'emergencyUsesBucketRemote',
+      'emergencyUsesBucketReported'
+    ])
   ]);
 
   const today = getTodayDate();
   const localUsage = (usage_history || {})[today] || 0;
   // 백그라운드가 주기적으로 다른 기기 몫을 동기화해두면(다음 기기 몫 합산은
   // service-worker.js의 syncUsageToSupabase 참고) 여기서도 같은 값을 보여준다.
-  const todayUsage = dailySync.dailyUsageSyncDate === today
-    ? combinedUsedMillis(localUsage, dailySync.dailyUsageSyncedMillis || 0, dailySync.dailyUsageCombinedMillis || 0)
-    : localUsage;
+  const todayUsage =
+    dailySync.dailyUsageSyncDate === today
+      ? combinedUsedMillis(
+          localUsage,
+          dailySync.dailyUsageSyncedMillis || 0,
+          dailySync.dailyUsageCombinedMillis || 0
+        )
+      : localUsage;
   const limitMs = computeLimitForDate(settingsCache, today);
   const remaining = Number.isFinite(limitMs) ? Math.max(0, limitMs - todayUsage) : Infinity;
 
@@ -220,9 +252,14 @@ async function renderLocal() {
   // Shorts는 전체 사용량과 같은 기준(로컬 + 다른 기기 몫)으로 보여준다 — 팝업 숫자와 실제
   // 차단 판정(service-worker.js getEffectiveTodayShortsUsage)이 어긋나면 "아직 남았는데 막혔다"가 된다.
   const localShorts = (usage_history_shorts || {})[today] || 0;
-  const todayShorts = dailySync.dailyUsageSyncDate === today
-    ? combinedUsedMillis(localShorts, dailySync.dailyUsageShortsSyncedMillis || 0, dailySync.dailyUsageCombinedShortsMillis || 0)
-    : localShorts;
+  const todayShorts =
+    dailySync.dailyUsageSyncDate === today
+      ? combinedUsedMillis(
+          localShorts,
+          dailySync.dailyUsageShortsSyncedMillis || 0,
+          dailySync.dailyUsageCombinedShortsMillis || 0
+        )
+      : localShorts;
   const shortsLimitMs = computeShortsLimit(settingsCache);
   // 한도를 안 걸었으면 "12분 / 무제한"이 아니라 그냥 사용량만 보여준다 (없는 한도를 강조할 이유가 없다).
   document.getElementById('shortsUsage').textContent = Number.isFinite(shortsLimitMs)
@@ -243,31 +280,43 @@ async function renderLocal() {
   // 백그라운드가 동기화할 때 서버 버킷 합계를 캐시해둔다(service-worker.js
   // refreshEmergencyUsesBucket). 캐시가 다른 버킷 것이면 로컬 값 그대로 — 오프라인/로그아웃에선
   // 기존과 똑같이 보인다.
-  const localEmergencyUses = emergency_uses_today ?? (settingsCache?.emergency_config?.dailyUses ?? DEFAULT_EMERGENCY_USES);
+  const localEmergencyUses =
+    emergency_uses_today ?? settingsCache?.emergency_config?.dailyUses ?? DEFAULT_EMERGENCY_USES;
   const emergencyBucketStart = emergencyResetDate(settingsCache?.emergency_config?.resetFrequency, {
     today,
     weekStart: getWeekStartDate(),
     monthStart: getMonthStartDate()
   });
-  const emergencyLeft = emergencyBucket.emergencyUsesBucketDate === emergencyBucketStart
-    ? remainingEmergencyUses(localEmergencyUses, emergencyBucket.emergencyUsesBucketReported || 0, emergencyBucket.emergencyUsesBucketRemote || 0)
-    : localEmergencyUses;
+  const emergencyLeft =
+    emergencyBucket.emergencyUsesBucketDate === emergencyBucketStart
+      ? remainingEmergencyUses(
+          localEmergencyUses,
+          emergencyBucket.emergencyUsesBucketReported || 0,
+          emergencyBucket.emergencyUsesBucketRemote || 0
+        )
+      : localEmergencyUses;
   document.getElementById('emergencyCount').textContent = tCount('times', emergencyLeft);
 
   const focusActive = !!(focusModeActive && focusModeEndTime > Date.now());
-  const focusScheduled = !focusActive && !!(focusModeDelayEndTime && focusModeDelayEndTime > Date.now());
+  const focusScheduled =
+    !focusActive && !!(focusModeDelayEndTime && focusModeDelayEndTime > Date.now());
   const focusStopPending = focusActive && !!focusStopRequestedAt;
 
   // 예약 차단: 옵션 페이지에서만 켜고 끌 수 있다 (의도적 - 팝업에 끄기 버튼을 안 두는 게
   // 진짜 커밋먼트 장치가 되는 핵심이라, 여기선 읽기 전용 상태 표시만 한다).
-  const { active: scheduleActive, window: scheduleWindow } = isScheduleActive(new Date(), settingsCache?.scheduled_blocks || []);
+  const { active: scheduleActive, window: scheduleWindow } = isScheduleActive(
+    new Date(),
+    settingsCache?.scheduled_blocks || []
+  );
 
   // 집중 모드 종료 버튼: 활성 세션은 "종료 요청"(10분 쿨다운 시작), 예약 대기 중은 즉시 취소.
   // 이미 종료를 요청해둔 상태면 종료 버튼 대신 "예약 취소"만 보여준다 (renderLocal은 1초마다
   // 다시 불리므로 이 토글도 그때그때 최신 상태를 반영한다).
   stopFocusModeButton.style.display = focusStopPending ? 'none' : '';
   cancelFocusStopButton.style.display = focusStopPending ? '' : 'none';
-  stopFocusModeButton.textContent = focusScheduled ? t('action_cancel_focus_schedule') : t('action_stop_focus');
+  stopFocusModeButton.textContent = focusScheduled
+    ? t('action_cancel_focus_schedule')
+    : t('action_stop_focus');
 
   if (emergencyModeActive && emergencyEndTime > Date.now()) {
     emergencyButton.disabled = true;
@@ -295,7 +344,10 @@ async function renderLocal() {
       emergencyButton.textContent = t('popup_emergency_blocked_schedule');
     } else if (emergencyCooldownRemainingMs > 0) {
       emergencyButton.disabled = true;
-      emergencyButton.textContent = tCount('popup_emergency_cooldown', Math.ceil(emergencyCooldownRemainingMs / 1000));
+      emergencyButton.textContent = tCount(
+        'popup_emergency_cooldown',
+        Math.ceil(emergencyCooldownRemainingMs / 1000)
+      );
     } else {
       emergencyButton.disabled = false;
       emergencyButton.textContent = t('action_request_emergency');
@@ -336,7 +388,12 @@ async function renderLocal() {
   // 맡기고(lib/syncDiagnostics.js staleSyncWarning) 여기선 문구를 붙여 표시만 한다. renderLocal이
   // 1초마다 다시 불리므로 임계값을 넘는 순간 별도 트리거 없이 뜬다(안드로이드 홈 화면과 같은 방식).
   const { events, lastSuccessAtMillis } = await readDiagnostics();
-  const syncWarning = staleSyncWarning(isSignedIn, lastSuccessAtMillis, events.length > 0, Date.now());
+  const syncWarning = staleSyncWarning(
+    isSignedIn,
+    lastSuccessAtMillis,
+    events.length > 0,
+    Date.now()
+  );
   syncWarningEl.textContent = formatSyncWarning(syncWarning);
   syncWarningEl.style.display = syncWarning ? '' : 'none';
 }
@@ -360,7 +417,11 @@ async function renderRemote() {
   streakSection.style.display = hardcoreMode ? '' : 'none';
 
   if (hardcoreMode) {
-    const { data: streak } = await supabase.from('streaks').select('*').eq('user_id', user.id).maybeSingle();
+    const { data: streak } = await supabase
+      .from('streaks')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle();
     const xp = streak?.xp || 0;
     const { level, xpIntoLevel, xpForNextLevel } = getLevelProgress(xp);
     const currentStreak = streak?.current_streak || 0;
@@ -374,7 +435,8 @@ async function renderRemote() {
     );
     document.getElementById('levelNumber').textContent = level;
     document.getElementById('xpLabel').textContent = `${xpIntoLevel}/${xpForNextLevel} XP`;
-    document.getElementById('xpBarFill').style.width = `${Math.min(100, (xpIntoLevel / xpForNextLevel) * 100)}%`;
+    document.getElementById('xpBarFill').style.width =
+      `${Math.min(100, (xpIntoLevel / xpForNextLevel) * 100)}%`;
   }
 
   await renderLocal();

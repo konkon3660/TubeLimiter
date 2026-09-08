@@ -32,7 +32,9 @@ document.getElementById('signOutButton').addEventListener('click', async () => {
   // 보이고, "마지막 성공" 시각이 다음 계정의 24시간 판정에 그대로 끼어든다
   // (안드로이드 AppState.clearAccountData가 같은 이유로 같이 지운다).
   await chrome.storage.local.remove([
-    'emergencyUsesBucketDate', 'emergencyUsesBucketRemote', 'emergencyUsesBucketReported',
+    'emergencyUsesBucketDate',
+    'emergencyUsesBucketRemote',
+    'emergencyUsesBucketReported',
     ...DIAGNOSTIC_STORAGE_KEYS
   ]);
   window.location.reload();
@@ -75,7 +77,8 @@ function renderHardcoreState() {
   const requestedAt = currentSettings?.hardcore_disable_requested_at
     ? new Date(currentSettings.hardcore_disable_requested_at).getTime()
     : null;
-  const pending = isOn && requestedAt !== null && Date.now() < requestedAt + HARDCORE_DISABLE_COOLDOWN_MS;
+  const pending =
+    isOn && requestedAt !== null && Date.now() < requestedAt + HARDCORE_DISABLE_COOLDOWN_MS;
 
   hardcoreOffBlock.style.display = isOn ? 'none' : '';
   hardcoreOnBlock.style.display = isOn && !pending ? '' : 'none';
@@ -126,13 +129,16 @@ document.getElementById('enableHardcoreButton').addEventListener('click', () => 
 document.getElementById('requestHardcoreOffButton').addEventListener('click', async () => {
   const user = await getCurrentUser();
   if (!user) return;
-  const { data: streak } = await supabase.from('streaks').select('current_streak').eq('user_id', user.id).maybeSingle();
+  const { data: streak } = await supabase
+    .from('streaks')
+    .select('current_streak')
+    .eq('user_id', user.id)
+    .maybeSingle();
   const currentStreak = streak?.current_streak || 0;
 
   // 영어에서도 "your 1-day streak / your 5-day streak"로 형태가 같아 단복수를 나누지 않는다.
-  const streakWarning = currentStreak > 0
-    ? t('options_hardcore_off_streak_warning', [String(currentStreak)])
-    : '';
+  const streakWarning =
+    currentStreak > 0 ? t('options_hardcore_off_streak_warning', [String(currentStreak)]) : '';
   if (!confirm(t('options_hardcore_off_confirm', [streakWarning]))) return;
 
   updateHardcoreFields({ hardcore_disable_requested_at: new Date().toISOString() });
@@ -319,7 +325,9 @@ function fillForm(settings) {
   simpleLimitBlock.style.display = byDay ? 'none' : '';
   byDayLimitBlock.style.display = byDay ? '' : 'none';
 
-  document.getElementById('dailyLimitInput').value = settings.daily_limit_ms ? settings.daily_limit_ms / 60000 : 0;
+  document.getElementById('dailyLimitInput').value = settings.daily_limit_ms
+    ? settings.daily_limit_ms / 60000
+    : 0;
 
   document.querySelectorAll('.day-limit-row').forEach((row) => {
     const day = row.dataset.day;
@@ -339,13 +347,18 @@ function fillForm(settings) {
   renderWhitelist();
 
   document.getElementById('emergencyUsesInput').value = settings.emergency_config?.dailyUses ?? 3;
-  document.getElementById('emergencyResetSelect').value = settings.emergency_config?.resetFrequency || 'daily';
+  document.getElementById('emergencyResetSelect').value =
+    settings.emergency_config?.resetFrequency || 'daily';
 
   document.getElementById('alarmIntervalInput').value = settings.alarm_interval_minutes ?? 0;
-  document.getElementById('alarmMilestonesToggle').checked = settings.alarm_milestones_enabled !== false;
+  document.getElementById('alarmMilestonesToggle').checked =
+    settings.alarm_milestones_enabled !== false;
 
   scheduledBlocks = Array.isArray(settings.scheduled_blocks)
-    ? settings.scheduled_blocks.map((b) => ({ ...b, days: Array.isArray(b.days) ? [...b.days] : [1, 1, 1, 1, 1, 1, 1] }))
+    ? settings.scheduled_blocks.map((b) => ({
+        ...b,
+        days: Array.isArray(b.days) ? [...b.days] : [1, 1, 1, 1, 1, 1, 1]
+      }))
     : [];
   renderScheduledBlocks();
 
@@ -365,7 +378,8 @@ function collectSettings() {
     daily_limit_ms: Number(document.getElementById('dailyLimitInput').value) * 60000,
     daily_limit_by_day: dailyLimitByDay,
     // 입력이 비어 있으면 Number('')가 NaN이라 bigint 컬럼 upsert가 통째로 실패한다 — 0(제한 없음)으로 접는다.
-    shorts_limit_ms: Math.max(0, Number(document.getElementById('shortsLimitInput').value) || 0) * 60000,
+    shorts_limit_ms:
+      Math.max(0, Number(document.getElementById('shortsLimitInput').value) || 0) * 60000,
     always_block_shorts: document.getElementById('alwaysBlockShortsToggle').checked,
     whitelist,
     emergency_config: {
@@ -386,7 +400,9 @@ document.getElementById('saveButton').addEventListener('click', async () => {
   const statusEl = document.getElementById('saveStatus');
   statusEl.textContent = t('options_saving');
 
-  const { error } = await supabase.from('settings').upsert({ user_id: user.id, ...settings, updated_at: new Date().toISOString() });
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ user_id: user.id, ...settings, updated_at: new Date().toISOString() });
   if (error) {
     statusEl.textContent = t('options_save_failed', [error.message]);
     return;
@@ -477,7 +493,9 @@ document.getElementById('copyDiagnosticsButton').addEventListener('click', async
   // 줄 순서와 "무엇을 내보내고 무엇을 버리는가"는 순수 함수가 정하고, 머리말 문구만 여기서 넣는다.
   const report = buildDiagnosticsReport(diagnosticsSnapshot.events, {
     title: t('diag_report_title'),
-    lastSuccess: t('diag_report_last_success', [lastSuccessLabel(diagnosticsSnapshot.lastSuccessAtMillis)]),
+    lastSuccess: t('diag_report_last_success', [
+      lastSuccessLabel(diagnosticsSnapshot.lastSuccessAtMillis)
+    ]),
     noFailures: t('diag_report_no_failures'),
     failureCount: tCount('diag_report_failure_count', diagnosticsSnapshot.events.length)
   });
@@ -521,8 +539,10 @@ function normalizeDeletePhrase(value) {
 }
 
 function renderDeleteConfirmState() {
-  const matched = !!deleteConfirmPhrase
-    && normalizeDeletePhrase(deleteAccountConfirmInput.value) === normalizeDeletePhrase(deleteConfirmPhrase);
+  const matched =
+    !!deleteConfirmPhrase &&
+    normalizeDeletePhrase(deleteAccountConfirmInput.value) ===
+      normalizeDeletePhrase(deleteConfirmPhrase);
   confirmDeleteAccountButton.disabled = deleteInFlight || !matched;
 }
 
@@ -556,7 +576,11 @@ cancelDeleteAccountButton.addEventListener('click', () => {
 confirmDeleteAccountButton.addEventListener('click', async () => {
   // 버튼 disabled와 별개로 한 번 더 막는다 — 연타로 두 번 삭제가 나가면 안 된다.
   if (deleteInFlight) return;
-  if (normalizeDeletePhrase(deleteAccountConfirmInput.value) !== normalizeDeletePhrase(deleteConfirmPhrase)) return;
+  if (
+    normalizeDeletePhrase(deleteAccountConfirmInput.value) !==
+    normalizeDeletePhrase(deleteConfirmPhrase)
+  )
+    return;
 
   deleteInFlight = true;
   confirmDeleteAccountButton.disabled = true;

@@ -6,7 +6,11 @@
 // 사용자가 두 기기의 기록을 나란히 놓고 볼 일이 있어서, 이름까지 같은 편이 헷갈리지 않는다.
 
 import { getStorage, setStorage } from './storage.js';
-import { DIAGNOSTIC_CAPACITY, appendDiagnosticEvent, normalizeDiagnosticEvents } from './syncDiagnostics.js';
+import {
+  DIAGNOSTIC_CAPACITY,
+  appendDiagnosticEvent,
+  normalizeDiagnosticEvents
+} from './syncDiagnostics.js';
 
 export const DIAGNOSTIC_EVENTS_KEY = 'diagnostic_events';
 export const LAST_SYNC_SUCCESS_KEY = 'last_sync_success_at';

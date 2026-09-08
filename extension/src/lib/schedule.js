@@ -13,8 +13,13 @@ function minuteOfDay(date) {
 }
 
 function isWindowValid(w) {
-  return !!w && Array.isArray(w.days) && w.days.length >= 7 &&
-    typeof w.startMinute === 'number' && typeof w.endMinute === 'number';
+  return (
+    !!w &&
+    Array.isArray(w.days) &&
+    w.days.length >= 7 &&
+    typeof w.startMinute === 'number' &&
+    typeof w.endMinute === 'number'
+  );
 }
 
 /**

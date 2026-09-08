@@ -44,10 +44,18 @@ test('아무 조건도 안 걸리면 알림도 없고 장부도 안 바뀐다', 
 });
 
 test('N분 주기 알림은 간격에 정확히 도달할 때 발화한다', () => {
-  const justUnder = evaluate(createAlarmState(TODAY), { usedMs: 10 * MIN - 1, intervalMinutes: 10, limitMs: Infinity });
+  const justUnder = evaluate(createAlarmState(TODAY), {
+    usedMs: 10 * MIN - 1,
+    intervalMinutes: 10,
+    limitMs: Infinity
+  });
   assert.deepEqual(kinds(justUnder), []);
 
-  const atInterval = evaluate(createAlarmState(TODAY), { usedMs: 10 * MIN, intervalMinutes: 10, limitMs: Infinity });
+  const atInterval = evaluate(createAlarmState(TODAY), {
+    usedMs: 10 * MIN,
+    intervalMinutes: 10,
+    limitMs: Infinity
+  });
   assert.deepEqual(kinds(atInterval), [ALARM_KIND.interval]);
   // 문구가 아니라 "몇 분짜리 알림인가"만 돌려준다 — 문구는 service-worker.js가 chrome.i18n으로 붙인다.
   assert.equal(atInterval.notifications[0].minutes, 10);
@@ -56,17 +64,30 @@ test('N분 주기 알림은 간격에 정확히 도달할 때 발화한다', () 
 
 test('오래 못 돌았어도 밀린 주기 알림이 한꺼번에 쏟아지지 않고 경계로 스냅한다', () => {
   // 10분 주기인데 35분치가 한 번에 들어온 상황 (서비스워커가 잠들어 있었던 경우).
-  const result = evaluate(createAlarmState(TODAY), { usedMs: 35 * MIN, intervalMinutes: 10, limitMs: Infinity });
+  const result = evaluate(createAlarmState(TODAY), {
+    usedMs: 35 * MIN,
+    intervalMinutes: 10,
+    limitMs: Infinity
+  });
   assert.equal(result.notifications.length, 1);
   assert.equal(result.state.lastIntervalNotifyMs, 30 * MIN);
 
   // 다음 발화는 40분째부터 — 스냅한 기준점 덕분에 곧바로 또 울리지 않는다.
-  assert.deepEqual(kinds(evaluate(result.state, { usedMs: 39 * MIN, intervalMinutes: 10, limitMs: Infinity })), []);
-  assert.deepEqual(kinds(evaluate(result.state, { usedMs: 40 * MIN, intervalMinutes: 10, limitMs: Infinity })), ['interval']);
+  assert.deepEqual(
+    kinds(evaluate(result.state, { usedMs: 39 * MIN, intervalMinutes: 10, limitMs: Infinity })),
+    []
+  );
+  assert.deepEqual(
+    kinds(evaluate(result.state, { usedMs: 40 * MIN, intervalMinutes: 10, limitMs: Infinity })),
+    ['interval']
+  );
 });
 
 test('주기 알림이 0분이면(끔) 아무리 봐도 조용하다', () => {
-  assert.deepEqual(kinds(evaluate(null, { usedMs: 200 * MIN, intervalMinutes: 0, limitMs: Infinity })), []);
+  assert.deepEqual(
+    kinds(evaluate(null, { usedMs: 200 * MIN, intervalMinutes: 0, limitMs: Infinity })),
+    []
+  );
 });
 
 test('남은 시간이 정확히 마일스톤에 닿으면 발화한다', () => {
@@ -89,7 +110,10 @@ test('같은 마일스톤은 하루에 한 번만 발화한다', () => {
 test('여러 마일스톤을 한 번에 넘기면 넘긴 것들이 모두 발화한다', () => {
   // 한도 60분에 55분 사용 → 남은 5분: 30/10/5가 한꺼번에 걸린다.
   const result = evaluate(null, { usedMs: 55 * MIN, limitMs: 60 * MIN });
-  assert.deepEqual(result.notifications.map((n) => n.minutes), [30, 10, 5]);
+  assert.deepEqual(
+    result.notifications.map((n) => n.minutes),
+    [30, 10, 5]
+  );
   assert.deepEqual(result.state.notifiedMilestones, [30, 10, 5]);
 });
 
@@ -99,7 +123,10 @@ test('한도를 다 쓴 뒤엔 마일스톤이 조용하다 (그땐 차단 화�
 });
 
 test('마일스톤을 끄거나 한도가 무제한이면 조용하다', () => {
-  assert.deepEqual(kinds(evaluate(null, { usedMs: 59 * MIN, limitMs: 60 * MIN, milestonesEnabled: false })), []);
+  assert.deepEqual(
+    kinds(evaluate(null, { usedMs: 59 * MIN, limitMs: 60 * MIN, milestonesEnabled: false })),
+    []
+  );
   assert.deepEqual(kinds(evaluate(null, { usedMs: 59 * MIN, limitMs: Infinity })), []);
 });
 
@@ -113,7 +140,10 @@ test('어제 장부는 버리고 오늘치로 새로 시작한다', () => {
   const result = evaluate(yesterday, { usedMs: 30 * MIN, limitMs: 60 * MIN, intervalMinutes: 10 });
   assert.equal(result.state.date, TODAY);
   // 어제 이미 알린 30분 마일스톤이 오늘 다시 울려야 한다.
-  assert.deepEqual(result.notifications.map((n) => n.kind), ['interval', 'milestone']);
+  assert.deepEqual(
+    result.notifications.map((n) => n.kind),
+    ['interval', 'milestone']
+  );
 });
 
 test('예약 차단 10분 전 알림은 10분 이내일 때만, 하루 한 번만 뜬다', () => {

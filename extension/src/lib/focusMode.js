@@ -17,7 +17,11 @@ export const FOCUS_STOP_COOLDOWN_MS = 10 * 60 * 1000;
  * @param {number} cooldownMs 종료 요청 후 실제로 꺼지기까지 걸리는 시간
  * @returns {number|null} 실제로 꺼져야 하는 시각. 요청도 자연 종료 시각도 없으면 null.
  */
-export function resolveFocusStopTime(naturalEndMillis, stopRequestedAtMillis, cooldownMs = FOCUS_STOP_COOLDOWN_MS) {
+export function resolveFocusStopTime(
+  naturalEndMillis,
+  stopRequestedAtMillis,
+  cooldownMs = FOCUS_STOP_COOLDOWN_MS
+) {
   if (stopRequestedAtMillis == null) return naturalEndMillis ?? null;
 
   const cooldownEndMillis = stopRequestedAtMillis + cooldownMs;

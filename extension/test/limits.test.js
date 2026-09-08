@@ -99,12 +99,20 @@ test('음수 shorts_limit_ms도 한도 없음으로 접는다 (영구 차단 사
 });
 
 test('Shorts 한도는 전체 한도와 완전히 독립이다', () => {
-  const settings = { daily_limit_reset_frequency: 'daily', daily_limit_ms: 120 * MIN, shorts_limit_ms: 10 * MIN };
+  const settings = {
+    daily_limit_reset_frequency: 'daily',
+    daily_limit_ms: 120 * MIN,
+    shorts_limit_ms: 10 * MIN
+  };
   assert.equal(computeLimitForDate(settings, WEDNESDAY), 120 * MIN);
   assert.equal(computeShortsLimit(settings), 10 * MIN);
 
   // 전체가 무제한이어도 Shorts 한도는 그대로 살아 있다.
-  const unlimitedOverall = { daily_limit_reset_frequency: 'daily', daily_limit_ms: 0, shorts_limit_ms: 10 * MIN };
+  const unlimitedOverall = {
+    daily_limit_reset_frequency: 'daily',
+    daily_limit_ms: 0,
+    shorts_limit_ms: 10 * MIN
+  };
   assert.equal(computeLimitForDate(unlimitedOverall, WEDNESDAY), Infinity);
   assert.equal(computeShortsLimit(unlimitedOverall), 10 * MIN);
 });

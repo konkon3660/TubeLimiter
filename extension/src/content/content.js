@@ -148,7 +148,8 @@ function showAlarmToast(message) {
       maxWidth: '360px',
       fontFamily: 'Roboto, Arial, sans-serif',
       cursor: 'pointer',
-      animation: 'tube-limiter-toast-in 0.35s ease-out, tube-limiter-toast-pulse 1.2s ease-in-out 0.35s 2'
+      animation:
+        'tube-limiter-toast-in 0.35s ease-out, tube-limiter-toast-pulse 1.2s ease-in-out 0.35s 2'
     });
     // 클릭하면 바로 닫히게. 8초 기다리기 싫을 때용.
     toast.addEventListener('click', () => {
@@ -224,11 +225,14 @@ function reportPlaybackState() {
     // 확장 프로그램이 리로드/업데이트되면 이 탭의 content script는 남아있어도
     // chrome.runtime이 무효화되어 sendMessage가 "동기적으로" throw한다 (Promise reject가 아님).
     // .catch()로는 못 잡으므로 try/catch 필요. 이 경우 페이지 새로고침 전까진 복구 불가하니 감시 중단.
-    chrome.runtime.sendMessage({ action: 'videoPlaybackState', playing })
+    chrome.runtime
+      .sendMessage({ action: 'videoPlaybackState', playing })
       // 실제로 전달된 뒤에만 "보고했다"고 기억한다. 실패한 보고까지 기억해버리면 상태가
       // 다시 바뀌기 전까진 재전송을 안 해서, 백그라운드가 옛 값을 계속 믿게 된다
       // (일시정지해둔 영상이 계속 시청 중으로 집계되는 원인). 실패하면 다음 폴링이 재시도한다.
-      .then(() => { lastReportedPlaying = playing; })
+      .then(() => {
+        lastReportedPlaying = playing;
+      })
       .catch(() => {});
   } catch {
     if (playbackWatcherId) {
