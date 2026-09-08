@@ -39,11 +39,16 @@ jobs:
         run: npm run lint
         continue-on-error: false
 
+      # Prettier is a separate gate from ESLint. The tree was brought fully in
+      # line with it, so a formatting drift is now a CI failure, not a warning.
+      - name: Format check
+        run: npm run format:check
+
       - name: Test
         run: npm test
 
   android:
-    name: Android unit tests
+    name: Android (ktlint + unit tests + release build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -82,8 +87,22 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
+      # The three gates stay in separate steps so a red run names the one that
+      # broke, and they run cheapest-and-flakiest first: style, then tests, then
+      # the slow release build. ktlintCheck hangs off `check`, never off `test`,
+      # so running only testDebugUnitTest would skip it entirely.
+      - name: Check code style (ktlint)
+        run: ./gradlew ktlintCheck --no-daemon
+
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest --no-daemon
+
+      # Only the release build runs R8, so app/proguard-rules.pro is unverified
+      # without this step. Signing is opt-in via the untracked keystore.properties;
+      # with no such file the build succeeds and emits an unsigned APK, so CI
+      # needs no secret.
+      - name: Build release APK (R8 + resource shrinking)
+        run: ./gradlew assembleRelease --no-daemon
 
       - name: Upload test reports
         if: always()

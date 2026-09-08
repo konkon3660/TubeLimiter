@@ -5,7 +5,7 @@
 ## 요구 사항
 
 - Android Studio (AGP 9 계열 사용 중 — Kotlin 버전 올릴 때 주의사항은 MOBILE_PLAN.md 하단 참고).
-- `compileSdk 37` / `minSdk 26` / `targetSdk 36`, JDK 17.
+- `compileSdk 37` / `minSdk 26` / `targetSdk 36`, JDK 17(= `compileOptions`의 컴파일 타깃. Gradle 데몬이 돌아가는 툴체인은 별개로 25에 고정돼 있다 — 아래 CI 절 참고).
 - Supabase 연결 정보는 이미 코드에 박혀 있음(`app/src/main/java/com/tubelimiter/app/auth/SupabaseConfig.kt`) — 확장과 같은 프로젝트 공유라 별도 설정 불필요.
 
 ## 빌드
@@ -36,9 +36,17 @@ cd android
 
 ### CI
 
-`.github/workflows/ci.yml`의 `android` 잡이 push(main)와 PR마다 temurin JDK 17 + `platforms;android-37`을 깔고 `./gradlew testDebugUnitTest`를 돌린다(같은 워크플로의 다른 잡이 확장 lint/test). SDK 경로는 러너가 내보내는 `ANDROID_HOME`에서 나온다 — `local.properties`는 커밋하지 않으므로.
+`.github/workflows/ci.yml`의 `android` 잡이 push(main)와 PR마다 temurin JDK 25 + `platforms;android-37`을 깔고 세 게이트를 **각각 별도 스텝으로** 돌린다(같은 워크플로의 다른 잡이 확장 lint/format/test). SDK 경로는 러너가 내보내는 `ANDROID_HOME`에서 나온다 — `local.properties`는 커밋하지 않으므로.
 
-**이 잡은 아직 한 번도 실행된 적이 없어 미검증이다** — SDK 채널에 `android-37`이 없거나 AGP 9가 JDK 21 툴체인을 요구하면 거기서 터진다. 첫 실행 결과를 보고 고쳐야 한다.
+1. `./gradlew ktlintCheck` — `ktlintCheck`는 `check`에 붙지 `test`에는 안 붙는다. 유닛 테스트만 돌리던 예전 설정에선 `ignoreFailures = false` 게이트가 CI에서 아예 안 돌고 로컬에만 존재했다.
+2. `./gradlew testDebugUnitTest`
+3. `./gradlew assembleRelease` — 릴리스에서만 R8 축소가 켜지므로 이 스텝이 없으면 `app/proguard-rules.pro`가 완전히 미검증이다(디버그 빌드는 minify를 안 한다). CI엔 `keystore.properties`가 없으니 미서명 APK로 그냥 성공한다 — 서명 비밀값 필요 없음.
+
+한 스텝에 묶지 않은 건 어느 게이트가 깨졌는지 CI 로그에서 바로 보이게 하려는 것이고, 순서는 빠르고 잘 깨지는 것부터다(assembleRelease가 제일 느리다).
+
+**JDK는 25지만 컴파일 타깃은 여전히 17이다** — 25는 `android/gradle/gradle-daemon-jvm.properties`의 `toolchainVersion=25`에 맞춘 데몬 툴체인 핀(러너가 foojay에서 JDK를 자동으로 받아오지 않게 하려는 것)이고, 모듈이 뱉는 바이트코드는 `compileOptions`의 Java 17 그대로다. 둘은 다른 값이니 한쪽만 보고 다른 쪽을 고치지 말 것.
+
+**이 잡은 아직 한 번도 실행된 적이 없어 미검증이다** — SDK 채널에 `android-37`이 없거나 AGP 9가 JDK 21 툴체인을 요구하면 거기서 터진다. 새로 붙인 `ktlintCheck`/`assembleRelease` 스텝도 마찬가지로 CI에서 한 번도 안 돌아봤다. 첫 실행 결과를 보고 고쳐야 한다.
 
 ## 최초 실행 시 권한 온보딩
 

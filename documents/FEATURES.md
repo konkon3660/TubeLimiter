@@ -39,7 +39,7 @@ TubeLimiter/
 │   └── README.md            ← 처음 설정·빌드·i18n·진단 로그
 ├── android/                ← 네이티브 안드로이드 앱 (유튜브 앱 자체 차단). 계획: MOBILE_PLAN.md
 ├── docs/                   ← GitHub Pages (랜딩 + 개인정보처리방침)
-├── .github/workflows/      ← CI (확장 lint+test, 안드로이드 유닛 테스트)
+├── .github/workflows/      ← CI (확장 lint+format+test, 안드로이드 ktlint+유닛 테스트+릴리스 빌드)
 └── documents/              ← 이 문서들
 ```
 
@@ -57,7 +57,14 @@ Supabase 프로젝트는 이미 생성/연결되어 있음 — `schema.sql` 반�
 
 ## CI
 
-`.github/workflows/ci.yml`이 push(main)와 모든 PR에서 두 잡을 병렬로 돌린다 — 확장(Node 20: `npm ci` → `npm run lint` → `npm test`)과 안드로이드(temurin JDK 17 + `platforms;android-37` 설치 후 `./gradlew testDebugUnitTest`). 테스트 파일은 진작 있었는데 아무도 돌리지 않던 상태를 메우려고 붙였다.
+`.github/workflows/ci.yml`이 push(main)와 모든 PR에서 두 잡을 병렬로 돌린다.
+
+- **확장**(Node 20): `npm ci` → `npm run lint` → `npm run format:check` → `npm test`. 포맷은 린트와 별개 게이트다 — 트리 전체가 Prettier에 맞춰진 뒤 CI 게이트로 승격했다.
+- **안드로이드**(temurin JDK 25 + `platforms;android-37` 설치 후): `./gradlew ktlintCheck` → `testDebugUnitTest` → `assembleRelease`. 게이트마다 스텝을 나눠서 어느 게 깨졌는지 CI 로그에 바로 보이게 했고, 순서는 빠르고 잘 깨지는 것부터다. `ktlintCheck`는 `check`에 붙지 `test`에는 안 붙으므로 테스트만 돌리면 스타일 게이트가 통째로 빠지고, `assembleRelease`는 릴리스에서만 켜지는 R8 축소를 태워 `android/app/proguard-rules.pro`를 검증한다(디버그는 minify를 안 해서 절대 못 잡는다). CI엔 `keystore.properties`가 없으니 미서명 APK로 성공한다.
+
+JDK 25는 `android/gradle/gradle-daemon-jvm.properties`의 `toolchainVersion=25`(데몬이 foojay에서 JDK를 자동으로 받지 않게 하는 핀)에 맞춘 것이지 컴파일 타깃이 아니다 — 모듈이 뱉는 바이트코드는 그대로 Java 17이다.
+
+테스트 파일은 진작 있었는데 아무도 돌리지 않던 상태를 메우려고 붙였다.
 
 **안드로이드 잡은 아직 한 번도 실행되지 않아 미검증이다** — SDK 채널에 `android-37`이 아직 없거나 AGP 9가 JDK 21 툴체인을 요구하면 그 잡에서 드러난다. 첫 실행 결과를 보고 고쳐야 한다. 잡별 상세는 [extension/README.md](../extension/README.md), [ANDROID_SETUP.md](ANDROID_SETUP.md).
 
