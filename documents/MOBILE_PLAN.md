@@ -95,13 +95,13 @@
 5. ~~확장 기능 포팅.~~ 완료 — Supabase 동기화(인증 + 네트워크) 포함.
 6. ~~릴리스 빌드 준비.~~ 완료 — 버전을 `gradle.properties`로 빼고, 릴리스 서명은 커밋하지 않는 `keystore.properties`에서 읽으며(없으면 미서명 빌드), R8 축소 + kotlinx.serialization keep 룰. 절차는 [ANDROID_SETUP.md](ANDROID_SETUP.md).
 7. ~~ktlint 게이트.~~ 완료 — 처음엔 기존 위반 22건 때문에 `ignoreFailures = true`로 들어왔고, `ktlintFormat`으로 backlog를 비운 뒤 `false`로 뒤집었다. 이제 위반 하나에 빌드가 깨진다.
-8. ~~유닛 테스트 CI.~~ 붙임 — `.github/workflows/ci.yml`. **단, 안드로이드 잡은 아직 한 번도 실행되지 않아 미검증**(아래 "CI" 참고).
+8. ~~유닛 테스트 CI.~~ 붙임 — `.github/workflows/ci.yml`. 안드로이드 잡은 `main`에서 실제로 돌아 **통과**했다(ktlint + 유닛 테스트 + `assembleRelease`). 첫 실행이 두 번 깨진 원인과 SDK 패키지 이름 함정은 [ANDROID_SETUP.md](ANDROID_SETUP.md)의 "CI".
 9. ~~진단 로그 / 다국어.~~ 완료 — 위 대응표 참고.
 
 남은 것:
 
 - **오버레이 실기기 검증** (위 4번). 에뮬레이터로는 `UsageStatsManager` 정확도를 못 봐서 여전히 미완.
-- **CI 안드로이드 잡 첫 실행 확인** — 아직 한 번도 안 돌아서 SDK 37 설치와 JDK 버전이 미검증이다. 잡 구성과 실패 예상 지점은 [ANDROID_SETUP.md](ANDROID_SETUP.md)의 "CI".
+- ~~**CI 안드로이드 잡 첫 실행 확인**~~ — 확인됨. SDK 설치 스텝에서 두 번 깨진 뒤 세 게이트 모두 통과한다([ANDROID_SETUP.md](ANDROID_SETUP.md)의 "CI"). 대신 남은 것은 **계측 테스트가 0개**라는 사실이다 — `androidTest` 디렉터리 자체가 없어 오버레이·권한·서비스 생존은 CI가 손대지 못한다([FEATURES.md](FEATURES.md)의 "테스트가 보장하는 것과 아닌 것").
 - **릴리스 APK 실기기 확인.** R8 축소가 켜진 빌드는 디버그와 다른 코드다(ktor 엔진 keep 룰이 없으면 릴리스에서만 네트워크가 죽는 것을 실제로 확인했다 — [ANDROID_SETUP.md](ANDROID_SETUP.md)). 배포 전에 릴리스 빌드로 로그인·동기화가 도는지 한 번은 봐야 한다.
 
 ### 확장 대비 기능 대응표

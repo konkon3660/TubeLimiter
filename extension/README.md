@@ -48,7 +48,9 @@ extension/
 │   ├── lib/           # 판정 순수 함수 + 저장소 래퍼. chrome.* 없이 node:test로 도는 파일들:
 │   │                  #   blockDecision / alarmRules / dateRollover / limits / limitHistory /
 │   │                  #   historyMerge / usageMerge / schedule / emergency / focusMode /
-│   │                  #   hardcore / gamification / time / syncDiagnostics / i18n
+│   │                  #   focusTransition / hardcore / hardcoreLock / whitelist /
+│   │                  #   accountReset / offlineSettings / workerLifecycle /
+│   │                  #   gamification / time / syncDiagnostics / i18n
 │   ├── background/    # service worker: 탭 추적, 판정 호출, 자정 롤오버, Supabase 동기화
 │   ├── content/       # 유튜브 페이지 차단 오버레이
 │   ├── popup/         # 툴바 팝업 (오늘 사용량, 스트릭, 집중모드, 긴급시청)
@@ -71,6 +73,38 @@ extension/
 ```
 
 집중 모드와 예약 차단은 "한도와 무관하게" 막는 커밋먼트 장치라 긴급 시청으로도 화이트리스트로도 못 뚫는다(긴급 시청 발급 자체가 거부됨). 반대로 Shorts 한도는 전체 한도와 같은 급의 평범한 한도라 긴급 시청·화이트리스트로 뚫린다. 앞의 다섯 줄은 안드로이드 `BlockInputs.blockReason()`과 순서가 같고, 화이트리스트/Shorts 두 줄은 화면 내용을 봐야 판정되므로 브라우저 전용이다.
+
+**이 우선순위가 막는 것과 못 막는 것의 경계는 [../documents/FEATURES.md](../documents/FEATURES.md)의 "위협 모델"에 있다.** 요약하면 확장은 관성적 접근을 막고, 설정 변경에 마찰을 주며, 확장 삭제·다른 프로필·임베드·시계 조작은 못 막는다.
+
+## 하드코어 잠금 (`lib/hardcoreLock.js`)
+
+하드코어 모드가 잠그는 건 입력 세 개가 아니라 **"차단을 약화시키는 모든 변경"**이다. 옵션 화면이 `disabled`를 거는 방식이 아니라, 저장 직전에 `findHardcoreViolations(previous, next)`가 이전 값과 저장하려는 값을 비교해 거부한다 — 그래야 낡은 옵션 탭이나 오프라인 저장 경로로도 못 빠져나간다. 거부 사유는 문구가 아니라 `_locales` 메시지 키(`HARDCORE_VIOLATION`)로 돌아오고 UI가 문구를 붙인다.
+
+거부: 한도(일일·요일별·Shorts) 상향, 화이트리스트 추가, 긴급 횟수 상향·리셋 주기 단축, `always_block_shorts` 끄기, 예약 차단 삭제·비활성화·구간 축소.
+허용: 한도 축소, 예약 차단 추가·확대, 화이트리스트 삭제, 그리고 하드코어 해제 요청 자체(그건 1시간 쿨다운이 담당하는 별개 관문).
+
+전체 비교 규칙과 안드로이드 대응 상태는 [../documents/BACKEND.md](../documents/BACKEND.md)의 "하드코어 잠금 범위".
+
+## 화이트리스트 형식 (`lib/whitelist.js`)
+
+예전 규칙은 `url.includes(entry)` 한 줄이라 `/` 한 글자가 마스터키였다. 지금은 항목을 세 모양 중 하나로 해석한다.
+
+| 모양 | 예 | 매칭 |
+|---|---|---|
+| origin | `music.youtube.com` | 호스트 **정확 일치** |
+| path | `youtube.com/@lecture` | 호스트 일치(하위 도메인 허용) + 경로 **접두사**(구분자 경계) |
+| token | `@lecture`, `dQw4w9WgXcQ` | 경로 첫 조각이 같거나 `?v=` 영상 ID가 같음 |
+
+- 유튜브 본체 호스트(`youtube.com`·`m.youtube.com`·`youtu.be`·`youtube-nocookie.com`)와 `/`·`/watch`·`/shorts`·`/feed` 같은 전면 통과 값, 4자 미만 값은 저장이 거부된다(`whitelistEntryError`).
+- **검증은 판정 시에도 다시 돈다.** 검증이 없던 시절의 값이나 다른 기기에서 동기화돼 들어온 값이 이미 `settings.whitelist`에 있을 수 있어서, 저장 쪽만 막으면 그 값들이 계속 산다. 해석 못 하는 항목은 판정(`lib/blockDecision.js`의 `isWhitelistedUrl`이 같은 `parseWhitelistEntry`를 다시 태운다)에서 무시되고, 옵션 화면이 그 항목과 사유를 표시한다.
+- `music.youtube.com`은 일부러 허용한다 — 뮤직 재생 URL도 `/watch`라 기본값으로는 영상 한도를 깎기 때문이다([../documents/FEATURES.md](../documents/FEATURES.md)의 "측정의 정의").
+- 대소문자는 호스트만 접는다. 영상 ID는 대소문자가 다르면 다른 영상이다.
+
+## 계정 전환 · 오프라인 편집
+
+- **계정 전환** (`lib/accountReset.js`): 기기가 로컬 데이터의 주인을 `accountUserId`에 적어두고, **다른 user_id가 로그인할 때만** 계정에서 온 값을 지운다. 로그아웃은 여전히 진단 기록만 지우고, 표식이 없는 기기는 아무것도 안 지운다. 지금 걸려 있는 차단·집중 세션·이 기기의 남은 긴급 횟수는 전환에서도 남긴다. 목록은 테스트로 고정돼 있고 계약은 [../documents/BACKEND.md](../documents/BACKEND.md)의 "계정 전환".
+- **오프라인 편집** (`lib/offlineSettings.js`, `lib/pendingSettingsStore.js`): 세션이 있는데 서버에 못 닿으면 옵션 페이지가 로컬 캐시로 뜨고, 저장은 `settingsCache` + `pendingSettingsSync`로 간다. 서버가 살아나면 서비스워커가 **대기분을 먼저 push**하고(대기분이 없을 때만 pull), 올리는 건 대기분에 든 필드뿐이다. 하드코어 관문은 온라인/오프라인 분기 **전에** 타므로 네트워크를 끊는 것이 한도를 올리는 길이 되지 않는다.
+- **서비스워커 수명주기** (`lib/workerLifecycle.js`): 크롬이 확장을 자동 업데이트하면 열려 있던 유튜브 탭의 `chrome.runtime`이 무효화되어 content script가 죽는다. `onInstalled`에서 ping에 답하지 않는 탭에만 content script를 다시 주입한다(답하는 탭은 건너뛰어 리스너가 두 번 돌지 않게). 서비스워커 재시작 뒤의 재생 상태는 예전엔 낙관적으로 "재생 중"이라 가정했는데, 지금은 **프로브에 답이 없으면 "재생 아님"**으로 접는다 — 스크립트가 돌아오면 스스로 교정되는 방향이라서.
 
 ## 게임화 규칙
 
@@ -111,11 +145,17 @@ MV3 서비스워커는 유휴 상태가 되면 죽고 devtools 콘솔도 같이 
 
 ## CI
 
-`.github/workflows/ci.yml`의 `extension` 잡이 push(main)와 모든 PR에서 Node 20으로 `npm ci` → `npm run lint` → `npm test`를 돌린다. 테스트 파일이 진작 있었는데 정작 아무도 돌리지 않던 상태를 메우려고 붙였다. 같은 워크플로의 안드로이드 잡(현재 미검증)은 [../documents/ANDROID_SETUP.md](../documents/ANDROID_SETUP.md) 참고.
+`.github/workflows/ci.yml`의 `extension` 잡이 push(main)와 모든 PR에서 Node 20으로 `npm ci` → `npm run lint` → `npm run format:check` → `npm test`를 돌린다. 테스트 파일이 진작 있었는데 정작 아무도 돌리지 않던 상태를 메우려고 붙였다. 같은 워크플로의 안드로이드 잡은 `main`에서 실제로 돌아 통과한 상태다(처음 두 번은 SDK 설치 스텝에서 깨졌다 — [../documents/ANDROID_SETUP.md](../documents/ANDROID_SETUP.md)의 "CI").
+
+`npm test`는 지금 **345개**가 통과한다. 다만 이건 **`src/lib`의 순수 함수가 스스로와 일치한다는 뜻**이지 확장이 브라우저에서 동작한다는 근거가 아니다 — 서비스워커·content script·UI 코드에는 여전히 자동 테스트가 없다. 무엇이 검증됐고 무엇이 안 됐는지는 [../documents/FEATURES.md](../documents/FEATURES.md)의 "테스트가 보장하는 것과 아닌 것".
 
 ## 알려진 제약
 
+- **집계 조건**: 시간은 **재생 중 + 탭 보임(`document.visibilityState`) + 크롬 창 포커스**일 때만 깎이고, 집계 대상 URL은 `/watch`·`/shorts`뿐이다(차단은 유튜브 전 경로). 그래서 PiP·백그라운드 오디오·옆 창에 틀어놓고 작업하기는 0분이고, 피드 스크롤·검색·댓글도 0분이다. `music.youtube.com`은 `/watch`라 영상 한도를 깎는다(화이트리스트로 뺄 수 있음). 의도와 대가는 [../documents/FEATURES.md](../documents/FEATURES.md)의 "측정의 정의".
+- **10분을 넘는 구간은 버린다**(`service-worker.js`의 `MAX_ELAPSED_MS`). 절전 복귀나 서비스워커 장시간 정지 뒤의 구간이 0으로 처리된다 — 손실은 항상 덜 깎이는 방향이고, 얼마나 자주 일어나는지는 세는 코드가 없어 모른다.
 - `chrome.alarms`는 패키징된(스토어 배포) 확장에서 1분 미만 주기를 강제로 1분으로 올림 처리함 → 사용 시간 기록/차단 판정 해상도가 최대 약 1분. (탭 전환/URL 변경 시점에는 즉시 재계산되므로 체감 지연은 적음.)
+- **서버 사용량은 단조 증가만 하고 정정 경로가 없다.** 한 번 부풀려 올라간 하루는 되돌릴 방법이 없고, 대시보드 병합이 `max(로컬, 서버)`라 로컬을 고쳐도 반영되지 않는다.
+- **로컬 전용 기록(시간대별 패턴·`limit_history`·`emergency_history`)은 서버에 없다.** 재설치·프로필 삭제 시 영구 소실이고 내보내기 기능은 없다.
 - 대시보드 히트맵/막대그래프는 로컬 기록과 서버 `daily_usage`를 **날짜별 `max(로컬, 서버)`** 로 합쳐서 그린다(`lib/historyMerge.js`) → 재설치하거나 두 번째 기기에서 로그인해도 히트맵이 비어 보이지 않는다. 반면 **시간대별(0~23시) 그래프는 로컬 전용** — 서버에 시간대 단위 기록이 아예 없어서다(페이지에도 그렇게 적혀 있다). 로그아웃·오프라인·조회 실패면 로컬 기록만으로 그린다. 긴급 시청 **시간**은 병합되지만 **횟수**는 로컬 값만 쓰므로, 서버에만 있는 날은 툴팁에 횟수를 적지 않는다(0회로 채우면 "긴급 시청 없이 넘긴 날"이라는 없는 사실을 적게 된다).
 - 히트맵/막대그래프는 그날 실제로 적용됐던 한도를 `limit_history`(날짜별 스냅샷, 60일 보관)에 남겨 그 값으로 판정함 → 나중에 한도를 바꿔도 과거 판정이 안 흔들림. 다만 **이 기능 이전 날짜와 다른 기기에서만 시청한 날**은 스냅샷이 없어(한도는 서버로 동기화되지 않음) 여전히 현재 설정된 한도로 근사 판정하고, 그런 날은 툴팁에 "(현재 설정 기준 추정)"으로 표시함.
 - Android 앱은 별도 저장소 경로(`../android/`)에서 진행 중 — 계획/현황은 `../documents/MOBILE_PLAN.md` 참고.

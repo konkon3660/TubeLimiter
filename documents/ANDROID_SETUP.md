@@ -37,7 +37,7 @@ cd android
 
 ### CI
 
-`.github/workflows/ci.yml`의 `android` 잡이 push(main)와 PR마다 temurin JDK 25 + `platforms;android-37`을 깔고 세 게이트를 **각각 별도 스텝으로** 돌린다(같은 워크플로의 다른 잡이 확장 lint/format/test). SDK 경로는 러너가 내보내는 `ANDROID_HOME`에서 나온다 — `local.properties`는 커밋하지 않으므로.
+`.github/workflows/ci.yml`의 `android` 잡이 push(main)와 PR마다 `android-actions/setup-android`로 `platform-tools` + `platforms;android-37.0` + `build-tools;37.0.0`을 깔고, temurin JDK 25를 얹은 뒤 세 게이트를 **각각 별도 스텝으로** 돌린다(같은 워크플로의 다른 잡이 확장 lint/format/test). SDK 경로는 러너가 내보내는 `ANDROID_HOME`에서 나온다 — `local.properties`는 커밋하지 않으므로.
 
 1. `./gradlew ktlintCheck` — `ktlintCheck`는 `check`에 붙지 `test`에는 안 붙는다. 유닛 테스트만 돌리던 예전 설정에선 `ignoreFailures = false` 게이트가 CI에서 아예 안 돌고 로컬에만 존재했다.
 2. `./gradlew testDebugUnitTest`
@@ -47,7 +47,12 @@ cd android
 
 **JDK는 25지만 컴파일 타깃은 여전히 17이다** — 25는 `android/gradle/gradle-daemon-jvm.properties`의 `toolchainVersion=25`에 맞춘 데몬 툴체인 핀(러너가 foojay에서 JDK를 자동으로 받아오지 않게 하려는 것)이고, 모듈이 뱉는 바이트코드는 `compileOptions`의 Java 17 그대로다. 둘은 다른 값이니 한쪽만 보고 다른 쪽을 고치지 말 것.
 
-**이 잡은 아직 한 번도 실행된 적이 없어 미검증이다** — SDK 채널에 `android-37`이 없거나 AGP 9가 JDK 21 툴체인을 요구하면 거기서 터진다. 새로 붙인 `ktlintCheck`/`assembleRelease` 스텝도 마찬가지로 CI에서 한 번도 안 돌아봤다. 첫 실행 결과를 보고 고쳐야 한다.
+**이 잡은 `main`에서 실제로 돌아 통과했다** — `ktlintCheck`/`testDebugUnitTest`/`assembleRelease` 세 스텝 모두. 다만 첫 실행은 두 번 깨졌고, 둘 다 SDK 설치 스텝이 원인이었다.
+
+1. **손수 짠 sdkmanager 탐색이 JDK 25 아래에서 죽었다.** `find | tail` 프로브를 `set -euo pipefail`로 돌렸는데, 하필 직전 스텝이 JDK 25를 현재 Java로 만든 뒤였다 — cmdline-tools가 JDK 25를 지원한다는 보장이 없다. 패키지 가용성 문제가 아니었다. `android-actions/setup-android`로 교체하고 그 스텝을 **JDK 설치 앞**으로 옮겨 러너 기본 Java에서 돌게 했다. Gradle은 그다음 스텝에서 25를 받는다.
+2. **`platforms;android-37`이라는 패키지는 존재하지 않는다.** sdkmanager가 `Failed to find package 'platforms;android-37'`로 죽었다. 플랫폼 패키지는 **마이너 버전제**로 바뀌어 `37.0`/`37.1`/`37.2`가 각각 별도 다운로드이고, `compileSdk = 37`은 `37.0`으로 해석된다(로컬 SDK에 깔려 있는 것도 `37.0`이다).
+
+   ⚠️ **`compileSdk`를 올릴 때 또 걸릴 함정이다.** 워크플로의 `packages:` 줄을 같이 고치되 bare major(`platforms;android-38`)가 아니라 마이너까지 적어야 하고(`platforms;android-38.0`), `build-tools`도 같은 방식으로 짝을 맞춘다. 어느 마이너가 존재하는지는 `sdkmanager --list`로 확인할 것 — 없는 패키지를 적으면 빌드가 아니라 **SDK 설치 스텝에서** 죽는다.
 
 ## 최초 실행 시 권한 온보딩
 
@@ -81,7 +86,18 @@ android/app/src/main/res/
 └── values-en/     # strings.xml (영어)
 ```
 
-판정 로직(`limit/`, `gamification/`, `usage/DayWindow.kt`, `data/Encoding.kt`, `diagnostics/`, `sync/UsageMerge.kt`)은 전부 순수 함수 — 실기기 없이 `test/`에서 검증됨. 실기기가 필요한 건 `UsageStatsManager` 정확도와 오버레이 표시뿐.
+판정 로직(`limit/`, `gamification/`, `usage/DayWindow.kt`, `data/Encoding.kt`, `diagnostics/`, `sync/UsageMerge.kt`)은 전부 순수 함수 — 실기기 없이 `test/`에서 검증됨.
+
+**"실기기가 필요한 건 UsageStatsManager 정확도와 오버레이 표시뿐"이라고 적었던 건 낙관이었다.** `app/src/androidTest`는 **디렉터리 자체가 없어** 계측 테스트가 0개이고, 아래는 전부 실기기에서만 확인된다:
+
+- `UsageStatsManager`가 보고하는 시간과 실제 시청 시간의 오차 (분할 화면 · 백그라운드 재생 · 화면 꺼짐 각각)
+- 오버레이가 실제로 뜨는지, 그리고 그 위에서 긴급 시청이 눌리는지
+- **포그라운드 서비스 생존** — 삼성·샤오미의 절전 정책이 며칠 방치된 서비스를 죽이는지(`diagnostics/MonitorHealth.kt`의 2시간 무심박 경고는 그때 뜨라고 만든 것이지, 서비스가 살아 있음을 보장하지 않는다)
+- **권한 흐름** — 4종 온보딩, 그리고 사용자가 도중에 권한을 되돌렸을 때 `monitorWarning`이 실제로 뜨는지
+- **부팅 복구** — `BootReceiver`가 재부팅 뒤 서비스를 되살리는지
+- 강제 종료 후 감시가 다시 뜨기까지 걸리는 시간, 폴링 주기(활성 5초 / 유휴 30초) 때문에 오버레이가 늦는 정도
+
+확인할 항목의 전체 목록은 [QA_REVIEW.md](QA_REVIEW.md) §8의 체크리스트다 — **아직 아무도 실행하지 않았다.** 하나씩 확인하면 결과를 이 문서와 [FEATURES.md](FEATURES.md)에 적는다.
 
 ## 문구 추가할 때 (i18n)
 
