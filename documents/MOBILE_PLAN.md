@@ -142,9 +142,9 @@
 
 ### 라이브러리 선택
 
-- `supabase-kt` 3.8.0 / Kotlin 2.4.10.
+- `supabase-kt` 3.8.0 / Kotlin 2.4.20 / AGP 9.4.0 / Gradle 9.7.1. 정확한 목록은 `android/gradle/libs.versions.toml`.
 - `auth-kt-android`가 multiplatform-settings를 같이 끌고 와서 세션 저장은 자동. 확장이 `chrome.storage` 어댑터를 직접 끼워넣어야 했던 것과 달리 추가 설정 없음.
-- 이 의존성으로 디버그 APK가 12.7MB → 15.6MB로 늘어남.
+- 이 의존성으로 디버그 APK가 12.7MB → 15.6MB로 늘어남. 이후 툴체인이 올라가면서 현재는 16.4MB(릴리스 APK는 R8 축소로 2.4MB).
 
 ### AGP 9에서 Kotlin 버전 올리는 법 (중요)
 

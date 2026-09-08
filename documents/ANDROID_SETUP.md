@@ -4,7 +4,7 @@
 
 ## 요구 사항
 
-- Android Studio (AGP 9 계열 사용 중 — Kotlin 버전 올릴 때 주의사항은 MOBILE_PLAN.md 하단 참고).
+- Android Studio (AGP 9.4.0 / Gradle wrapper 9.7.1 / Kotlin 2.4.20 — Kotlin 버전 올릴 때 주의사항은 MOBILE_PLAN.md 하단 참고).
 - `compileSdk 37` / `minSdk 26` / `targetSdk 36`, JDK 17(= `compileOptions`의 컴파일 타깃. Gradle 데몬이 돌아가는 툴체인은 별개로 25에 고정돼 있다 — 아래 CI 절 참고).
 - Supabase 연결 정보는 이미 코드에 박혀 있음(`app/src/main/java/com/tubelimiter/app/auth/SupabaseConfig.kt`) — 확장과 같은 프로젝트 공유라 별도 설정 불필요.
 
