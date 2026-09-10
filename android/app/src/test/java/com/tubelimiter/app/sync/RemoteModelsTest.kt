@@ -159,6 +159,76 @@ class RemoteModelsTest {
     }
 
     @Test
+    fun `a partial payload carries only the named columns plus the row key`() {
+        // 오프라인 대기분을 올릴 때 쓰는 길. PostgREST upsert는 **받은 키만** 갱신하므로,
+        // 오프라인이던 사이 다른 기기가 바꾼 항목을 옛 값으로 되돌리지 않으려면 못 올린
+        // 컬럼만 보내야 한다(documents/BACKEND.md "오프라인 편집 대기분" 5번).
+        val payload = Settings(hardcoreMode = true).toRemoteJson(
+            "user-1",
+            columns = setOf(SettingsColumn.HARDCORE_MODE, SettingsColumn.DAILY_LIMIT_MS),
+        )
+        assertEquals(setOf("user_id", "hardcore_mode", "daily_limit_ms"), payload.keys)
+        // user_id는 columns에 없어도 남아야 한다 — 없으면 어느 행인지 모른다.
+        assertEquals("user-1", payload["user_id"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `an empty column set still keeps the row key`() {
+        val payload = Settings().toRemoteJson("user-1", columns = emptySet())
+        assertEquals(setOf("user_id"), payload.keys)
+    }
+
+    @Test
+    fun `changedSettingsColumns names exactly the columns that moved`() {
+        val previous = Settings()
+        assertEquals(emptySet<String>(), changedSettingsColumns(previous, previous))
+
+        assertEquals(
+            setOf(SettingsColumn.DAILY_LIMIT_MS),
+            changedSettingsColumns(previous, previous.copy(limit = previous.limit.copy(dailyLimitMinutes = 45))),
+        )
+        assertEquals(
+            setOf(SettingsColumn.SCHEDULED_BLOCKS),
+            changedSettingsColumns(
+                previous,
+                previous.copy(
+                    scheduleWindows = listOf(ScheduleWindow("a", "밤", List(7) { true }, 22 * 60, 7 * 60, true)),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `both halves of emergency_config map to the one jsonb column`() {
+        // 허용 횟수와 리셋 주기가 한 컬럼에 같이 들어가므로 하나만 바뀌어도 컬럼 전체가 달라진다.
+        val previous = Settings()
+        assertEquals(
+            setOf(SettingsColumn.EMERGENCY_CONFIG),
+            changedSettingsColumns(previous, previous.copy(emergencyAllowance = 5)),
+        )
+        assertEquals(
+            setOf(SettingsColumn.EMERGENCY_CONFIG),
+            changedSettingsColumns(
+                previous,
+                previous.copy(emergencyResetFrequency = EmergencyResetFrequency.WEEKLY),
+            ),
+        )
+    }
+
+    @Test
+    fun `device-local settings are not settings columns at all`() {
+        // 차트 범위·감시 대상·감시 켜짐 여부는 서버에 없는 기기별 값이라 대기분에도 들어가면 안 된다.
+        val previous = Settings()
+        assertEquals(
+            emptySet<String>(),
+            changedSettingsColumns(
+                previous,
+                previous.copy(chartRangeDays = 30, watchYouTubeMusic = true, monitoringEnabled = false),
+            ),
+        )
+    }
+
+    @Test
     fun `minutes are written back as milliseconds`() {
         val payload = Settings(limit = LimitConfig(dailyLimitMinutes = 45)).toRemoteJson("user-1")
         assertEquals(2_700_000L, payload["daily_limit_ms"]?.jsonPrimitive?.longOrNull)

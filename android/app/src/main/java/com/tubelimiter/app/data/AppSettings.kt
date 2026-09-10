@@ -35,6 +35,41 @@ private val KEY_WATCH_MUSIC = booleanPreferencesKey("watch_youtube_music")
 
 const val DEFAULT_EMERGENCY_ALLOWANCE = 3
 
+/**
+ * 서버 `settings` 행에서 내려받는 값 = 계정에서 온 값. 계정이 바뀌면
+ * [AppSettings.resetSyncedToDefaults]가 정확히 이만큼만 지운다 — 특히 `hardcore_mode`가 여기
+ * 있는 게 핵심이다. 남겨두면 새로 로그인한 계정이 **직전 계정의 하드코어 잠금을 물려받는다**
+ * (documents/BACKEND.md "계정 전환 — 무엇을 지우고 무엇을 남기나" 7번).
+ *
+ * 컬럼 목록은 [com.tubelimiter.app.sync.SETTINGS_COLUMNS]와 짝이다.
+ */
+internal val SYNCED_SETTINGS_KEYS: List<Preferences.Key<*>> = listOf(
+    KEY_LIMIT_MINUTES,
+    KEY_LIMIT_BY_DAY,
+    KEY_LIMIT_FREQUENCY,
+    KEY_EMERGENCY_ALLOWANCE,
+    KEY_EMERGENCY_RESET,
+    KEY_ALARM_INTERVAL,
+    KEY_ALARM_MILESTONES,
+    KEY_HARDCORE,
+    KEY_HARDCORE_DISABLE_AT,
+    KEY_SCHEDULE_WINDOWS,
+)
+
+/**
+ * 계정과 무관한 이 기기만의 값. 계정이 바뀌어도 **남긴다** — 확장이 계정 전환에서
+ * `dashboardChartRangeDays`를 보존하는 것과 같은 판단이다.
+ *
+ * [KEY_MONITORING]이 여기 있는 이유: [replaceAll]이 이 키도 쓰긴 하지만 서버에는 이 컬럼이
+ * 없어서([com.tubelimiter.app.sync.RemoteSettings.toSettings]가 로컬 값을 그대로 되돌려준다)
+ * 계정에서 온 값이 아니다. 감시 대상 목록·차트 범위와 같은 부류다.
+ */
+internal val DEVICE_LOCAL_SETTINGS_KEYS: List<Preferences.Key<*>> = listOf(
+    KEY_MONITORING,
+    KEY_CHART_RANGE_DAYS,
+    KEY_WATCH_MUSIC,
+)
+
 /** Default and only presets for the dashboard chart's selectable date range. */
 const val DEFAULT_CHART_RANGE_DAYS = 14
 val CHART_RANGE_PRESETS_DAYS = listOf(7, 14, 30)
@@ -90,42 +125,28 @@ class AppSettings(private val context: Context) {
         watchYouTubeMusic = this[KEY_WATCH_MUSIC] ?: false,
     )
 
-    suspend fun setDailyLimitMinutes(minutes: Int) = edit { it[KEY_LIMIT_MINUTES] = minutes }
-
-    suspend fun setByDayMinutes(minutes: List<Int>) =
-        edit { it[KEY_LIMIT_BY_DAY] = encodeIntList(minutes) }
-
-    suspend fun setLimitFrequency(frequency: LimitFrequency) =
-        edit { it[KEY_LIMIT_FREQUENCY] = frequency.name }
-
+    /**
+     * 감시 켜기/끄기. 서버 컬럼이 아니라 이 기기만의 값이라
+     * [com.tubelimiter.app.sync.SyncRepository.saveSettings] 관문을 타지 않는다
+     * ([DEVICE_LOCAL_SETTINGS_KEYS] 참고).
+     */
     suspend fun setMonitoringEnabled(enabled: Boolean) = edit { it[KEY_MONITORING] = enabled }
 
-    suspend fun setEmergencyAllowance(count: Int) = edit { it[KEY_EMERGENCY_ALLOWANCE] = count }
-
-    suspend fun setEmergencyResetFrequency(frequency: EmergencyResetFrequency) =
-        edit { it[KEY_EMERGENCY_RESET] = frequency.name }
-
-    suspend fun setAlarmIntervalMinutes(minutes: Int) = edit { it[KEY_ALARM_INTERVAL] = minutes }
-
-    suspend fun setAlarmMilestonesEnabled(enabled: Boolean) =
-        edit { it[KEY_ALARM_MILESTONES] = enabled }
-
-    /** Turning hardcore on is immediate; turning it off only records the request. */
+    /**
+     * 하드코어를 실제로 끈다. **유일한 호출자는 쿨다운이 끝났을 때의
+     * [com.tubelimiter.app.service.UsageMonitorService]다** — 사용자가 직접 부르는 경로가
+     * 아니므로 하드코어 관문([com.tubelimiter.app.limit.isHardcoreChangeAllowed])을 타지 않는다.
+     * 해제는 1시간 쿨다운이라는 별개 관문이 이미 지키고 있다.
+     */
     suspend fun setHardcoreMode(enabled: Boolean) = edit {
         it[KEY_HARDCORE] = enabled
         it.remove(KEY_HARDCORE_DISABLE_AT)
     }
 
-    suspend fun requestHardcoreDisable(nowMillis: Long) =
-        edit { it[KEY_HARDCORE_DISABLE_AT] = nowMillis }
-
-    suspend fun cancelHardcoreDisable() = edit { it.remove(KEY_HARDCORE_DISABLE_AT) }
-
+    /** 대시보드 표시 설정. 동기화되지 않는 기기별 값이다. */
     suspend fun setChartRangeDays(days: Int) = edit { it[KEY_CHART_RANGE_DAYS] = days }
 
-    suspend fun setScheduleWindows(windows: List<ScheduleWindow>) =
-        edit { it[KEY_SCHEDULE_WINDOWS] = encodeScheduleWindows(windows) }
-
+    /** 감시 대상에 YouTube Music을 넣을지. 기기별 값이라 동기화하지 않는다([Settings.watchYouTubeMusic]). */
     suspend fun setWatchYouTubeMusic(enabled: Boolean) = edit { it[KEY_WATCH_MUSIC] = enabled }
 
     /** Applies a whole settings snapshot at once, used when the server hands one back. */
@@ -154,19 +175,24 @@ class AppSettings(private val context: Context) {
      * Only touches this file's keys — [AppState] shares the same DataStore and clears its own.
      */
     suspend fun resetToDefaults() = edit { prefs ->
-        prefs.remove(KEY_LIMIT_MINUTES)
-        prefs.remove(KEY_LIMIT_BY_DAY)
-        prefs.remove(KEY_LIMIT_FREQUENCY)
-        prefs.remove(KEY_MONITORING)
-        prefs.remove(KEY_EMERGENCY_ALLOWANCE)
-        prefs.remove(KEY_EMERGENCY_RESET)
-        prefs.remove(KEY_ALARM_INTERVAL)
-        prefs.remove(KEY_ALARM_MILESTONES)
-        prefs.remove(KEY_HARDCORE)
-        prefs.remove(KEY_HARDCORE_DISABLE_AT)
-        prefs.remove(KEY_CHART_RANGE_DAYS)
-        prefs.remove(KEY_SCHEDULE_WINDOWS)
-        prefs.remove(KEY_WATCH_MUSIC)
+        (SYNCED_SETTINGS_KEYS + DEVICE_LOCAL_SETTINGS_KEYS).forEach { prefs.remove(it) }
+    }
+
+    /**
+     * 계정이 바뀌었을 때 쓰는 좁은 버전: **계정에서 온 설정만** 기본값으로 되돌리고 기기별
+     * 값(감시 켜짐 여부, 차트 범위, 감시 대상)은 남긴다.
+     *
+     * [resetToDefaults]와 갈라놓은 이유는 계정 전환과 계정 삭제가 다른 사건이기 때문이다.
+     * 삭제는 이 기기에서 그 계정의 흔적을 통째로 지우는 것이고, 전환은 "주인이 바뀌었다"일
+     * 뿐이라 기기 자신의 취향까지 초기화할 이유가 없다(확장이 계정 전환에서
+     * `dashboardChartRangeDays`를 남기는 것과 같은 판단).
+     *
+     * 여기서 `hardcore_mode`를 반드시 지워야 한다 — 서버에 settings 행이 없는 갓 가입 계정으로
+     * 로그인했을 때 직전 계정의 잠금이 그대로 살아남는 경로가 이것이다
+     * (documents/BACKEND.md "계정 전환" 7번). 지운 직후 서버 pull이 새 주인의 값을 채운다.
+     */
+    suspend fun resetSyncedToDefaults() = edit { prefs ->
+        SYNCED_SETTINGS_KEYS.forEach { prefs.remove(it) }
     }
 
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {

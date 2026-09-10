@@ -46,6 +46,7 @@ import com.tubelimiter.app.diagnostics.DiagnosticEvent
 import com.tubelimiter.app.diagnostics.diagnosticKindLabelRes
 import com.tubelimiter.app.diagnostics.formatDiagnosticTime
 import com.tubelimiter.app.limit.EmergencyResetFrequency
+import com.tubelimiter.app.limit.HardcoreViolation
 import com.tubelimiter.app.limit.LIMIT_PRESETS_MINUTES
 import com.tubelimiter.app.limit.LimitFrequency
 import com.tubelimiter.app.limit.ScheduleWindow
@@ -86,6 +87,9 @@ fun SettingsScreen(
     onHardcoreDisableCancel: () -> Unit,
     scheduleWindows: List<ScheduleWindow>,
     onScheduleWindowsChange: (List<ScheduleWindow>) -> Unit,
+    /** 하드코어 잠금이 마지막 저장을 막았을 때의 사유. 비어 있으면 아무것도 안 뜬다. */
+    hardcoreViolations: List<HardcoreViolation>,
+    onDismissHardcoreViolations: () -> Unit,
     /** 마지막으로 서버 왕복이 성공한 시각, 한 번도 없으면 null. */
     lastSyncSuccessAtMillis: Long?,
     /** 최근 동기화·인증 실패, 최신순 (diagnostics/SyncDiagnostics.kt). */
@@ -94,8 +98,6 @@ fun SettingsScreen(
     onCopyDiagnostics: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Hardcore mode is what makes the streak mean anything, so it locks the limits.
-    val limitsLocked = settings.hardcoreMode
     var confirmDeleteAccount by remember { mutableStateOf(false) }
     var diagnosticsExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -108,6 +110,15 @@ fun SettingsScreen(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        // 하드코어 잠금이 막은 저장의 사유. 입력을 비활성화하는 대신 저장 직전에 판정하므로
+        // (documents/BACKEND.md "하드코어 잠금 범위"), 왜 안 바뀌었는지는 여기서만 알 수 있다.
+        if (hardcoreViolations.isNotEmpty()) {
+            HardcoreBlockedCard(
+                violations = hardcoreViolations,
+                onDismiss = onDismissHardcoreViolations,
+            )
+        }
+
         SettingsCard(stringResource(R.string.settings_account)) {
             when {
                 accountLoading -> Text(
@@ -141,13 +152,11 @@ fun SettingsScreen(
                 FilterChip(
                     selected = settings.limit.frequency == LimitFrequency.DAILY,
                     onClick = { onFrequencyChange(LimitFrequency.DAILY) },
-                    enabled = !limitsLocked,
                     label = { Text(stringResource(R.string.settings_limit_mode_daily)) },
                 )
                 FilterChip(
                     selected = settings.limit.frequency == LimitFrequency.BY_DAY,
                     onClick = { onFrequencyChange(LimitFrequency.BY_DAY) },
-                    enabled = !limitsLocked,
                     label = { Text(stringResource(R.string.settings_limit_mode_by_day)) },
                 )
             }
@@ -158,7 +167,6 @@ fun SettingsScreen(
                 ChipRow(
                     options = withCurrent(LIMIT_PRESETS_MINUTES, settings.limit.dailyLimitMinutes),
                     selected = settings.limit.dailyLimitMinutes,
-                    enabled = !limitsLocked,
                     label = { stringResource(R.string.count_minutes, it) },
                     onSelect = onDailyLimitChange,
                 )
@@ -166,7 +174,6 @@ fun SettingsScreen(
                     label = stringResource(R.string.settings_minutes_entry_daily),
                     value = settings.limit.dailyLimitMinutes,
                     minValue = 0,
-                    enabled = !limitsLocked,
                     onCommit = onDailyLimitChange,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -192,7 +199,6 @@ fun SettingsScreen(
                                         FilterChip(
                                             selected = minutes == option,
                                             onClick = { onByDayChange(index, option) },
-                                            enabled = !limitsLocked,
                                             label = {
                                                 Text(
                                                     if (option == UNLIMITED_MINUTES) {
@@ -210,7 +216,6 @@ fun SettingsScreen(
                             label = stringResource(R.string.settings_minutes_entry_by_day),
                             value = minutes,
                             minValue = UNLIMITED_MINUTES,
-                            enabled = !limitsLocked,
                             onCommit = { onByDayChange(index, it) },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -622,6 +627,56 @@ private fun DiagnosticRow(event: DiagnosticEvent) {
     }
 }
 
+/**
+ * 하드코어 잠금이 저장을 거부했을 때 뜨는 카드. 사유마다 한 줄이고, 마지막에 "1시간 기다리면
+ * 바꿀 수 있다"는 출구를 알려준다 — 잠금이 영구적으로 보이면 사용자가 앱을 지우는 쪽으로 간다.
+ */
+@Composable
+private fun HardcoreBlockedCard(violations: List<HardcoreViolation>, onDismiss: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer,
+            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                stringResource(R.string.settings_hardcore_blocked_title),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            // distinct(): 한 번의 저장이 같은 사유를 두 번 낼 일은 없지만, 목록이 그걸 보장하지는
+            // 않으므로 화면에서 한 번 더 접는다.
+            violations.distinct().forEach { violation ->
+                Text(
+                    stringResource(hardcoreViolationLabelRes(violation)),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            Text(
+                stringResource(R.string.settings_hardcore_blocked_hint),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.settings_hardcore_blocked_dismiss)) }
+        }
+    }
+}
+
+/**
+ * 거부 사유의 화면 문구. 확장이 `HARDCORE_VIOLATION`에 `_locales` 메시지 키를 담아두는 것과
+ * 같은 자리다 — 판정([HardcoreViolation])은 리소스를 모르는 순수 코드로 남기고 문구만 여기서 붙인다.
+ */
+private fun hardcoreViolationLabelRes(violation: HardcoreViolation): Int = when (violation) {
+    HardcoreViolation.DAILY_LIMIT -> R.string.settings_hardcore_violation_daily_limit
+    HardcoreViolation.BY_DAY_LIMIT -> R.string.settings_hardcore_violation_by_day_limit
+    HardcoreViolation.LIMIT_MODE -> R.string.settings_hardcore_violation_limit_mode
+    HardcoreViolation.EMERGENCY -> R.string.settings_hardcore_violation_emergency
+    HardcoreViolation.SCHEDULE -> R.string.settings_hardcore_violation_schedule
+}
+
 @Composable
 private fun SettingsCard(title: String, content: @Composable () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -785,7 +840,6 @@ private fun NumberEntryField(
     minValue: Int,
     onCommit: (Int) -> Unit,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true,
 ) {
     var text by remember(value) { mutableStateOf(value.toString()) }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -809,7 +863,6 @@ private fun NumberEntryField(
         },
         label = { Text(label) },
         singleLine = true,
-        enabled = enabled,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
         keyboardActions = KeyboardActions(onDone = { commit() }),
         modifier = modifier,
@@ -823,7 +876,6 @@ private fun <T> ChipRow(
     selected: T,
     label: @Composable (T) -> String,
     onSelect: (T) -> Unit,
-    enabled: Boolean = true,
 ) {
     Row(
         modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -833,7 +885,6 @@ private fun <T> ChipRow(
             FilterChip(
                 selected = option == selected,
                 onClick = { onSelect(option) },
-                enabled = enabled,
                 label = { Text(label(option)) },
             )
         }

@@ -516,6 +516,11 @@ class UsageMonitorService : Service() {
         if (!shouldDisableHardcore(settings.hardcoreDisableRequestedAt, now)) return
 
         settingsStore.setHardcoreMode(false)
+        // 서버에도 올려야 한다. 안 올리면 다음 `refreshSettingsFromServer`가 아직 true인 서버
+        // 행을 그대로 내려받아 하드코어를 되살리고, 쿨다운이 다시 만료 상태이므로 이 함수가
+        // 매 주기마다 해제 알림을 띄운다. 하드코어 해제는 사용자가 1시간을 기다려 얻은
+        // 결과라, 여기서만 로컬에 남으면 폰과 PC가 서로 다른 잠금 상태로 갈린다.
+        sync.pushSettings()
         // The settings screen warns that dropping hardcore resets the streak; honour it.
         stateStore.resetCurrentStreak()
         nudge(getString(R.string.nudge_hardcore_released))

@@ -190,11 +190,20 @@
     <string name="settings_alarm_interval_entry">Custom minutes (0 = off)</string>
     <string name="settings_alarm_milestones">Alert at 30, 10, 5 and 1 minutes left</string>
     <string name="settings_hardcore">Hardcore mode</string>
-    <string name="settings_hardcore_intro">Turning this on locks your limits, and streaks and XP only build while it\'s on. Turning it off takes an hour to apply and resets your streak to zero.</string>
+    <string name="settings_hardcore_intro">While this is on, any change that weakens blocking (raising a limit, adding emergency passes, deleting a scheduled block) is refused. Changes that tighten things still go through. Streaks and XP only build while it\'s on, and turning it off takes an hour to apply and resets your streak to zero.</string>
     <string name="settings_hardcore_enable">Turn on</string>
     <string name="settings_hardcore_cooldown">Turns off in %1$s.</string>
     <string name="settings_hardcore_cancel">Keep it on</string>
     <string name="settings_hardcore_disable">Request turn-off</string>
+    <!-- Shown when the hardcore lock refused a save; the rule itself lives in limit/HardcoreLock.kt. -->
+    <string name="settings_hardcore_blocked_title">Hardcore mode blocked that change</string>
+    <string name="settings_hardcore_blocked_hint">Changes that tighten blocking still save. To weaken it, request the turn-off and wait an hour.</string>
+    <string name="settings_hardcore_blocked_dismiss">Got it</string>
+    <string name="settings_hardcore_violation_daily_limit">The daily limit can\'t go up (switching it to unlimited counts too).</string>
+    <string name="settings_hardcore_violation_by_day_limit">Per-day limits can\'t go up.</string>
+    <string name="settings_hardcore_violation_limit_mode">Switching the limit mode would raise your real limit.</string>
+    <string name="settings_hardcore_violation_emergency">You can\'t add emergency passes or make them reset more often.</string>
+    <string name="settings_hardcore_violation_schedule">Scheduled blocks can\'t be deleted, turned off, or shortened.</string>
     <string name="settings_schedule">Scheduled blocks</string>
     <string name="settings_schedule_intro">Blocks automatically on the days and hours you pick, whatever your limit says. Like focus mode, an emergency pass won\'t get around it.</string>
     <string name="settings_schedule_default_label">Nights</string>

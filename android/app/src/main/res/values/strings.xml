@@ -198,11 +198,23 @@
     <string name="settings_alarm_interval_entry">직접 입력(분, 0=끔)</string>
     <string name="settings_alarm_milestones">남은 시간 30·10·5·1분 알림</string>
     <string name="settings_hardcore">하드코어 모드</string>
-    <string name="settings_hardcore_intro">켜면 한도 설정이 잠기고, 켜져 있는 동안만 연속 기록과 XP가 쌓입니다. 끄기는 1시간 뒤에 적용되고 연속 기록은 0으로 초기화됩니다.</string>
+    <string name="settings_hardcore_intro">켜져 있는 동안은 차단을 약하게 하는 변경(한도 늘리기, 긴급 시청 횟수 늘리기, 예약 차단 지우기 등)이 거부됩니다. 더 세게 만드는 변경은 그대로 돼요. 연속 기록과 XP는 켜져 있는 동안만 쌓이고, 끄기는 1시간 뒤에 적용되며 연속 기록은 0으로 초기화됩니다.</string>
     <string name="settings_hardcore_enable">켜기</string>
     <string name="settings_hardcore_cooldown">%1$s 뒤 해제됩니다.</string>
     <string name="settings_hardcore_cancel">해제 취소</string>
     <string name="settings_hardcore_disable">끄기 요청</string>
+    <!--
+        하드코어 잠금이 저장을 거부했을 때. 판정은 limit/HardcoreLock.kt의 HardcoreViolation이 하고
+        문구만 여기서 붙인다 — 확장 `_locales`의 options_hardcore_violation_* 와 같은 자리다.
+    -->
+    <string name="settings_hardcore_blocked_title">하드코어 모드가 이 변경을 막았어요</string>
+    <string name="settings_hardcore_blocked_hint">차단을 더 세게 만드는 변경은 그대로 저장됩니다. 약하게 하려면 하드코어 끄기를 요청하고 1시간을 기다려야 해요.</string>
+    <string name="settings_hardcore_blocked_dismiss">확인</string>
+    <string name="settings_hardcore_violation_daily_limit">일일 한도는 늘릴 수 없어요(한도 없음으로 바꾸는 것도 마찬가지예요).</string>
+    <string name="settings_hardcore_violation_by_day_limit">요일별 한도는 늘릴 수 없어요.</string>
+    <string name="settings_hardcore_violation_limit_mode">한도 모드를 바꾸면 실제 한도가 늘어나요.</string>
+    <string name="settings_hardcore_violation_emergency">긴급 시청 허용 횟수를 늘리거나 리셋 주기를 짧게 할 수 없어요.</string>
+    <string name="settings_hardcore_violation_schedule">예약 차단은 지우거나, 끄거나, 막는 시간을 줄일 수 없어요.</string>
     <string name="settings_schedule">예약 차단</string>
     <string name="settings_schedule_intro">정해진 요일·시간대엔 한도와 무관하게 자동으로 차단됩니다. 집중 모드처럼 긴급 시청으로 우회할 수 없어요.</string>
     <string name="settings_schedule_default_label">밤 시간</string>

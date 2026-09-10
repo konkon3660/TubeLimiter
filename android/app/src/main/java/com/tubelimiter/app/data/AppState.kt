@@ -18,6 +18,9 @@ import com.tubelimiter.app.limit.AlarmState
 import com.tubelimiter.app.limit.LimitHistoryEntry
 import com.tubelimiter.app.limit.planLimitHistoryUpdate
 import com.tubelimiter.app.permission.AppPermission
+import com.tubelimiter.app.sync.PendingSettings
+import com.tubelimiter.app.sync.decodePendingSettings
+import com.tubelimiter.app.sync.encodePendingSettings
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -86,13 +89,124 @@ private val KEY_SCHEDULE_START_NOTIFIED_DATE = stringPreferencesKey("schedule_st
 private val KEY_DIAGNOSTIC_EVENTS = stringPreferencesKey("diagnostic_events")
 private val KEY_LAST_SYNC_SUCCESS_AT = longPreferencesKey("last_sync_success_at")
 
+/** 아직 서버에 못 올린 설정 편집분. 포맷은
+ * [com.tubelimiter.app.sync.encodePendingSettings] 참고. */
+private val KEY_PENDING_SETTINGS = stringPreferencesKey("pending_settings_sync")
+
 /** 감시 서비스가 마지막으로 한 바퀴 돈 시각과, 그때 빠져 있던 권한
  * ([com.tubelimiter.app.diagnostics.monitorWarning]가 판정한다). */
 private val KEY_MONITOR_HEARTBEAT_AT = longPreferencesKey("monitor_heartbeat_at")
 private val KEY_MONITOR_MISSING_PERMISSIONS = stringPreferencesKey("monitor_missing_permissions")
 
+/**
+ * 이 기기의 로컬 데이터가 **어느 계정의 것인지** 적어두는 표식. 확장 `ACCOUNT_OWNER_KEY`
+ * (`accountUserId`)와 같은 역할이고, 계정 전환 판정([planAccountSwitch])의 유일한 입력이다.
+ *
+ * 값은 마지막으로 로그인한 user_id이고 **로그아웃해도 남긴다** — 지우면 다음 로그인이 전부
+ * "표식 없는 첫 로그인"으로 보여서 가드가 통째로 무력해진다.
+ */
+private val KEY_ACCOUNT_OWNER = stringPreferencesKey("account_user_id")
+
 /** How many days of usage history to keep for the dashboard. */
 const val HISTORY_RETENTION_DAYS = 60
+
+/**
+ * 계정에서 온 값이라 계정이 바뀌거나 사라지면 지우는 키. [AppState.clearAccountData]가 지우는
+ * 것이 정확히 이 목록이고, 목록 자체가 계약이라(documents/BACKEND.md "계정 전환 — 무엇을
+ * 지우고 무엇을 남기나") 이름만 뽑아 [ACCOUNT_SWITCH_REMOVED_KEYS]로 테스트에 고정한다.
+ *
+ * **통째 삭제(`prefs.clear()`)를 쓰면 안 된다** — 이 DataStore에는 계정에서 온 값과 "지금 이
+ * 기기를 막고 있는 상태"가 섞여 있어서, 통째로 비우면 계정 전환이 곧 차단 해제 수단이 된다
+ * ([ACCOUNT_PRESERVED_STATE_KEYS] 참고).
+ */
+internal val ACCOUNT_DATA_KEYS: List<Preferences.Key<*>> = listOf(
+    // 대시보드가 그리는 기록 + 그날 판정에 쓰인 한도 스냅샷.
+    // 한도만 남기면 다음 계정의 새 기록이 지운 계정의 한도로 판정된다.
+    KEY_USAGE_HISTORY,
+    KEY_USAGE_HISTORY_HOURLY,
+    KEY_EMERGENCY_MILLIS_HISTORY,
+    KEY_EMERGENCY_USES_HISTORY,
+    KEY_LIMIT_HISTORY,
+    // 롤오버 기준일. 남겨두면 다음 계정의 첫 롤오버가 이 계정의 마지막 날부터 정산을 시작한다.
+    KEY_LAST_ROLLOVER_DATE,
+
+    // 스트릭·업적은 서버의 `streaks`/`achievements`에서 받아온 이 계정의 성적표다.
+    KEY_STREAK_CURRENT,
+    KEY_STREAK_BEST,
+    KEY_STREAK_LAST_DATE,
+    KEY_STREAK_TOTAL_SUCCESS,
+    KEY_STREAK_XP,
+    KEY_STREAK_PERFECT_DAYS,
+    KEY_STREAK_PERFECT_CURRENT,
+    KEY_STREAK_PERFECT_BEST,
+    KEY_ACHIEVEMENTS,
+
+    // daily_usage 동기화 마커 — "이 기기가 이미 보고한 몫"이라 계정이 바뀌면 무의미하다.
+    // 남겨두면 다음 계정의 첫 델타 기준선이 되어 그날 사용량이 조용히 안 올라간다.
+    KEY_DAILY_USAGE_SYNC_DATE,
+    KEY_DAILY_USAGE_SYNCED_MILLIS,
+    KEY_DAILY_USAGE_COMBINED_MILLIS,
+    KEY_DAILY_USAGE_EMERGENCY_SYNCED_MILLIS,
+    KEY_DAILY_USAGE_EMERGENCY_USES_SYNCED,
+
+    // "이 계정의 다른 기기가 이번 버킷에서 쓴 횟수" 캐시. 주인이 바뀌면 남의 숫자라 지운다
+    // (로그아웃에서는 일부러 남긴다 — 아래 clearAccountData 주석 참고).
+    KEY_EMERGENCY_USES_OTHER_DEVICES,
+    KEY_EMERGENCY_USES_OTHER_DEVICES_KEY,
+
+    // 진단 기록도 이 계정과의 통신 기록이다. 남겨두면 이미 없는 계정의 실패 목록이 계속 보이고,
+    // "마지막 성공" 시각도 다음 계정의 24시간 판정에 그대로 끼어든다.
+    KEY_DIAGNOSTIC_EVENTS,
+    KEY_LAST_SYNC_SUCCESS_AT,
+
+    // 아직 못 올린 오프라인 편집분. 올릴 계정이 바뀌었으니 같이 버린다 — A의 오프라인 편집이
+    // B의 계정으로 올라가면 안 된다([com.tubelimiter.app.sync.readPendingFor]가 user_id로 한 번
+    // 더 거르긴 하지만, 그건 보험이지 보관 이유가 아니다).
+    KEY_PENDING_SETTINGS,
+
+    // 주인 표식. 계정 삭제에서는 값 자체가 사라진 계정의 user_id라 남겨둘 이유가 없고,
+    // 계정 전환에서는 곧바로 새 주인으로 덮어쓴다.
+    KEY_ACCOUNT_OWNER,
+)
+
+/**
+ * 계정이 바뀌어도 **일부러 남기는** 키. 전부 계정이 아니라 이 기기에서 온 값이다: 지금 걸려
+ * 있는 차단, 진행 중이거나 예약된 집중 세션, 이 기기의 남은 긴급 시청 횟수와 쿨다운, 알람
+ * 장부, 예약 차단 마커, 감시 심박. 이걸 지우면 **"다른 계정으로 로그인"이 지금 나를 막고 있는
+ * 차단에서 빠져나가는 길**이 된다.
+ *
+ * 실제로 지울 때 쓰이지는 않고, 분류를 못 박아 테스트가 "지우는 목록과 겹치지 않는다"를
+ * 검증하는 데 쓴다. 확장 `ACCOUNT_SWITCH_PRESERVED_KEYS`와 같은 역할.
+ */
+internal val ACCOUNT_PRESERVED_STATE_KEYS: List<Preferences.Key<*>> = listOf(
+    // 지금 걸려 있는 차단 상태
+    KEY_MANUAL_BLOCK,
+
+    // 집중 모드(진행 중 · 지연 시작 대기 · 종료 요청)
+    KEY_FOCUS_END,
+    KEY_FOCUS_DELAY_END,
+    KEY_FOCUS_DELAY_DURATION,
+    KEY_FOCUS_STOP_REQUESTED_AT,
+
+    // 긴급 시청: 진행 중인 창, 이 기기의 남은 횟수 카운트다운과 그 버킷 키, 마지막 부여 시각.
+    // 남은 횟수를 지우면 "다른 계정으로 로그인 = 횟수 리필"이 된다.
+    KEY_EMERGENCY_END,
+    KEY_EMERGENCY_REMAINING,
+    KEY_EMERGENCY_RESET_KEY,
+    KEY_LAST_EMERGENCY_GRANTED_AT,
+
+    // 오늘 어떤 알림을 이미 띄웠는지 · 예약 차단 창 진입 여부
+    KEY_ALARM_DATE,
+    KEY_ALARM_LAST_INTERVAL,
+    KEY_ALARM_MILESTONES_DONE,
+    KEY_SCHEDULE_BLOCK_WAS_ACTIVE,
+    KEY_SCHEDULE_START_NOTIFIED_DATE,
+
+    // 감시 서비스의 심박. 계정이 아니라 이 기기의 감시가 언제 돌았는지이고, 지우면 그 순간
+    // 경고 판정의 기준점이 사라진다.
+    KEY_MONITOR_HEARTBEAT_AT,
+    KEY_MONITOR_MISSING_PERMISSIONS,
+)
 
 data class RuntimeState(
     val usageHistory: Map<String, Long> = emptyMap(),
@@ -149,6 +263,10 @@ data class RuntimeState(
      * 알려야 하는 쪽은 빠른 쪽이다.
      */
     val monitorMissingPermissions: List<AppPermission> = emptyList(),
+    /** 이 기기의 로컬 데이터 주인(user_id). 한 번도 로그인한 적이 없으면 null — [KEY_ACCOUNT_OWNER] 참고. */
+    val accountOwnerUserId: String? = null,
+    /** 아직 서버에 못 올린 설정 편집분. 없으면 null. */
+    val pendingSettings: PendingSettings? = null,
 ) {
     fun focusActiveAt(nowMillis: Long): Boolean =
         focusEndMillis != null && nowMillis < focusEndMillis
@@ -230,6 +348,8 @@ class AppState(private val context: Context) {
         // 순서를 바꾸면 안 된다.
         monitorMissingPermissions = decodeStringSet(this[KEY_MONITOR_MISSING_PERMISSIONS])
             .let { names -> AppPermission.entries.filter { it.name in names } },
+        accountOwnerUserId = this[KEY_ACCOUNT_OWNER],
+        pendingSettings = decodePendingSettings(this[KEY_PENDING_SETTINGS]),
     )
 
     suspend fun recordUsage(dateKey: String, usedMillis: Long, keepKeys: Set<String>) = edit { prefs ->
@@ -486,6 +606,18 @@ class AppState(private val context: Context) {
     suspend fun setScheduleStartNotifiedDate(dateKey: String) = edit { it[KEY_SCHEDULE_START_NOTIFIED_DATE] = dateKey }
 
     /**
+     * 이 기기의 로컬 데이터 주인을 적어둔다. 계정 전환 판정의 기준점이라 로그인이 확인된
+     * 직후에만 쓴다([com.tubelimiter.app.sync.SyncRepository.pullSettings] 참고).
+     */
+    suspend fun setAccountOwner(userId: String) = edit { it[KEY_ACCOUNT_OWNER] = userId }
+
+    /** 오프라인 편집 대기분을 통째로 갈아끼운다. null이면 지운다(= 서버에 다 올렸다). */
+    suspend fun savePendingSettings(pending: PendingSettings?) = edit { prefs ->
+        val encoded = encodePendingSettings(pending)
+        if (encoded == null) prefs.remove(KEY_PENDING_SETTINGS) else prefs[KEY_PENDING_SETTINGS] = encoded
+    }
+
+    /**
      * Wipes everything the deleted account contributed: the usage history the dashboard draws,
      * the streak/XP record and unlocked achievements (both pulled from `streaks`/`achievements`
      * by [com.tubelimiter.app.sync.SyncRepository.pullStreak]), and the `daily_usage` sync
@@ -495,43 +627,17 @@ class AppState(private val context: Context) {
      * focus session, the emergency allowance and its cooldown, alarm bookkeeping, schedule-window
      * markers). None of it came from the account, and clearing it would turn "delete my account"
      * into a way out of a focus session that is currently blocking.
+     *
+     * **계정 전환도 같은 이 함수를 쓴다**([planAccountSwitch]). 확장은 전환 목록에서 주인
+     * 표식만 빼두지만(곧바로 새 주인으로 덮어쓰므로), 여기서는 지운 뒤 새 주인을 쓰는 순서라
+     * 결과가 같다. 두 경우 모두 "이 기기에 남은 값이 더 이상 이 계정의 것이 아니다"라는 같은
+     * 사실을 다룬다.
+     *
+     * 지우는 것과 남기는 것의 목록은 [ACCOUNT_DATA_KEYS] / [ACCOUNT_PRESERVED_STATE_KEYS]에
+     * 있고, 그쪽이 계약이다 — 여기서는 목록을 훑기만 한다.
      */
     suspend fun clearAccountData() = edit { prefs ->
-        prefs.remove(KEY_USAGE_HISTORY)
-        prefs.remove(KEY_USAGE_HISTORY_HOURLY)
-        prefs.remove(KEY_EMERGENCY_MILLIS_HISTORY)
-        prefs.remove(KEY_EMERGENCY_USES_HISTORY)
-        // 한도 스냅샷은 위 usage_history를 판정하기 위한 짝이다. 사용량만 지우고 남겨두면
-        // 다음 계정의 새 기록이 지운 계정의 한도로 판정된다.
-        prefs.remove(KEY_LIMIT_HISTORY)
-        prefs.remove(KEY_LAST_ROLLOVER_DATE)
-
-        prefs.remove(KEY_STREAK_CURRENT)
-        prefs.remove(KEY_STREAK_BEST)
-        prefs.remove(KEY_STREAK_LAST_DATE)
-        prefs.remove(KEY_STREAK_TOTAL_SUCCESS)
-        prefs.remove(KEY_STREAK_XP)
-        prefs.remove(KEY_STREAK_PERFECT_DAYS)
-        prefs.remove(KEY_STREAK_PERFECT_CURRENT)
-        prefs.remove(KEY_STREAK_PERFECT_BEST)
-        prefs.remove(KEY_ACHIEVEMENTS)
-
-        prefs.remove(KEY_DAILY_USAGE_SYNC_DATE)
-        prefs.remove(KEY_DAILY_USAGE_SYNCED_MILLIS)
-        prefs.remove(KEY_DAILY_USAGE_COMBINED_MILLIS)
-        prefs.remove(KEY_DAILY_USAGE_EMERGENCY_SYNCED_MILLIS)
-        prefs.remove(KEY_DAILY_USAGE_EMERGENCY_USES_SYNCED)
-
-        // 다른 기기 몫도 지운 계정에서 온 값이다 — 계정 행이 cascade로 사라진 마당에 남겨두면
-        // 존재하지 않는 기기 때문에 횟수가 깎인다. 이 기기 자신의 카운트다운
-        // (KEY_EMERGENCY_REMAINING)은 위 주석대로 그대로 두므로 탈퇴가 우회로가 되지는 않는다.
-        prefs.remove(KEY_EMERGENCY_USES_OTHER_DEVICES)
-        prefs.remove(KEY_EMERGENCY_USES_OTHER_DEVICES_KEY)
-
-        // 진단 기록도 지운 계정과의 통신 기록이다. 남겨두면 이미 없는 계정의 실패 목록이
-        // 계속 보이고, "마지막 성공" 시각도 다음 계정의 판정에 그대로 끼어든다.
-        prefs.remove(KEY_DIAGNOSTIC_EVENTS)
-        prefs.remove(KEY_LAST_SYNC_SUCCESS_AT)
+        ACCOUNT_DATA_KEYS.forEach { prefs.remove(it) }
     }
 
     private suspend fun edit(block: (MutablePreferences) -> Unit) {

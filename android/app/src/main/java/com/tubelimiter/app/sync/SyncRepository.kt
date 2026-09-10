@@ -4,15 +4,28 @@ import android.util.Log
 import com.tubelimiter.app.auth.AuthRepository
 import com.tubelimiter.app.data.AppSettings
 import com.tubelimiter.app.data.AppState
+import com.tubelimiter.app.data.Settings
+import com.tubelimiter.app.data.planAccountSwitch
 import com.tubelimiter.app.diagnostics.DiagnosticKind
 import com.tubelimiter.app.diagnostics.summarizeFailure
 import com.tubelimiter.app.gamification.StreakRecord
+import com.tubelimiter.app.limit.HardcoreViolation
+import com.tubelimiter.app.limit.isHardcoreChangeAllowed
 import io.github.jan.supabase.postgrest.query.Columns
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 private const val TAG = "SyncRepository"
+
+/** [SyncRepository.saveSettings]의 결과. */
+sealed interface SettingsSaveResult {
+    /** 로컬에 반영됐다(서버 반영은 성공했을 수도, 대기분으로 밀렸을 수도 있다). */
+    data object Applied : SettingsSaveResult
+
+    /** 하드코어 잠금이 막았다. 로컬에도 서버에도 아무것도 쓰지 않았다. */
+    data class Rejected(val violations: List<HardcoreViolation>) : SettingsSaveResult
+}
 
 /**
  * Keeps the local stores in step with the same Supabase project the extension uses.
@@ -33,15 +46,55 @@ class SyncRepository(
 
     private val postgrest get() = auth.postgrest
 
+    /**
+     * 설정 변경의 **유일한 관문**. 화면의 모든 편집 콜백이 여기로 들어온다
+     * ([com.tubelimiter.app.data.AppSettings]에는 개별 필드 setter가 남아 있지 않다 — 옆문을
+     * 없애야 "모든 저장이 같은 판정을 거친다"가 성립한다).
+     *
+     * 순서가 계약이다:
+     *
+     * 1. **하드코어 판정을 맨 먼저** 태운다([isHardcoreChangeAllowed]). 온라인/오프라인 분기보다
+     *    먼저여야 한다 — 뒤로 미루면 "비행기 모드로 바꾸고 한도를 올린다"가 새 우회로가 된다
+     *    (documents/BACKEND.md "오프라인 편집 대기분" 6번).
+     * 2. 통과하면 **로컬에 먼저 쓴다.** DataStore가 1차 저장소라 차단 판정이 즉시 새 값을 본다.
+     * 3. 그 다음 서버로 올린다. 실패가 "서버에 못 닿음"이면 바뀐 컬럼을 대기분에 쌓는다.
+     */
+    suspend fun saveSettings(transform: (Settings) -> Settings): SettingsSaveResult {
+        val current = settingsStore.settings.first()
+        val next = transform(current)
+
+        val check = isHardcoreChangeAllowed(current, next)
+        if (!check.allowed) return SettingsSaveResult.Rejected(check.violations)
+        if (next == current) return SettingsSaveResult.Applied
+
+        settingsStore.replaceAll(next)
+        pushSettings(changedSettingsColumns(current, next))
+        return SettingsSaveResult.Applied
+    }
+
     suspend fun pullSettings(): Boolean {
         val userId = activeUserIdOrNull() ?: return false
+
+        // 계정 전환 가드가 여기 있는 이유: 화면도 서비스도 설정 동기화를 이 함수로 시작하므로,
+        // 로그인한 user_id를 알게 되는 모든 경로가 반드시 이 판정을 지난다.
+        applyAccountSwitch(userId)
+
+        // 대기분이 있으면 pull보다 먼저 올린다. 기본 계약("settings는 서버가 진실의 원천")을
+        // 이 한 줄만 뒤집는다 — 대기분은 사용자가 방금 명시적으로 한 변경이라, 서버 값으로
+        // 덮으면 "저장했는데 되돌아왔다"가 된다.
+        val plan = resolveSettingsSyncPlan(stateStore.state.first().pendingSettings, userId)
+        plan.pending?.let { return pushPendingSettings(userId, it.columns) }
+
         return runCatching {
             val remote = postgrest["settings"]
                 .select(Columns.list(SETTINGS_COLUMNS)) { filter { eq("user_id", userId) } }
                 .decodeSingleOrNull<RemoteSettings>()
 
             if (remote == null) {
-                // First sign-in on this account: seed the row from whatever is local.
+                // 행이 없다 = 이 계정이 아직 아무것도 저장한 적이 없다(갓 가입이거나 첫 로그인).
+                // 지금 로컬 값으로 행을 만든다. 계정 전환이었다면 위 가드가 이미 기본값으로
+                // 되돌려놨으므로 직전 계정의 하드코어 잠금이 새 계정 행으로 넘어가지 않는다.
+                // **조회 실패는 이 경로로 오지 않는다** — 예외는 아래 getOrElse로 빠진다.
                 pushSettings()
             } else {
                 val local = settingsStore.settings.first()
@@ -57,18 +110,75 @@ class SyncRepository(
         }
     }
 
-    suspend fun pushSettings(): Boolean {
+    /**
+     * 지금 로컬 설정을 통째로 올린다. [changedColumns]는 실패했을 때 대기분에 넣을 목록이고,
+     * 비워두면(주기적 seed 같은 경우) 실패해도 대기분을 쌓지 않는다.
+     *
+     * 올릴 때 통째로 보내는 건 기존 동작 그대로다(마지막 쓰기 승리). 컬럼을 골라 보내는 건
+     * **대기분을 올릴 때뿐**이고, 이유는 [pushPendingSettings] 주석에 있다.
+     */
+    suspend fun pushSettings(changedColumns: Set<String> = emptySet()): Boolean {
         val userId = activeUserIdOrNull() ?: return false
         return runCatching {
             val settings = settingsStore.settings.first()
             postgrest["settings"].upsert(settings.toRemoteJson(userId)) { onConflict = "user_id" }
+            // 통째로 올렸으니 쌓여 있던 대기분도 이 요청에 다 실려 갔다.
+            if (stateStore.state.first().pendingSettings != null) stateStore.savePendingSettings(null)
+            recordSuccess()
+            true
+        }.getOrElse { error ->
+            Log.w(TAG, "Settings push failed", error)
+            recordFailure(DiagnosticKind.SYNC_SETTINGS, error, "push")
+            // 서버가 4xx/PostgREST 코드로 **답을 한** 실패는 세션·요청 문제이므로 대기분에 넣지
+            // 않는다. 뭉뚱그리면 토큰이 취소된 계정의 편집이 영원히 쌓인다([isOfflineFailure]).
+            if (changedColumns.isNotEmpty() && isOfflineFailure(error)) {
+                queuePendingSettings(userId, changedColumns)
+            }
+            false
+        }
+    }
+
+    /**
+     * 대기분을 올린다. **대기분에 든 컬럼만** 보낸다 — 로컬 설정을 통째로 올리면 오프라인이던
+     * 사이 다른 기기가 바꾼 항목까지 옛 값으로 되돌린다. 값 자체는 DataStore에서 그 자리에서
+     * 읽는다(대기분은 "어느 컬럼을 못 올렸는가"만 들고 있다 — [OfflineSettings] 파일 주석 참고).
+     *
+     * 성공했을 때만 대기분을 지운다. 실패하면 그대로 남아 다음 주기에 다시 시도한다.
+     */
+    private suspend fun pushPendingSettings(userId: String, columns: Set<String>): Boolean =
+        runCatching {
+            val settings = settingsStore.settings.first()
+            postgrest["settings"].upsert(settings.toRemoteJson(userId, columns)) { onConflict = "user_id" }
+            stateStore.savePendingSettings(null)
             recordSuccess()
             true
         }.getOrElse {
-            Log.w(TAG, "Settings push failed", it)
-            recordFailure(DiagnosticKind.SYNC_SETTINGS, it, "push")
+            Log.w(TAG, "Pending settings push failed", it)
+            recordFailure(DiagnosticKind.SYNC_SETTINGS, it, "pending")
             false
         }
+
+    private suspend fun queuePendingSettings(userId: String, columns: Set<String>) {
+        val stored = stateStore.state.first().pendingSettings
+        stateStore.savePendingSettings(accumulatePendingSettings(stored, userId, columns))
+    }
+
+    /**
+     * 로그인한 계정이 이 기기의 주인과 다르면 계정에서 온 로컬 값을 비운다. 판정은 순수 함수
+     * ([planAccountSwitch])가 하고 여기서는 결론대로 지우고 표식만 남긴다.
+     *
+     * 지우는 것과 남기는 것의 목록은 [com.tubelimiter.app.data.ACCOUNT_SWITCH_REMOVED_KEYS] /
+     * [com.tubelimiter.app.data.ACCOUNT_SWITCH_PRESERVED_KEYS]에 있다. 특히 설정 캐시를
+     * 기본값으로 되돌리는 것이 중요하다 — 안 그러면 갓 가입한 계정이 직전 계정의 하드코어
+     * 잠금을 물려받는다.
+     */
+    private suspend fun applyAccountSwitch(userId: String) {
+        val plan = planAccountSwitch(stateStore.state.first().accountOwnerUserId, userId)
+        if (plan.switched) {
+            stateStore.clearAccountData()
+            settingsStore.resetSyncedToDefaults()
+        }
+        plan.ownerToStore?.let { stateStore.setAccountOwner(it) }
     }
 
     suspend fun pullStreak(): Boolean {

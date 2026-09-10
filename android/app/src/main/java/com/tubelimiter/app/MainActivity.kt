@@ -54,6 +54,7 @@ import com.tubelimiter.app.diagnostics.monitorWarning
 import com.tubelimiter.app.diagnostics.shouldClearDiagnosticsAfterSignOut
 import com.tubelimiter.app.diagnostics.staleSyncWarning
 import com.tubelimiter.app.limit.BlockInputs
+import com.tubelimiter.app.limit.HardcoreViolation
 import com.tubelimiter.app.limit.blockReason
 import com.tubelimiter.app.limit.computeLimitMillis
 import com.tubelimiter.app.limit.effectiveEmergencyRemaining
@@ -66,6 +67,7 @@ import com.tubelimiter.app.permission.allGranted
 import com.tubelimiter.app.permission.requiredPermissions
 import com.tubelimiter.app.service.UsageMonitorService
 import com.tubelimiter.app.sync.RemoteDailyUsageRow
+import com.tubelimiter.app.sync.SettingsSaveResult
 import com.tubelimiter.app.sync.SyncRepository
 import com.tubelimiter.app.sync.combinedUsedMillis
 import com.tubelimiter.app.sync.mergeHistories
@@ -159,6 +161,9 @@ fun AppRoot() {
     // 그때는 로컬 기록만으로 그린다 — 대시보드가 통째로 비는 것보다 낫다.
     var serverHistory by remember { mutableStateOf<List<RemoteDailyUsageRow>?>(null) }
 
+    // 하드코어 잠금이 마지막 저장을 막았을 때의 사유. 비어 있으면 설정 화면에 아무것도 안 뜬다.
+    var hardcoreRejection by remember { mutableStateOf<List<HardcoreViolation>>(emptyList()) }
+
     var showAuth by remember { mutableStateOf(false) }
     var authBusy by remember { mutableStateOf(false) }
     var deleteAccountBusy by remember { mutableStateOf(false) }
@@ -180,11 +185,17 @@ fun AppRoot() {
 
     val ready = allGranted(required, granted)
 
-    // Local write first so the UI reacts at once, then mirror it to the account.
-    fun editSettings(block: suspend () -> Unit) {
+    // 설정 편집은 전부 이 한 곳을 지난다 — 하드코어 판정·로컬 반영·서버 반영(실패 시 대기분)의
+    // 순서가 [SyncRepository.saveSettings] 안에 있고, 화면은 거부됐을 때 사유만 받아 보여준다.
+    // 화면에서 입력을 비활성화하지 않는 이유는 잠금의 정의가 "약화시키는 저장을 거부한다"이지
+    // "입력을 막는다"가 아니기 때문이다(documents/BACKEND.md "하드코어 잠금 범위") — 하드코어
+    // 중에도 한도를 줄이거나 예약 차단을 늘리는 편집은 그대로 된다.
+    fun editSettings(transform: (Settings) -> Settings) {
         scope.launch {
-            block()
-            sync.pushSettings()
+            hardcoreRejection = when (val result = sync.saveSettings(transform)) {
+                is SettingsSaveResult.Rejected -> result.violations
+                SettingsSaveResult.Applied -> emptyList()
+            }
         }
     }
 
@@ -509,28 +520,44 @@ fun AppRoot() {
                         }
                     }
                 },
-                onDailyLimitChange = { editSettings { settingsStore.setDailyLimitMinutes(it) } },
+                // 변경은 전부 "지금 저장돼 있는 값 -> 저장하려는 값" 변환으로 넘긴다. 화면
+                // 스냅샷이 아니라 관문이 읽은 최신 값을 기준으로 판정·저장해야 낡은 값으로
+                // 덮어쓰는 일이 없다.
+                onDailyLimitChange = { minutes ->
+                    editSettings { it.copy(limit = it.limit.copy(dailyLimitMinutes = minutes)) }
+                },
                 onByDayChange = { index, minutes ->
-                    editSettings {
-                        val updated = settings.limit.byDayMinutes.toMutableList()
-                        updated[index] = minutes
-                        settingsStore.setByDayMinutes(updated)
+                    editSettings { current ->
+                        val updated = current.limit.byDayMinutes.toMutableList()
+                        if (index in updated.indices) updated[index] = minutes
+                        current.copy(limit = current.limit.copy(byDayMinutes = updated))
                     }
                 },
-                onFrequencyChange = { editSettings { settingsStore.setLimitFrequency(it) } },
-                onEmergencyAllowanceChange = { editSettings { settingsStore.setEmergencyAllowance(it) } },
-                onEmergencyResetChange = { editSettings { settingsStore.setEmergencyResetFrequency(it) } },
-                onAlarmIntervalChange = { editSettings { settingsStore.setAlarmIntervalMinutes(it) } },
-                onAlarmMilestonesChange = { editSettings { settingsStore.setAlarmMilestonesEnabled(it) } },
+                onFrequencyChange = { frequency ->
+                    editSettings { it.copy(limit = it.limit.copy(frequency = frequency)) }
+                },
+                onEmergencyAllowanceChange = { count -> editSettings { it.copy(emergencyAllowance = count) } },
+                onEmergencyResetChange = { frequency ->
+                    editSettings { it.copy(emergencyResetFrequency = frequency) }
+                },
+                onAlarmIntervalChange = { minutes -> editSettings { it.copy(alarmIntervalMinutes = minutes) } },
+                onAlarmMilestonesChange = { enabled -> editSettings { it.copy(alarmMilestonesEnabled = enabled) } },
                 // 감시 대상 목록은 이 기기만의 값이라 서버로 밀지 않는다(Settings.watchYouTubeMusic 주석).
                 onWatchMusicChange = { scope.launch { settingsStore.setWatchYouTubeMusic(it) } },
-                onHardcoreEnable = { editSettings { settingsStore.setHardcoreMode(true) } },
-                onHardcoreDisableRequest = {
-                    editSettings { settingsStore.requestHardcoreDisable(System.currentTimeMillis()) }
+                // 하드코어 켜기와 해제 **요청**은 관문이 막지 않는다 — 해제는 1시간 쿨다운이라는
+                // 별개 관문이 담당하고, 여기서 또 막으면 요청 자체를 저장할 수 없다.
+                onHardcoreEnable = {
+                    editSettings { it.copy(hardcoreMode = true, hardcoreDisableRequestedAt = null) }
                 },
-                onHardcoreDisableCancel = { editSettings { settingsStore.cancelHardcoreDisable() } },
+                onHardcoreDisableRequest = {
+                    val requestedAt = System.currentTimeMillis()
+                    editSettings { it.copy(hardcoreDisableRequestedAt = requestedAt) }
+                },
+                onHardcoreDisableCancel = { editSettings { it.copy(hardcoreDisableRequestedAt = null) } },
                 scheduleWindows = settings.scheduleWindows,
-                onScheduleWindowsChange = { editSettings { settingsStore.setScheduleWindows(it) } },
+                onScheduleWindowsChange = { windows -> editSettings { it.copy(scheduleWindows = windows) } },
+                hardcoreViolations = hardcoreRejection,
+                onDismissHardcoreViolations = { hardcoreRejection = emptyList() },
                 lastSyncSuccessAtMillis = state.lastSyncSuccessAtMillis,
                 diagnosticEvents = state.diagnosticEvents,
                 onClearDiagnostics = { scope.launch { stateStore.clearDiagnostics() } },

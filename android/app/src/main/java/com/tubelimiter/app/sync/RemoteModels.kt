@@ -101,16 +101,33 @@ val EMERGENCY_USES_COLUMNS = listOf("date", "emergency_uses")
 
 val DAILY_USAGE_HISTORY_COLUMNS = listOf("date", "usage_ms", "emergency_ms", "emergency_uses")
 
+/**
+ * 이 클라이언트가 소유한 `settings` 컬럼 이름. 오프라인 대기분([PendingSettings])과
+ * 하드코어 거부 사유([com.tubelimiter.app.limit.HardcoreViolation.column])가 같은 어휘를 쓰도록
+ * 상수로 뽑아둔다 — 세 곳이 문자열을 따로 적으면 오타 하나가 조용히 컬럼 하나를 빠뜨린다.
+ */
+object SettingsColumn {
+    const val DAILY_LIMIT_MS = "daily_limit_ms"
+    const val DAILY_LIMIT_BY_DAY = "daily_limit_by_day"
+    const val DAILY_LIMIT_RESET_FREQUENCY = "daily_limit_reset_frequency"
+    const val EMERGENCY_CONFIG = "emergency_config"
+    const val ALARM_INTERVAL_MINUTES = "alarm_interval_minutes"
+    const val ALARM_MILESTONES_ENABLED = "alarm_milestones_enabled"
+    const val HARDCORE_MODE = "hardcore_mode"
+    const val HARDCORE_DISABLE_REQUESTED_AT = "hardcore_disable_requested_at"
+    const val SCHEDULED_BLOCKS = "scheduled_blocks"
+}
+
 val SETTINGS_COLUMNS = listOf(
-    "daily_limit_ms",
-    "daily_limit_by_day",
-    "daily_limit_reset_frequency",
-    "emergency_config",
-    "alarm_interval_minutes",
-    "alarm_milestones_enabled",
-    "hardcore_mode",
-    "hardcore_disable_requested_at",
-    "scheduled_blocks",
+    SettingsColumn.DAILY_LIMIT_MS,
+    SettingsColumn.DAILY_LIMIT_BY_DAY,
+    SettingsColumn.DAILY_LIMIT_RESET_FREQUENCY,
+    SettingsColumn.EMERGENCY_CONFIG,
+    SettingsColumn.ALARM_INTERVAL_MINUTES,
+    SettingsColumn.ALARM_MILESTONES_ENABLED,
+    SettingsColumn.HARDCORE_MODE,
+    SettingsColumn.HARDCORE_DISABLE_REQUESTED_AT,
+    SettingsColumn.SCHEDULED_BLOCKS,
 )
 
 val STREAK_COLUMNS = listOf(
@@ -155,29 +172,70 @@ fun RemoteSettings.toSettings(local: Settings): Settings = Settings(
 /**
  * Only the owned columns go on the wire. PostgREST's upsert updates exactly the keys it
  * receives, so the extension's `whitelist` and `always_block_shorts` survive untouched.
+ *
+ * [columns]를 주면 그 컬럼만 담는다(`user_id`는 항상 남는다 — 없으면 어느 행인지 모른다).
+ * 오프라인 대기분을 올릴 때 쓰는 길인데, 이유는 같은 성질이다: **보낸 키만 갱신된다.**
+ * 오프라인이던 사이 다른 기기가 바꾼 항목까지 옛 값으로 되돌리지 않으려면 못 올린 컬럼만
+ * 보내야 한다(documents/BACKEND.md "오프라인 편집 대기분" 5번).
+ *
+ * 전체를 담고 나서 거르는 건 일부러다 — 조립과 필터가 갈라져 있으면 컬럼이 하나 늘었을 때
+ * 한쪽만 고쳐 조용히 빠지는 일이 생긴다.
  */
-fun Settings.toRemoteJson(userId: String): JsonObject = buildJsonObject {
-    put("user_id", userId)
-    put("daily_limit_ms", limit.dailyLimitMinutes * 60_000L)
-    put(
-        "daily_limit_by_day",
-        buildJsonObject {
-            limit.byDayMinutes.forEachIndexed { index, minutes -> put(index.toString(), minutes) }
-        },
-    )
-    put("daily_limit_reset_frequency", encodeFrequency(limit.frequency))
-    put(
-        "emergency_config",
-        buildJsonObject {
-            put("dailyUses", emergencyAllowance)
-            put("resetFrequency", emergencyResetFrequency.name.lowercase())
-        },
-    )
-    put("alarm_interval_minutes", alarmIntervalMinutes)
-    put("alarm_milestones_enabled", alarmMilestonesEnabled)
-    put("hardcore_mode", hardcoreMode)
-    putNullable("hardcore_disable_requested_at", formatTimestampMillis(hardcoreDisableRequestedAt))
-    put("scheduled_blocks", encodeScheduleWindowsJson(scheduleWindows))
+fun Settings.toRemoteJson(userId: String, columns: Set<String>? = null): JsonObject {
+    val full = buildJsonObject {
+        put("user_id", userId)
+        put(SettingsColumn.DAILY_LIMIT_MS, limit.dailyLimitMinutes * 60_000L)
+        put(
+            SettingsColumn.DAILY_LIMIT_BY_DAY,
+            buildJsonObject {
+                limit.byDayMinutes.forEachIndexed { index, minutes -> put(index.toString(), minutes) }
+            },
+        )
+        put(SettingsColumn.DAILY_LIMIT_RESET_FREQUENCY, encodeFrequency(limit.frequency))
+        put(
+            SettingsColumn.EMERGENCY_CONFIG,
+            buildJsonObject {
+                put("dailyUses", emergencyAllowance)
+                put("resetFrequency", emergencyResetFrequency.name.lowercase())
+            },
+        )
+        put(SettingsColumn.ALARM_INTERVAL_MINUTES, alarmIntervalMinutes)
+        put(SettingsColumn.ALARM_MILESTONES_ENABLED, alarmMilestonesEnabled)
+        put(SettingsColumn.HARDCORE_MODE, hardcoreMode)
+        putNullable(
+            SettingsColumn.HARDCORE_DISABLE_REQUESTED_AT,
+            formatTimestampMillis(hardcoreDisableRequestedAt),
+        )
+        put(SettingsColumn.SCHEDULED_BLOCKS, encodeScheduleWindowsJson(scheduleWindows))
+    }
+    if (columns == null) return full
+    return JsonObject(full.filterKeys { it == "user_id" || it in columns })
+}
+
+/**
+ * 두 설정 사이에 **어느 `settings` 컬럼이 달라졌는가**. 오프라인 저장이 실패했을 때 무엇을
+ * 대기분에 넣을지 정하는 데 쓴다.
+ *
+ * 기기별 값(감시 켜짐 여부, 차트 범위, 감시 대상)은 서버 컬럼이 아니라 여기 나오지 않는다 —
+ * [com.tubelimiter.app.data.DEVICE_LOCAL_SETTINGS_KEYS] 참고.
+ */
+fun changedSettingsColumns(previous: Settings, next: Settings): Set<String> = buildSet {
+    if (previous.limit.dailyLimitMinutes != next.limit.dailyLimitMinutes) add(SettingsColumn.DAILY_LIMIT_MS)
+    if (previous.limit.byDayMinutes != next.limit.byDayMinutes) add(SettingsColumn.DAILY_LIMIT_BY_DAY)
+    if (previous.limit.frequency != next.limit.frequency) add(SettingsColumn.DAILY_LIMIT_RESET_FREQUENCY)
+    // 두 값이 한 jsonb 컬럼에 같이 들어가므로 하나만 바뀌어도 컬럼 전체가 달라진 것이다.
+    if (previous.emergencyAllowance != next.emergencyAllowance ||
+        previous.emergencyResetFrequency != next.emergencyResetFrequency
+    ) {
+        add(SettingsColumn.EMERGENCY_CONFIG)
+    }
+    if (previous.alarmIntervalMinutes != next.alarmIntervalMinutes) add(SettingsColumn.ALARM_INTERVAL_MINUTES)
+    if (previous.alarmMilestonesEnabled != next.alarmMilestonesEnabled) add(SettingsColumn.ALARM_MILESTONES_ENABLED)
+    if (previous.hardcoreMode != next.hardcoreMode) add(SettingsColumn.HARDCORE_MODE)
+    if (previous.hardcoreDisableRequestedAt != next.hardcoreDisableRequestedAt) {
+        add(SettingsColumn.HARDCORE_DISABLE_REQUESTED_AT)
+    }
+    if (previous.scheduleWindows != next.scheduleWindows) add(SettingsColumn.SCHEDULED_BLOCKS)
 }
 
 private fun decodeByDay(raw: JsonObject?, fallback: List<Int>): List<Int> {
