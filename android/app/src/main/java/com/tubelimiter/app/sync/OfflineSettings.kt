@@ -1,5 +1,8 @@
 package com.tubelimiter.app.sync
 
+import com.tubelimiter.app.data.Settings
+import com.tubelimiter.app.limit.HardcoreViolation
+import com.tubelimiter.app.limit.isHardcoreChangeAllowed
 import io.github.jan.supabase.exceptions.RestException
 
 /**
@@ -154,6 +157,68 @@ fun resolveSettingsSyncPlan(stored: PendingSettings?, userId: String?): Settings
     } else {
         SettingsSyncPlan(SettingsSyncAction.PUSH_PENDING, pending)
     }
+}
+
+/** [planPendingSettingsPush]의 결론. */
+data class PendingPushPlan(
+    /** 실제로 올릴 컬럼. 비어 있으면 올릴 게 없다(대기분은 비운다). */
+    val columns: Set<String>,
+    /** 서버 기준 재검증에서 막힌 사유. 비어 있지 않으면 화면에 남겨야 한다. */
+    val rejected: List<HardcoreViolation>,
+    /** push 후 로컬에 남아야 할 설정. 거부된 컬럼은 서버 값으로 되돌아온다. */
+    val settings: Settings,
+)
+
+/**
+ * 대기분을 **올리기 직전에** 다시 판정한다. 확장 `planPendingSettingsPush`
+ * (extension/src/lib/offlineSettings.js)와 같은 규칙이고, **두 쪽이 갈라지면 안 되는 계약**이다
+ * — 한쪽만 고치면 이번에는 그 기기가 게이트 밖이 된다(QA_REVIEW §10.4).
+ *
+ * ## 왜 한 번 더 보는가
+ *
+ * 대기분은 오프라인 편집 시점의 **로컬 값**을 기준으로 [isHardcoreChangeAllowed]를 통과했다.
+ * 그 사이 다른 기기가 규칙을 더 조였다면(폰 오프라인에서 한도 60분 저장 → 그동안 PC가 10분으로
+ * 조임) 그대로 올리는 것은 하드코어 잠금 바깥에서 잠금을 되돌리는 일이 된다. 그래서 push 직전에
+ * **서버의 현재 값**을 기준으로 다시 태운다 — 왕복이 한 번 는다.
+ *
+ * ## 거부되면 그 컬럼은 버린다
+ *
+ * 남겨두고 다시 시도해봐야 소용이 없다. 하드코어가 켜진 동안 서버 값은 조여지기만 하므로 다음
+ * 시도도 같은 이유로 막히고, 대기분이 영영 안 비면 주기마다 같은 요청이 되풀이된다. 대신
+ * **조용히 버리지는 않는다** — [rejected]를 [com.tubelimiter.app.data.AppState]에 남겨 설정
+ * 화면이 "무엇이 왜 반영되지 않았는지"를 띄운다. 알림 대신 화면에 남기는 쪽을 고른 이유는, 이
+ * 사건이 급하지 않고(더 강한 규칙이 이미 적용돼 있다) 알림은 한 번 지나가면 다시 볼 수 없기
+ * 때문이다.
+ *
+ * 거부되지 않은 컬럼은 그대로 올린다. 한 번의 오프라인 편집에 여러 항목이 섞여 있을 때 하나
+ * 때문에 전부 버리면, 특히 하드코어 해제 요청(게이트가 막지 않는 값)까지 같이 날아간다.
+ *
+ * @param server 서버의 현재 값(원격 행을 로컬로 디코드한 것). 하드코어 판정의 기준이다.
+ * @param local 지금 이 기기의 값. 대기분 컬럼의 "올리려는 값"이 여기 들어 있다.
+ * @param columns 아직 못 올린 컬럼
+ */
+fun planPendingSettingsPush(server: Settings, local: Settings, columns: Set<String>): PendingPushPlan {
+    var survivors = columns
+    val rejected = mutableListOf<HardcoreViolation>()
+    val dropped = mutableSetOf<String>()
+
+    // 컬럼 하나를 빼면 다른 규칙의 비교 기준이 바뀔 수 있어(요일별 한도는 기본 한도를 참조한다)
+    // 통과할 때까지 되풀이한다. 한 바퀴마다 최소 한 컬럼이 빠지므로 반드시 끝난다.
+    while (true) {
+        val check = isHardcoreChangeAllowed(server, server.withColumnsFrom(local, survivors))
+        if (check.allowed) break
+        rejected += check.violations
+
+        val removable = check.violations.map { it.column }.filter { it in survivors }.toSet()
+        // 규칙이 지목한 컬럼이 대기분에 하나도 없다 = 무엇을 빼야 할지 모른다. 통째로 버린다
+        // (판단이 애매하면 약화로 본다는 HardcoreLock.kt의 기준과 같은 방향).
+        val drop = removable.ifEmpty { survivors }
+        dropped += drop
+        survivors = survivors - drop
+    }
+
+    // 거부된 컬럼은 서버 값이 이긴다. 로컬에 남겨두면 화면에는 반영된 것처럼 보인다.
+    return PendingPushPlan(survivors, rejected.distinct(), local.withColumnsFrom(server, dropped))
 }
 
 /**

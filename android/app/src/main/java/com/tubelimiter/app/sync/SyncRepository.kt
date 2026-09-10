@@ -147,8 +147,36 @@ class SyncRepository(
      */
     private suspend fun pushPendingSettings(userId: String, columns: Set<String>): Boolean =
         runCatching {
-            val settings = settingsStore.settings.first()
-            postgrest["settings"].upsert(settings.toRemoteJson(userId, columns)) { onConflict = "user_id" }
+            val local = settingsStore.settings.first()
+
+            // 올리기 직전에 **서버의 현재 값**을 기준으로 하드코어 게이트를 다시 태운다. 대기분은
+            // 오프라인 편집 시점의 로컬 값으로 통과한 것이라, 그 사이 다른 기기가 규칙을 조였다면
+            // 그대로 올리는 순간 잠금이 게이트 바깥에서 되돌아간다(QA_REVIEW §10.4). 규칙은
+            // [planPendingSettingsPush]가 갖고 있고 확장과 같은 계약이다.
+            val server = postgrest["settings"]
+                .select(Columns.list(SETTINGS_COLUMNS)) { filter { eq("user_id", userId) } }
+                .decodeSingleOrNull<RemoteSettings>()
+                ?.toSettings(local)
+
+            // 서버에 행이 아직 없으면 비교할 기준이 없다 — 그대로 올린다.
+            val plan = server?.let { planPendingSettingsPush(it, local, columns) }
+
+            if (plan != null) {
+                // 거부된 컬럼은 서버 값이 이긴다. 로컬에 남겨두면 화면에는 반영된 것처럼 보인다.
+                if (plan.settings != local) settingsStore.replaceAll(plan.settings)
+                // 조용히 버리지 않는다 — 설정 화면이 무엇이 왜 빠졌는지 띄운다.
+                if (plan.rejected.isNotEmpty()) {
+                    stateStore.savePendingSettingsRejected(plan.rejected.map { it.name }.toSet())
+                }
+            }
+
+            val pushable = plan?.columns ?: columns
+            if (pushable.isNotEmpty()) {
+                val payload = (plan?.settings ?: local).toRemoteJson(userId, pushable)
+                postgrest["settings"].upsert(payload) { onConflict = "user_id" }
+            }
+            // 올릴 게 하나도 안 남았어도 대기분은 비운다 — 전부 거부됐다는 뜻이고, 남겨두면
+            // 같은 요청이 주기마다 되풀이된다.
             stateStore.savePendingSettings(null)
             recordSuccess()
             true

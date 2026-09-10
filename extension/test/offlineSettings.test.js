@@ -15,6 +15,7 @@ import {
   createPendingSettings,
   isOfflineFailure,
   planSettingsSave,
+  planPendingSettingsPush,
   readPendingFor,
   resolveAccessState,
   resolveSettingsSyncPlan
@@ -263,4 +264,92 @@ test('로그아웃 상태의 계획은 서버로 가지 않는다', () => {
     patch: { daily_limit_ms: 600000 }
   });
   assert.equal(plan.action, 'local');
+});
+
+// --- push 직전 재검증 (QA_REVIEW §10.4) ---
+// 대기분은 오프라인 시점의 로컬 캐시로 게이트를 통과한 값이라, 그 사이 다른 기기가 규칙을
+// 조였으면 그대로 올라가 잠금을 되돌린다. 안드로이드 SyncRepository.pushPendingSettings /
+// planPendingSettingsPush(sync/OfflineSettings.kt)와 같은 규칙이다.
+
+const pendingOf = (settings) => ({
+  userId: 'u1',
+  settings,
+  updatedAtMillis: 1,
+  resetStreak: false
+});
+
+test('오프라인 사이 폰이 한도를 조였으면 대기분의 한도 상향은 올라가지 않는다', () => {
+  // PC 오프라인에서 60분 저장 → 그동안 폰이 10분으로 조임 → PC 복귀.
+  const push = planPendingSettingsPush({
+    pending: pendingOf({ daily_limit_ms: 3600000 }),
+    remote: { hardcore_mode: true, daily_limit_ms: 600000 },
+    cached: { hardcore_mode: true, daily_limit_ms: 1800000 }
+  });
+  assert.deepEqual(push.patch, {});
+  assert.deepEqual(
+    push.dropped.map((violation) => violation.field),
+    ['daily_limit_ms']
+  );
+  // 캐시도 서버 값으로 되돌린다 — 화면에만 60분이 남으면 사용자는 규칙이 약해진 줄 안다.
+  assert.equal(push.settings.daily_limit_ms, 600000);
+});
+
+test('거부되지 않은 필드는 그대로 올라간다 (하나 때문에 전부 버리지 않는다)', () => {
+  const push = planPendingSettingsPush({
+    pending: pendingOf({
+      daily_limit_ms: 3600000,
+      hardcore_disable_requested_at: '2026-09-08T00:00:00.000Z'
+    }),
+    remote: { hardcore_mode: true, daily_limit_ms: 600000, hardcore_disable_requested_at: null },
+    cached: { hardcore_mode: true, daily_limit_ms: 1800000 }
+  });
+  // 하드코어 해제 요청은 게이트가 막는 값이 아니다(쿨다운이 별도 관문).
+  assert.deepEqual(push.patch, { hardcore_disable_requested_at: '2026-09-08T00:00:00.000Z' });
+  assert.equal(push.dropped.length, 1);
+});
+
+test('서버 기준으로도 통과하는 대기분은 손대지 않는다', () => {
+  const push = planPendingSettingsPush({
+    pending: pendingOf({ daily_limit_ms: 300000 }),
+    remote: { hardcore_mode: true, daily_limit_ms: 600000 },
+    cached: { hardcore_mode: true, daily_limit_ms: 600000 }
+  });
+  assert.deepEqual(push.patch, { daily_limit_ms: 300000 });
+  assert.deepEqual(push.dropped, []);
+  assert.equal(push.settings.daily_limit_ms, 300000);
+});
+
+test('하드코어가 꺼진 계정은 예전처럼 그대로 올라간다', () => {
+  const push = planPendingSettingsPush({
+    pending: pendingOf({ daily_limit_ms: 3600000 }),
+    remote: { hardcore_mode: false, daily_limit_ms: 600000 },
+    cached: { hardcore_mode: false, daily_limit_ms: 600000 }
+  });
+  assert.deepEqual(push.patch, { daily_limit_ms: 3600000 });
+  assert.deepEqual(push.dropped, []);
+});
+
+test('서버에 행이 아직 없으면 비교 기준이 없으므로 그대로 올린다', () => {
+  const push = planPendingSettingsPush({
+    pending: pendingOf({ daily_limit_ms: 3600000 }),
+    remote: null,
+    cached: { hardcore_mode: true, daily_limit_ms: 600000 }
+  });
+  assert.deepEqual(push.patch, { daily_limit_ms: 3600000 });
+  assert.deepEqual(push.dropped, []);
+});
+
+test('한 필드를 빼면 다른 규칙의 기준이 바뀌는 경우도 통과할 때까지 걸러낸다', () => {
+  // 요일별 한도는 빠진 요일을 기본 한도로 채워 비교하므로, 기본 한도만 빼면 요일별 한도가
+  // 서버의 기본 한도(10분)와 비교돼 그때 걸린다.
+  const push = planPendingSettingsPush({
+    pending: pendingOf({ daily_limit_ms: 3600000, daily_limit_by_day: { 3: 5400000 } }),
+    remote: { hardcore_mode: true, daily_limit_ms: 600000, daily_limit_by_day: {} },
+    cached: { hardcore_mode: true, daily_limit_ms: 600000, daily_limit_by_day: {} }
+  });
+  assert.deepEqual(push.patch, {});
+  assert.deepEqual(push.dropped.map((violation) => violation.field).sort(), [
+    'daily_limit_by_day',
+    'daily_limit_ms'
+  ]);
 });

@@ -33,6 +33,7 @@ import com.tubelimiter.app.gamification.applyDayRollover
 import com.tubelimiter.app.limit.AlarmMessage
 import com.tubelimiter.app.limit.BlockInputs
 import com.tubelimiter.app.limit.EMERGENCY_DURATION_MILLIS
+import com.tubelimiter.app.limit.EmergencyResetAction
 import com.tubelimiter.app.limit.LimitHistoryEntry
 import com.tubelimiter.app.limit.ScheduleWindow
 import com.tubelimiter.app.limit.blockReason
@@ -47,6 +48,7 @@ import com.tubelimiter.app.limit.isScheduleActive
 import com.tubelimiter.app.limit.isUnlimited
 import com.tubelimiter.app.limit.minutesToMillis
 import com.tubelimiter.app.limit.minutesUntilNextScheduleStart
+import com.tubelimiter.app.limit.planEmergencyReset
 import com.tubelimiter.app.limit.planRolloverLimits
 import com.tubelimiter.app.limit.resolveFocusStopTime
 import com.tubelimiter.app.limit.shouldDisableHardcore
@@ -526,11 +528,26 @@ class UsageMonitorService : Service() {
         nudge(getString(R.string.nudge_hardcore_released))
     }
 
+    /**
+     * 판정은 순수 함수([planEmergencyReset])가 하고 여기서는 결론대로 쓰기만 한다. 주기가
+     * 바뀐 것뿐이면 표식만 옮기고 남은 횟수는 그대로 둔다 — 그러지 않으면 하드코어를 켠 채
+     * 주기를 조이는 것만으로 그 자리에서 횟수가 리필된다(QA_REVIEW §10.2).
+     */
     private suspend fun resetEmergencyAllowanceIfDue(settings: Settings, today: LocalDate) {
         val state = stateStore.state.first()
-        val key = emergencyResetKey(settings.emergencyResetFrequency, today)
-        if (state.emergencyResetKey == key) return
-        stateStore.resetEmergencyAllowance(key, settings.emergencyAllowance)
+        val plan = planEmergencyReset(
+            lastKey = state.emergencyResetKey,
+            lastFrequency = state.emergencyResetFrequency,
+            frequency = settings.emergencyResetFrequency,
+            allowance = settings.emergencyAllowance,
+            date = today,
+        )
+        when (plan.action) {
+            EmergencyResetAction.NONE -> return
+            EmergencyResetAction.CARRY_OVER -> stateStore.adoptEmergencyBucket(plan.resetKey, plan.frequency)
+            EmergencyResetAction.RESET ->
+                stateStore.resetEmergencyAllowance(plan.resetKey, plan.frequency, plan.allowance)
+        }
     }
 
     /** Promotes a scheduled focus session and retires a finished (or cooled-down-to-stop) one. */

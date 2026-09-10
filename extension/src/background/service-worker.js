@@ -51,6 +51,8 @@ import {
 import { recordDiagnosticFailure, recordSyncSuccess } from '../lib/diagnosticsStore.js';
 import {
   ACCESS_STATE,
+  PENDING_REJECTED_KEY,
+  planPendingSettingsPush,
   readPendingFor,
   resolveAccessState,
   resolveSettingsSyncPlan
@@ -203,13 +205,43 @@ async function flushPendingSettings(userId) {
   if (!pending) return false;
 
   const plan = resolveSettingsSyncPlan({ pending, cached: settingsCache });
-  const { error } = await supabase
+
+  // 대기분은 **오프라인 시점의 로컬 캐시**를 기준으로 하드코어 게이트를 통과한 값이다. 그 사이
+  // 다른 기기가 규칙을 더 조였을 수 있으므로, 올리기 직전에 서버의 현재 값으로 한 번 더
+  // 판정한다(QA_REVIEW §10.4). 왕복이 한 번 늘지만 이건 30초 주기의 동기화 경로다.
+  const { data: remote, error: readError } = await supabase
     .from('settings')
-    .upsert({ user_id: userId, ...plan.patch, updated_at: new Date().toISOString() });
-  if (error) {
-    console.error('[TubeLimiter] 오프라인 편집분 동기화 실패:', error);
-    await recordFailure(DiagnosticKind.SYNC_SETTINGS, 'pending_push', error);
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (readError) {
+    // 기준값을 못 읽었으면 **올리지 않는다.** 게이트를 못 태운 채 올리는 것보다 다음 틱에
+    // 다시 시도하는 쪽이 낫다(대기분은 그대로 남는다).
+    console.error('[TubeLimiter] 대기분 재검증용 설정 조회 실패:', readError);
+    await recordFailure(DiagnosticKind.SYNC_SETTINGS, 'pending_recheck', readError);
     return false;
+  }
+
+  const push = planPendingSettingsPush({ pending, remote, cached: settingsCache });
+  if (push.dropped.length > 0) {
+    // 조용히 버리면 사용자는 저장된 줄 안다. 무엇이 왜 반영되지 않았는지를 남겨 옵션 화면이 띄운다.
+    await setStorage({
+      [PENDING_REJECTED_KEY]: {
+        messageKeys: push.dropped.map((violation) => violation.messageKey),
+        atMillis: Date.now()
+      }
+    });
+  }
+
+  if (Object.keys(push.patch).length > 0) {
+    const { error } = await supabase
+      .from('settings')
+      .upsert({ user_id: userId, ...push.patch, updated_at: new Date().toISOString() });
+    if (error) {
+      console.error('[TubeLimiter] 오프라인 편집분 동기화 실패:', error);
+      await recordFailure(DiagnosticKind.SYNC_SETTINGS, 'pending_push', error);
+      return false;
+    }
   }
 
   // 오프라인에서 하드코어가 실제로 풀린 경우에는 스트릭 리셋도 같이 밀려 있다. 여기서 빠지면
@@ -226,7 +258,9 @@ async function flushPendingSettings(userId) {
 
   await clearPendingSettings();
   await recordSyncSuccess();
-  settingsCache = plan.settings;
+  // 거부된 필드는 서버 값으로 되돌아온 캐시다(planPendingSettingsPush가 조립한다) — 화면에만
+  // 반영된 것처럼 남아 있으면 사용자는 규칙이 약해진 줄 안다.
+  settingsCache = push.settings;
   await setStorage({ settingsCache });
   notifyUiUpdate();
   return true;
@@ -960,10 +994,14 @@ async function getEffectiveEmergencyUses() {
 }
 
 async function checkAndResetEmergencyUses() {
-  const { last_emergency_date } = await getStorage(['last_emergency_date']);
+  const { last_emergency_date, last_emergency_frequency } = await getStorage([
+    'last_emergency_date',
+    'last_emergency_frequency'
+  ]);
 
   const plan = planEmergencyReset({
     lastResetDate: last_emergency_date,
+    lastResetFrequency: last_emergency_frequency,
     frequency: settingsCache.emergency_config?.resetFrequency,
     dailyUses: settingsCache.emergency_config?.dailyUses,
     today: getTodayDate(),
@@ -971,8 +1009,24 @@ async function checkAndResetEmergencyUses() {
     monthStart: getMonthStartDate()
   });
 
-  if (!plan.shouldReset) return;
-  await setStorage({ emergency_uses_today: plan.uses, last_emergency_date: plan.resetDate });
+  if (plan.action === 'none') return;
+
+  // 버킷 표식은 두 값이 한 쌍이다 — 키만 옮기고 주기를 안 남기면 다음 판정이 "주기가 바뀐 것"과
+  // "날짜가 흘러간 것"을 다시 구별하지 못한다(planEmergencyReset 주석 참고).
+  const bucket = {
+    last_emergency_date: plan.resetDate,
+    last_emergency_frequency: plan.resetFrequency
+  };
+
+  // carryOver = 주기만 바뀐 경우. 이미 쓴 횟수를 새 버킷이 그대로 이어받으므로 남은 횟수를
+  // 건드리지 않는다 — 여기서 리필하면 하드코어를 켠 채 주기를 조이는 것만으로 무료 리필이
+  // 된다(QA_REVIEW §10.2). 화면에 보이는 잔여도 안 변하니 알림도 없다.
+  if (plan.action === 'carryOver') {
+    await setStorage(bucket);
+    return;
+  }
+
+  await setStorage({ emergency_uses_today: plan.uses, ...bucket });
   notifyUiUpdate();
 }
 

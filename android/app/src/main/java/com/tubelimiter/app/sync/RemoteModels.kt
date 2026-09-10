@@ -238,6 +238,49 @@ fun changedSettingsColumns(previous: Settings, next: Settings): Set<String> = bu
     if (previous.scheduleWindows != next.scheduleWindows) add(SettingsColumn.SCHEDULED_BLOCKS)
 }
 
+/**
+ * [columns]에 해당하는 값만 [source]에서 가져온 사본. [changedSettingsColumns]의 역방향이라
+ * 바로 옆에 둔다 — 컬럼이 하나 늘었을 때 두 함수를 같이 보게 하려는 것이다.
+ *
+ * 쓰이는 곳은 대기분 재검증([planPendingSettingsPush])이다: "서버 값 + 대기분 컬럼만 로컬 값"이
+ * 하드코어 판정의 `next`이고, 거부된 컬럼을 서버 값으로 되돌리는 것이 그 반대 방향이다.
+ */
+fun Settings.withColumnsFrom(source: Settings, columns: Set<String>): Settings {
+    var result = this
+    if (SettingsColumn.DAILY_LIMIT_MS in columns) {
+        result = result.copy(limit = result.limit.copy(dailyLimitMinutes = source.limit.dailyLimitMinutes))
+    }
+    if (SettingsColumn.DAILY_LIMIT_BY_DAY in columns) {
+        result = result.copy(limit = result.limit.copy(byDayMinutes = source.limit.byDayMinutes))
+    }
+    if (SettingsColumn.DAILY_LIMIT_RESET_FREQUENCY in columns) {
+        result = result.copy(limit = result.limit.copy(frequency = source.limit.frequency))
+    }
+    // 두 값이 한 jsonb 컬럼에 같이 들어간다(changedSettingsColumns의 같은 자리 참고).
+    if (SettingsColumn.EMERGENCY_CONFIG in columns) {
+        result = result.copy(
+            emergencyAllowance = source.emergencyAllowance,
+            emergencyResetFrequency = source.emergencyResetFrequency,
+        )
+    }
+    if (SettingsColumn.ALARM_INTERVAL_MINUTES in columns) {
+        result = result.copy(alarmIntervalMinutes = source.alarmIntervalMinutes)
+    }
+    if (SettingsColumn.ALARM_MILESTONES_ENABLED in columns) {
+        result = result.copy(alarmMilestonesEnabled = source.alarmMilestonesEnabled)
+    }
+    if (SettingsColumn.HARDCORE_MODE in columns) {
+        result = result.copy(hardcoreMode = source.hardcoreMode)
+    }
+    if (SettingsColumn.HARDCORE_DISABLE_REQUESTED_AT in columns) {
+        result = result.copy(hardcoreDisableRequestedAt = source.hardcoreDisableRequestedAt)
+    }
+    if (SettingsColumn.SCHEDULED_BLOCKS in columns) {
+        result = result.copy(scheduleWindows = source.scheduleWindows)
+    }
+    return result
+}
+
 private fun decodeByDay(raw: JsonObject?, fallback: List<Int>): List<Int> {
     if (raw == null || raw.isEmpty()) return fallback
     return List(7) { index ->

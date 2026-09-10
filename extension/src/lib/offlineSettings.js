@@ -34,6 +34,13 @@ export const ACCESS_STATE = Object.freeze({
 export const PENDING_SETTINGS_KEY = 'pendingSettingsSync';
 
 /**
+ * 대기분 중 서버 기준 재검증에서 거부돼 **버려진** 항목의 사유(messageKey 목록 + 시각).
+ * 백그라운드가 쓰고 옵션 화면이 읽어 띄운 뒤 지운다 — 조용히 버리면 사용자는 저장된 줄 안다
+ * ([planPendingSettingsPush] 주석 참고).
+ */
+export const PENDING_REJECTED_KEY = 'pendingSettingsRejected';
+
+/**
  * 서버가 "이 요청은 잘못됐다/이 세션은 무효다"라고 **답한** 상태 코드.
  * 답이 왔다는 건 서버가 살아 있다는 뜻이라, 이건 오프라인이 아니다.
  */
@@ -173,6 +180,74 @@ export function resolveSettingsSyncPlan({ pending, cached } = {}) {
     };
   }
   return { action: 'pull', patch: null, resetStreak: false, settings: null };
+}
+
+/**
+ * 대기분을 **올리기 직전에** 다시 판정한다. (QA_REVIEW §10.4)
+ *
+ * ## 왜 한 번 더 보는가
+ *
+ * 대기분은 오프라인 편집 시점의 **로컬 캐시**를 기준으로 게이트를 통과한 값이다. 그 사이 다른
+ * 기기가 규칙을 더 조였다면(PC 오프라인에서 한도 60분 저장 → 그동안 폰이 10분으로 조임)
+ * 그대로 올리는 것은 하드코어 잠금 바깥에서 잠금을 되돌리는 일이 된다. 그래서 push 직전에
+ * **서버의 현재 값**을 기준으로 [isHardcoreChangeAllowed]를 다시 태운다 — 왕복이 한 번 는다.
+ *
+ * ## 거부되면 그 필드는 버린다
+ *
+ * 남겨두고 다시 시도해봐야 소용이 없다. 하드코어가 켜진 동안 서버 값은 조여지기만 하므로
+ * 다음 시도도 같은 이유로 막히고, 대기분이 영영 안 비면 30초마다 같은 요청이 되풀이된다.
+ * 대신 **조용히 버리지는 않는다** — 호출부가 [dropped]를 저장소에 남겨 옵션 화면이 "무엇이
+ * 왜 반영되지 않았는지"를 띄운다. 알림 대신 화면에 남기는 쪽을 고른 이유는, 이 사건이 급하지
+ * 않고(더 강한 규칙이 이미 적용돼 있다) OS 알림은 한 번 지나가면 다시 볼 수 없기 때문이다.
+ *
+ * 거부되지 않은 필드는 그대로 올린다. 한 번의 오프라인 편집에 여러 항목이 섞여 있을 때
+ * 하나 때문에 전부 버리면, 특히 하드코어 해제 요청(게이트가 막지 않는 값)까지 같이 날아간다.
+ *
+ * @param {object} input
+ * @param {object|null} input.pending readPendingFor를 통과한 대기분
+ * @param {object|null} input.remote 서버의 현재 settings 행. null이면(행이 아직 없다) 비교할
+ *   기준이 없으므로 그대로 올린다.
+ * @param {object|null} input.cached 로컬 settingsCache
+ * @returns {{patch: object, dropped: Array<{field: string, messageKey: string}>, settings: object}}
+ *          patch가 비어 있으면 올릴 게 없다(대기분은 비운다). settings는 push 후의 로컬 캐시 —
+ *          버려진 필드는 서버 값으로 되돌려 담는다.
+ */
+export function planPendingSettingsPush({ pending, remote, cached } = {}) {
+  const patch = { ...(pending?.settings || {}) };
+  const settings = applyPendingSettings(cached, pending);
+  if (!remote) return { patch, dropped: [], settings };
+
+  /** 화면에 띄울 거부 사유(필드 -> messageKey). */
+  const dropped = new Map();
+  /** 실제로 patch에서 빠진 필드. 사유 목록과 달리 캐시를 되돌릴 대상이라 따로 센다. */
+  const droppedFields = new Set();
+
+  // 필드 하나를 빼면 다른 규칙의 비교 기준이 바뀔 수 있어(요일별 한도는 기본 한도를 참조한다)
+  // 통과할 때까지 되풀이한다. 한 바퀴마다 최소 한 필드가 빠지므로 반드시 끝난다.
+  for (;;) {
+    const check = isHardcoreChangeAllowed(remote, { ...remote, ...patch });
+    if (check.allowed) break;
+    for (const violation of check.violations) dropped.set(violation.field, violation.messageKey);
+
+    const removable = check.violations.filter((violation) => violation.field in patch);
+    // 규칙이 지목한 필드가 대기분에 하나도 없다 = 무엇을 빼야 할지 모른다. 통째로 버린다
+    // (판단이 애매하면 약화로 본다는 hardcoreLock.js의 기준과 같은 방향).
+    const fields = removable.length > 0 ? removable.map((v) => v.field) : Object.keys(patch);
+    for (const field of fields) {
+      droppedFields.add(field);
+      delete patch[field];
+    }
+  }
+
+  // 버려진 필드는 서버 값이 이긴다. 캐시에 남겨두면 화면에는 반영된 것처럼 보인다.
+  for (const field of droppedFields) {
+    if (field in remote) settings[field] = remote[field];
+  }
+  return {
+    patch,
+    dropped: [...dropped].map(([field, messageKey]) => ({ field, messageKey })),
+    settings
+  };
 }
 
 /**

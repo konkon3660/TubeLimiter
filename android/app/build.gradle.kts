@@ -39,6 +39,11 @@ android {
         targetSdk = 36
         versionCode = appVersionCode
         versionName = appVersionName
+
+        // Names the runner class that executes src/androidTest on a device or emulator.
+        // It lives in androidx.test:runner, which androidx.test.ext:junit does not pull in,
+        // hence the separate dependency below.
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -97,6 +102,13 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+
+    // Instrumentation tests (src/androidTest): they need a real Android runtime, so they run
+    // via `connectedDebugAndroidTest` on a device/emulator, not with the JVM unit tests.
+    // No Espresso/Compose test rule here on purpose - the one suite that exists exercises the
+    // DataStore layer, not the UI; see SettingsStoreRoundTripTest's header for why.
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
 }
 
 ktlint {

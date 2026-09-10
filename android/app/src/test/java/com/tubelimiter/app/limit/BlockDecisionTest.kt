@@ -118,6 +118,150 @@ class BlockDecisionTest {
         assertEquals("2026-09-01", emergencyResetKey(EmergencyResetFrequency.MONTHLY, wednesday))
     }
 
+    // --- 주기 변경이 리필을 만들지 않는다 (QA_REVIEW §10.2) ---
+    // 확장 `extension/src/lib/dateRollover.js`의 planEmergencyReset과 **같은 규칙**이라,
+    // 여기 시나리오는 extension/test/dateRollover.test.js에도 같은 모양으로 박혀 있다.
+    // 한쪽만 고치면 같은 계정의 두 기기가 서로 다른 잔여를 보여준다.
+
+    @Test
+    fun `switching the reset period carries the spent uses into the new bucket`() {
+        val thursday = LocalDate.of(2026, 9, 3)
+        // 하드코어 게이트는 daily to weekly를 "조이는 방향"으로 통과시킨다. 여기서 리셋이
+        // 돌면 하드코어를 켜둔 채로 무료 리필이 된다.
+        val plan = planEmergencyReset(
+            lastKey = "2026-09-03",
+            lastFrequency = EmergencyResetFrequency.DAILY,
+            frequency = EmergencyResetFrequency.WEEKLY,
+            allowance = 3,
+            date = thursday,
+        )
+        assertEquals(EmergencyResetAction.CARRY_OVER, plan.action)
+        // 표식만 새 버킷으로 옮긴다 - 남은 횟수는 호출부가 건드리지 않는다.
+        assertEquals("2026-08-31", plan.resetKey)
+        assertEquals(EmergencyResetFrequency.WEEKLY, plan.frequency)
+    }
+
+    @Test
+    fun `a second period switch does not refill either`() {
+        val plan = planEmergencyReset(
+            lastKey = "2026-08-31",
+            lastFrequency = EmergencyResetFrequency.WEEKLY,
+            frequency = EmergencyResetFrequency.MONTHLY,
+            allowance = 3,
+            date = LocalDate.of(2026, 9, 3),
+        )
+        assertEquals(EmergencyResetAction.CARRY_OVER, plan.action)
+        assertEquals("2026-09-01", plan.resetKey)
+    }
+
+    @Test
+    fun `loosening the period does not refill either`() {
+        val plan = planEmergencyReset(
+            lastKey = "2026-09-01",
+            lastFrequency = EmergencyResetFrequency.MONTHLY,
+            frequency = EmergencyResetFrequency.DAILY,
+            allowance = 3,
+            date = LocalDate.of(2026, 9, 3),
+        )
+        assertEquals(EmergencyResetAction.CARRY_OVER, plan.action)
+        assertEquals("2026-09-03", plan.resetKey)
+    }
+
+    @Test
+    fun `a period switch on a day whose month starts after its week start still carries over`() {
+        // 9월 1일(화)에는 월 시작일(09-01)이 주 시작일(08-31)보다 뒤라 "키가 뒤로만 간다"는
+        // 어림짐작이 깨진다. 저장된 주기로 다시 계산해 비교하므로 여기서도 carryOver다.
+        val plan = planEmergencyReset(
+            lastKey = "2026-08-31",
+            lastFrequency = EmergencyResetFrequency.WEEKLY,
+            frequency = EmergencyResetFrequency.MONTHLY,
+            allowance = 3,
+            date = LocalDate.of(2026, 9, 1),
+        )
+        assertEquals(EmergencyResetAction.CARRY_OVER, plan.action)
+        assertEquals("2026-09-01", plan.resetKey)
+    }
+
+    @Test
+    fun `a bucket that actually starts after a period switch resets as usual`() {
+        // 위 시나리오로 표식이 2026-08-31/WEEKLY가 된 상태. 다음 주 월요일이 오면 저장된
+        // 주기로 계산한 오늘의 키가 달라지므로 리셋이다.
+        val plan = planEmergencyReset(
+            lastKey = "2026-08-31",
+            lastFrequency = EmergencyResetFrequency.WEEKLY,
+            frequency = EmergencyResetFrequency.WEEKLY,
+            allowance = 3,
+            date = LocalDate.of(2026, 9, 7),
+        )
+        assertEquals(EmergencyResetAction.RESET, plan.action)
+        assertEquals("2026-09-07", plan.resetKey)
+        assertEquals(3, plan.allowance)
+    }
+
+    @Test
+    fun `a day rollover still resets even when the period changed at the same time`() {
+        // 어제 마지막으로 리셋된 daily 버킷은 오늘 이미 끝났다 - 주기를 같이 바꿨다고 해서
+        // 정당한 리셋까지 막지는 않는다.
+        val plan = planEmergencyReset(
+            lastKey = "2026-09-02",
+            lastFrequency = EmergencyResetFrequency.DAILY,
+            frequency = EmergencyResetFrequency.WEEKLY,
+            allowance = 3,
+            date = LocalDate.of(2026, 9, 3),
+        )
+        assertEquals(EmergencyResetAction.RESET, plan.action)
+        assertEquals("2026-08-31", plan.resetKey)
+        assertEquals(EmergencyResetFrequency.WEEKLY, plan.frequency)
+    }
+
+    @Test
+    fun `a store without the period stamp keeps the old verdict but records the stamp`() {
+        val thursday = LocalDate.of(2026, 9, 3)
+        val stamping = planEmergencyReset(
+            lastKey = "2026-09-03",
+            lastFrequency = null,
+            frequency = EmergencyResetFrequency.DAILY,
+            allowance = 3,
+            date = thursday,
+        )
+        assertEquals(EmergencyResetAction.CARRY_OVER, stamping.action)
+        assertEquals(EmergencyResetFrequency.DAILY, stamping.frequency)
+
+        val rolled = planEmergencyReset(
+            lastKey = "2026-09-02",
+            lastFrequency = null,
+            frequency = EmergencyResetFrequency.DAILY,
+            allowance = 3,
+            date = thursday,
+        )
+        assertEquals(EmergencyResetAction.RESET, rolled.action)
+    }
+
+    @Test
+    fun `nothing to write when neither the bucket nor the period moved`() {
+        val plan = planEmergencyReset(
+            lastKey = "2026-08-31",
+            lastFrequency = EmergencyResetFrequency.WEEKLY,
+            frequency = EmergencyResetFrequency.WEEKLY,
+            allowance = 3,
+            date = LocalDate.of(2026, 9, 3),
+        )
+        assertEquals(EmergencyResetAction.NONE, plan.action)
+    }
+
+    @Test
+    fun `a first run with no bucket at all fills the allowance`() {
+        val plan = planEmergencyReset(
+            lastKey = null,
+            lastFrequency = null,
+            frequency = EmergencyResetFrequency.DAILY,
+            allowance = 3,
+            date = LocalDate.of(2026, 9, 3),
+        )
+        assertEquals(EmergencyResetAction.RESET, plan.action)
+        assertEquals(3, plan.allowance)
+    }
+
     @Test
     fun `the bucket start date is what the reset key is built from`() {
         val wednesday = LocalDate.of(2026, 9, 2)

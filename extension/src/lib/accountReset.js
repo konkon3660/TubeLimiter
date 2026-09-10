@@ -145,7 +145,10 @@ export const ACCOUNT_DELETE_PRESERVED_KEYS = Object.freeze([
   'emergencyEndTime',
   'last_emergency_granted_at',
   'emergency_uses_today',
+  // 버킷 표식은 키와 주기가 한 쌍이다(lib/dateRollover.js) — 하나만 남기면 다음 판정이
+  // "주기가 바뀐 것"과 "날짜가 흘러간 것"을 구별하지 못해 그 자리에서 횟수가 리필된다.
   'last_emergency_date',
+  'last_emergency_frequency',
 
   // 오늘 어떤 알림을 이미 띄웠는지 · 예약 차단 창 진입 여부
   'alarm_state',

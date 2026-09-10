@@ -423,6 +423,13 @@
     "message": "Changes saved at $1 are waiting to sync.",
     "description": "$1: local time the offline edit was saved."
   },
+  "options_pending_rejected_notice": {
+    "message": "Some changes you saved offline were not applied because another device made the rules stricter: $1",
+    "description": "$1: comma-separated reasons (options_hardcore_violation_* labels)."
+  },
+  "options_pending_rejected_dismiss": {
+    "message": "Got it"
+  },
   "options_saved_offline": {
     "message": "Saved on this device — waiting to sync."
   },

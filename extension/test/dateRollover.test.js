@@ -5,7 +5,8 @@ import {
   DEFAULT_EMERGENCY_USES,
   planDateRollover,
   emergencyResetDate,
-  planEmergencyReset
+  planEmergencyReset,
+  normalizeEmergencyFrequency
 } from '../src/lib/dateRollover.js';
 
 // android UsageMonitorService.settleFinishedDays / resetEmergencyAllowanceIfDue와
@@ -144,4 +145,140 @@ test('횟수 설정이 비어 있으면 기본값 3, 0은 0 그대로다', () =>
     ...RESET_DATES
   });
   assert.equal(zero.uses, 0);
+});
+
+// --- 주기 변경이 리필을 만들지 않는다 (QA_REVIEW §10.2) ---
+// 안드로이드 BlockDecision.kt의 planEmergencyReset과 **같은 규칙**이라, 여기 시나리오는
+// BlockDecisionTest.kt에도 같은 모양으로 박혀 있다. 한쪽만 고치면 두 기기가 다른 잔여를 보여준다.
+
+test('주기를 모르는 값이나 누락으로 두면 daily로 접힌다(표식 비교가 어긋나지 않게)', () => {
+  assert.equal(normalizeEmergencyFrequency(undefined), 'daily');
+  assert.equal(normalizeEmergencyFrequency('yearly'), 'daily');
+  assert.equal(normalizeEmergencyFrequency('weekly'), 'weekly');
+  assert.equal(normalizeEmergencyFrequency('monthly'), 'monthly');
+});
+
+test('재현: 오늘 다 쓴 뒤 daily→weekly로 바꿔도 리셋되지 않고 쓴 횟수를 이어받는다', () => {
+  // 하드코어 게이트는 "조이는 방향"이라 이 변경을 통과시킨다. 여기서 리셋이 돌면 하드코어를
+  // 켜둔 채로 무료 리필이 된다.
+  const plan = planEmergencyReset({
+    lastResetDate: '2026-09-03',
+    lastResetFrequency: 'daily',
+    frequency: 'weekly',
+    dailyUses: 3,
+    ...RESET_DATES
+  });
+  assert.equal(plan.action, 'carryOver');
+  assert.equal(plan.shouldReset, false);
+  // 표식만 새 버킷으로 옮긴다 — 남은 횟수는 호출부가 건드리지 않는다.
+  assert.equal(plan.resetDate, '2026-08-31');
+  assert.equal(plan.resetFrequency, 'weekly');
+});
+
+test('재현: weekly→monthly로 한 번 더 바꿔도 마찬가지다(두 번째 무료 리필도 막힌다)', () => {
+  const plan = planEmergencyReset({
+    lastResetDate: '2026-08-31',
+    lastResetFrequency: 'weekly',
+    frequency: 'monthly',
+    dailyUses: 3,
+    ...RESET_DATES
+  });
+  assert.equal(plan.action, 'carryOver');
+  assert.equal(plan.resetDate, '2026-09-01');
+  assert.equal(plan.resetFrequency, 'monthly');
+});
+
+test('느슨해지는 방향(monthly→daily)도 리필하지 않는다 — 주기 변경 자체가 리셋 사유가 아니다', () => {
+  const plan = planEmergencyReset({
+    lastResetDate: '2026-09-01',
+    lastResetFrequency: 'monthly',
+    frequency: 'daily',
+    dailyUses: 3,
+    ...RESET_DATES
+  });
+  assert.equal(plan.action, 'carryOver');
+  assert.equal(plan.resetDate, '2026-09-03');
+});
+
+test('주 시작일이 월 시작일보다 앞선 날에도 weekly→monthly가 리필로 새지 않는다', () => {
+  // 9/1(화)에는 monthStart(09-01) > weekStart(08-31)이라 "키가 뒤로만 간다"는 어림짐작이 깨진다.
+  // 저장된 주기로 다시 계산해 비교하기 때문에 여기서도 carryOver다.
+  const plan = planEmergencyReset({
+    lastResetDate: '2026-08-31',
+    lastResetFrequency: 'weekly',
+    frequency: 'monthly',
+    dailyUses: 3,
+    today: '2026-09-01',
+    weekStart: '2026-08-31',
+    monthStart: '2026-09-01'
+  });
+  assert.equal(plan.action, 'carryOver');
+  assert.equal(plan.resetDate, '2026-09-01');
+});
+
+test('주기를 바꾼 뒤 실제로 새 버킷이 시작되면 그때는 정상적으로 리셋된다', () => {
+  // 위 시나리오에서 weekly로 바꿔 표식이 2026-08-31/weekly가 된 상태. 다음 주 월요일이 오면
+  // 저장된 주기(weekly)로 계산한 오늘의 키가 달라지므로 리셋이다.
+  const plan = planEmergencyReset({
+    lastResetDate: '2026-08-31',
+    lastResetFrequency: 'weekly',
+    frequency: 'weekly',
+    dailyUses: 3,
+    today: '2026-09-07',
+    weekStart: '2026-09-07',
+    monthStart: '2026-09-01'
+  });
+  assert.equal(plan.action, 'reset');
+  assert.equal(plan.shouldReset, true);
+  assert.equal(plan.resetDate, '2026-09-07');
+  assert.equal(plan.uses, 3);
+});
+
+test('날짜가 흐른 뒤 주기까지 바꾸면 리셋이고, 키는 새 주기 기준이다', () => {
+  // 어제 마지막으로 리셋된 daily 버킷은 오늘 이미 끝났다 — 주기를 같이 바꿨다고 해서
+  // 정당한 리셋까지 막지는 않는다.
+  const plan = planEmergencyReset({
+    lastResetDate: '2026-09-02',
+    lastResetFrequency: 'daily',
+    frequency: 'weekly',
+    dailyUses: 3,
+    ...RESET_DATES
+  });
+  assert.equal(plan.action, 'reset');
+  assert.equal(plan.resetDate, '2026-08-31');
+  assert.equal(plan.resetFrequency, 'weekly');
+});
+
+test('표식이 없던 저장소는 예전과 똑같이 판정하되 표식을 남긴다', () => {
+  // 이 규칙 이전 버전에서 올라온 저장소. 같은 버킷이면 횟수는 그대로 두고 주기만 적어둔다.
+  const stamping = planEmergencyReset({
+    lastResetDate: '2026-09-03',
+    lastResetFrequency: undefined,
+    frequency: 'daily',
+    dailyUses: 3,
+    ...RESET_DATES
+  });
+  assert.equal(stamping.action, 'carryOver');
+  assert.equal(stamping.resetFrequency, 'daily');
+
+  const rolled = planEmergencyReset({
+    lastResetDate: '2026-09-02',
+    lastResetFrequency: undefined,
+    frequency: 'daily',
+    dailyUses: 3,
+    ...RESET_DATES
+  });
+  assert.equal(rolled.action, 'reset');
+});
+
+test('버킷도 주기도 그대로면 저장소를 건드리지 않는다', () => {
+  const plan = planEmergencyReset({
+    lastResetDate: '2026-08-31',
+    lastResetFrequency: 'weekly',
+    frequency: 'weekly',
+    dailyUses: 3,
+    ...RESET_DATES
+  });
+  assert.equal(plan.action, 'none');
+  assert.equal(plan.shouldReset, false);
 });

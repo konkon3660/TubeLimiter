@@ -112,9 +112,12 @@ export function findHardcoreViolations(previous, next) {
   if (Number.isFinite(prevUses) && Number.isFinite(nextUses) && nextUses > prevUses) {
     add('emergency_config', HARDCORE_VIOLATION.emergencyUses);
   }
-  const RESET_STRICTNESS = { monthly: 0, weekly: 1, daily: 2 };
-  const prevReset = RESET_STRICTNESS[prev.emergency_config?.resetFrequency];
-  const nextReset = RESET_STRICTNESS[draft.emergency_config?.resetFrequency];
+  // 값이 클수록 **느슨하다**(daily = 매일 3회 = 월 90회 > monthly = 월 3회). 이름을
+  // strictness로 적으면 다음에 읽는 사람이 부호를 뒤집기 쉬워서 looseness로 못 박는다
+  // (QA_REVIEW §10.5). 안드로이드 짝은 HardcoreLock.kt의 emergencyResetLooseness.
+  const RESET_LOOSENESS = { monthly: 0, weekly: 1, daily: 2 };
+  const prevReset = RESET_LOOSENESS[prev.emergency_config?.resetFrequency];
+  const nextReset = RESET_LOOSENESS[draft.emergency_config?.resetFrequency];
   if (prevReset != null && nextReset != null && nextReset > prevReset) {
     add('emergency_config', HARDCORE_VIOLATION.emergencyUses);
   }

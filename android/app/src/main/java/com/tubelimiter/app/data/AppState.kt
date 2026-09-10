@@ -15,6 +15,7 @@ import com.tubelimiter.app.diagnostics.decodeDiagnosticEvents
 import com.tubelimiter.app.diagnostics.encodeDiagnosticEvents
 import com.tubelimiter.app.gamification.StreakRecord
 import com.tubelimiter.app.limit.AlarmState
+import com.tubelimiter.app.limit.EmergencyResetFrequency
 import com.tubelimiter.app.limit.LimitHistoryEntry
 import com.tubelimiter.app.limit.planLimitHistoryUpdate
 import com.tubelimiter.app.permission.AppPermission
@@ -63,6 +64,12 @@ private val KEY_FOCUS_STOP_REQUESTED_AT = longPreferencesKey("focus_stop_request
 private val KEY_EMERGENCY_END = longPreferencesKey("emergency_end")
 private val KEY_EMERGENCY_REMAINING = intPreferencesKey("emergency_remaining")
 private val KEY_EMERGENCY_RESET_KEY = stringPreferencesKey("emergency_reset_key")
+
+/** [KEY_EMERGENCY_RESET_KEY]를 만들 때 적용됐던 리셋 주기. 키와 **한 쌍으로** 저장해야
+ * "날짜가 흘러 버킷이 끝난 것"과 "주기가 바뀌어 키만 달라진 것"을 구별할 수 있다 — 안 그러면
+ * 주기를 바꾸는 것만으로 그 자리에서 횟수가 리필된다
+ * ([com.tubelimiter.app.limit.planEmergencyReset], QA_REVIEW §10.2). */
+private val KEY_EMERGENCY_RESET_FREQUENCY = stringPreferencesKey("emergency_reset_bucket_frequency")
 private val KEY_LAST_EMERGENCY_GRANTED_AT = longPreferencesKey("last_emergency_granted_at")
 
 /** 이번 버킷에서 **다른 기기가** 쓴 긴급 시청 횟수와, 그 값이 속한 버킷 키. 버킷 키를 같이
@@ -92,6 +99,11 @@ private val KEY_LAST_SYNC_SUCCESS_AT = longPreferencesKey("last_sync_success_at"
 /** 아직 서버에 못 올린 설정 편집분. 포맷은
  * [com.tubelimiter.app.sync.encodePendingSettings] 참고. */
 private val KEY_PENDING_SETTINGS = stringPreferencesKey("pending_settings_sync")
+
+/** 대기분 중 **서버 기준 재검증에서 거부돼 버려진** 컬럼. 조용히 버리면 사용자는 저장된 줄
+ * 알기 때문에, 설정 화면이 사유를 띄우고 사용자가 닫을 때까지 남는다
+ * ([com.tubelimiter.app.sync.planPendingSettingsPush], QA_REVIEW §10.4). */
+private val KEY_PENDING_SETTINGS_REJECTED = stringPreferencesKey("pending_settings_rejected")
 
 /** 감시 서비스가 마지막으로 한 바퀴 돈 시각과, 그때 빠져 있던 권한
  * ([com.tubelimiter.app.diagnostics.monitorWarning]가 판정한다). */
@@ -163,6 +175,7 @@ internal val ACCOUNT_DATA_KEYS: List<Preferences.Key<*>> = listOf(
     // B의 계정으로 올라가면 안 된다([com.tubelimiter.app.sync.readPendingFor]가 user_id로 한 번
     // 더 거르긴 하지만, 그건 보험이지 보관 이유가 아니다).
     KEY_PENDING_SETTINGS,
+    KEY_PENDING_SETTINGS_REJECTED,
 
     // 주인 표식. 계정 삭제에서는 값 자체가 사라진 계정의 user_id라 남겨둘 이유가 없고,
     // 계정 전환에서는 곧바로 새 주인으로 덮어쓴다.
@@ -193,6 +206,7 @@ internal val ACCOUNT_PRESERVED_STATE_KEYS: List<Preferences.Key<*>> = listOf(
     KEY_EMERGENCY_END,
     KEY_EMERGENCY_REMAINING,
     KEY_EMERGENCY_RESET_KEY,
+    KEY_EMERGENCY_RESET_FREQUENCY,
     KEY_LAST_EMERGENCY_GRANTED_AT,
 
     // 오늘 어떤 알림을 이미 띄웠는지 · 예약 차단 창 진입 여부
@@ -232,6 +246,8 @@ data class RuntimeState(
     val emergencyEndMillis: Long? = null,
     val emergencyRemaining: Int? = null,
     val emergencyResetKey: String? = null,
+    /** [emergencyResetKey]를 만든 주기. null이면 이 표식이 생기기 전 저장소다. */
+    val emergencyResetFrequency: EmergencyResetFrequency? = null,
     /** When the last emergency pass was granted, for the extra 15s anti-mash cooldown. */
     val lastEmergencyGrantedAtMillis: Long? = null,
     /** 다른 기기가 이번 버킷에 쓴 긴급 시청 횟수 (마지막 동기화 성공 시점 기준)와 그 버킷 키. */
@@ -267,6 +283,8 @@ data class RuntimeState(
     val accountOwnerUserId: String? = null,
     /** 아직 서버에 못 올린 설정 편집분. 없으면 null. */
     val pendingSettings: PendingSettings? = null,
+    /** 재검증에서 거부돼 버려진 대기분 컬럼. 비어 있으면 화면에 아무것도 안 뜬다. */
+    val pendingSettingsRejected: Set<String> = emptySet(),
 ) {
     fun focusActiveAt(nowMillis: Long): Boolean =
         focusEndMillis != null && nowMillis < focusEndMillis
@@ -330,6 +348,9 @@ class AppState(private val context: Context) {
         emergencyEndMillis = this[KEY_EMERGENCY_END],
         emergencyRemaining = this[KEY_EMERGENCY_REMAINING],
         emergencyResetKey = this[KEY_EMERGENCY_RESET_KEY],
+        emergencyResetFrequency = this[KEY_EMERGENCY_RESET_FREQUENCY]?.let { name ->
+            EmergencyResetFrequency.entries.firstOrNull { it.name == name }
+        },
         lastEmergencyGrantedAtMillis = this[KEY_LAST_EMERGENCY_GRANTED_AT],
         emergencyUsesOtherDevices = this[KEY_EMERGENCY_USES_OTHER_DEVICES] ?: 0,
         emergencyUsesOtherDevicesKey = this[KEY_EMERGENCY_USES_OTHER_DEVICES_KEY],
@@ -350,6 +371,7 @@ class AppState(private val context: Context) {
             .let { names -> AppPermission.entries.filter { it.name in names } },
         accountOwnerUserId = this[KEY_ACCOUNT_OWNER],
         pendingSettings = decodePendingSettings(this[KEY_PENDING_SETTINGS]),
+        pendingSettingsRejected = decodeStringSet(this[KEY_PENDING_SETTINGS_REJECTED]),
     )
 
     suspend fun recordUsage(dateKey: String, usedMillis: Long, keepKeys: Set<String>) = edit { prefs ->
@@ -524,9 +546,28 @@ class AppState(private val context: Context) {
 
     suspend fun clearEmergency() = edit { it.remove(KEY_EMERGENCY_END) }
 
-    suspend fun resetEmergencyAllowance(resetKey: String, allowance: Int) = edit { prefs ->
+    /** 새 버킷이 시작돼 허용 횟수를 다시 채운다. 표식은 키와 주기가 **한 쌍**이다. */
+    suspend fun resetEmergencyAllowance(
+        resetKey: String,
+        frequency: EmergencyResetFrequency,
+        allowance: Int,
+    ) = edit { prefs ->
         prefs[KEY_EMERGENCY_RESET_KEY] = resetKey
+        prefs[KEY_EMERGENCY_RESET_FREQUENCY] = frequency.name
         prefs[KEY_EMERGENCY_REMAINING] = allowance
+    }
+
+    /**
+     * 리셋 주기가 바뀌어 버킷 키만 달라졌을 때. **남은 횟수는 건드리지 않는다** — 이미 쓴
+     * 횟수를 새 버킷이 그대로 이어받아야 "주기를 조이는 것만으로 무료 리필"이 막힌다
+     * ([com.tubelimiter.app.limit.EmergencyResetAction.CARRY_OVER], QA_REVIEW §10.2).
+     */
+    suspend fun adoptEmergencyBucket(
+        resetKey: String,
+        frequency: EmergencyResetFrequency,
+    ) = edit { prefs ->
+        prefs[KEY_EMERGENCY_RESET_KEY] = resetKey
+        prefs[KEY_EMERGENCY_RESET_FREQUENCY] = frequency.name
     }
 
     /** Records that [dateKey]'s usage was reported up to [syncedMillis], and the server's combined total. */
@@ -615,6 +656,19 @@ class AppState(private val context: Context) {
     suspend fun savePendingSettings(pending: PendingSettings?) = edit { prefs ->
         val encoded = encodePendingSettings(pending)
         if (encoded == null) prefs.remove(KEY_PENDING_SETTINGS) else prefs[KEY_PENDING_SETTINGS] = encoded
+    }
+
+    /**
+     * 재검증에서 버려진 대기분 컬럼을 남긴다(빈 집합이면 지운다 = 사용자가 확인했다).
+     * 쌓지 않고 덮어쓴다 — 중요한 건 "지금 무엇이 반영되지 않았나"이고, 목록이 길어질수록
+     * 화면에서 읽히지 않는다.
+     */
+    suspend fun savePendingSettingsRejected(columns: Set<String>) = edit { prefs ->
+        if (columns.isEmpty()) {
+            prefs.remove(KEY_PENDING_SETTINGS_REJECTED)
+        } else {
+            prefs[KEY_PENDING_SETTINGS_REJECTED] = encodeStringSet(columns)
+        }
     }
 
     /**

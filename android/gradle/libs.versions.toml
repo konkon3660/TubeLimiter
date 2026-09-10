@@ -10,6 +10,12 @@ supabase = "3.8.0"
 ktor = "3.5.2"
 junit = "4.13.2"
 coroutinesTest = "1.11.0"
+# Instrumentation (androidTest). Latest stable on Google Maven as of 2026-09-10, checked
+# against dl.google.com/dl/android/maven2/<group>/<artifact>/maven-metadata.xml.
+# androidx.test.ext:junit does NOT pull in androidx.test:runner, and the runner is what
+# `testInstrumentationRunner` names, so it is declared separately.
+androidxTestJunit = "1.3.0"
+androidxTestRunner = "1.7.0"
 ktlint = "14.2.0"
 
 [libraries]
@@ -30,6 +36,8 @@ supabase-functions = { group = "io.github.jan-tennert.supabase", name = "functio
 ktor-client-okhttp = { group = "io.ktor", name = "ktor-client-okhttp", version.ref = "ktor" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutinesTest" }
+androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestJunit" }
+androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidxTestRunner" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

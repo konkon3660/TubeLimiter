@@ -556,8 +556,17 @@ fun AppRoot() {
                 onHardcoreDisableCancel = { editSettings { it.copy(hardcoreDisableRequestedAt = null) } },
                 scheduleWindows = settings.scheduleWindows,
                 onScheduleWindowsChange = { windows -> editSettings { it.copy(scheduleWindows = windows) } },
-                hardcoreViolations = hardcoreRejection,
-                onDismissHardcoreViolations = { hardcoreRejection = emptyList() },
+                // 방금 이 화면에서 막힌 것과, 오프라인 대기분이 서버 기준 재검증에서 막혀 버려진
+                // 것을 한 카드에 같이 띄운다. 후자는 사용자가 그 자리에 없을 때(백그라운드 동기화)
+                // 일어나므로 저장해뒀다가 보여주지 않으면 "저장한 값이 조용히 사라진" 것이 된다
+                // (QA_REVIEW §10.4).
+                hardcoreViolations = hardcoreRejection + state.pendingSettingsRejected.mapNotNull {
+                    runCatching { HardcoreViolation.valueOf(it) }.getOrNull()
+                },
+                onDismissHardcoreViolations = {
+                    hardcoreRejection = emptyList()
+                    scope.launch { stateStore.savePendingSettingsRejected(emptySet()) }
+                },
                 lastSyncSuccessAtMillis = state.lastSyncSuccessAtMillis,
                 diagnosticEvents = state.diagnosticEvents,
                 onClearDiagnostics = { scope.launch { stateStore.clearDiagnostics() } },

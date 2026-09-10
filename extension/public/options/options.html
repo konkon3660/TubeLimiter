@@ -496,6 +496,15 @@
       >
         <p id="offlineNoticeText" class="input-hint" data-i18n="options_offline_notice"></p>
         <p id="pendingSyncText" class="input-hint" style="display: none"></p>
+        <!-- 대기분이 서버 기준 재검증에서 거부돼 버려진 경우(QA_REVIEW §10.4). 조용히 버리면
+             사용자는 저장된 줄 알기 때문에, 확인 버튼을 누를 때까지 남는다. -->
+        <p id="pendingRejectedText" class="input-hint" style="display: none"></p>
+        <button
+          id="pendingRejectedDismiss"
+          class="btn-secondary"
+          style="display: none"
+          data-i18n="options_pending_rejected_dismiss"
+        ></button>
       </div>
 
       <div class="control-section">

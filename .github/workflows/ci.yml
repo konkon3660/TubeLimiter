@@ -48,7 +48,7 @@ jobs:
         run: npm test
 
   android:
-    name: Android (ktlint + unit tests + release build)
+    name: Android (ktlint + unit tests + release build + emulator)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -108,10 +108,73 @@ jobs:
       - name: Build release APK (R8 + resource shrinking)
         run: ./gradlew assembleRelease --no-daemon
 
+      # x86_64 emulator images need KVM, and the runner user cannot open /dev/kvm without
+      # this. Without it the emulator silently falls back to a software CPU and times out
+      # while booting. Verbatim from the emulator action's README for ubuntu-latest.
+      - name: Enable KVM group perms
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # The project's first instrumented test (android/app/src/androidTest). It sits AFTER the
+      # three gates above because booting an emulator and running a connected test costs
+      # minutes, and a style / unit-test / R8 failure should be reported without paying that.
+      #
+      # `uses:` steps ignore defaults.run.working-directory, hence the action's own
+      # working-directory input.
+      #
+      # api-level 34: inside the app's minSdk 26 .. targetSdk 36 range, and
+      # `system-images;android-34;default;x86_64` is present in Google's stable system-image
+      # repository (sys-img2-3.xml lists default;x86_64 for API 21-36). `default` is the plain
+      # AOSP image - no Play services, so it boots faster, and this suite touches DataStore,
+      # not Google APIs. Bumping it towards 36 is a one-line change once the step is proven.
+      #
+      # continue-on-error: THIS STEP HAS NEVER RUN ON CI. Emulator jobs fail for reasons that
+      # have nothing to do with the code under test (system-image download, boot timeout, adb
+      # flake, or sdkmanager running under the JDK 25 installed above). Letting that turn the
+      # whole Android job red would destroy the signal of the three gates that are proven, so
+      # the result is reported without blocking. Drop this flag once a few runs have been
+      # green - a permanently non-blocking test is not a gate.
+      - name: Run instrumented tests on an emulator (non-blocking, see comment)
+        id: instrumented
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: default
+          arch: x86_64
+          ram-size: 4096M
+          disable-animations: true
+          working-directory: android
+          # Defaults plus "no camera": the virtual camera is the slowest part of boot and
+          # nothing here uses it.
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
+          # The zero-test guard is not paranoia: AGP happily reports BUILD SUCCESSFUL having
+          # discovered no tests at all when the androidTest tasks are already up to date
+          # (reproduced locally on AGP 9.4 / Gradle 9.7). That would make this gate silently
+          # vacuous, which is worse than not having it.
+          script: |
+            ./gradlew connectedDebugAndroidTest --no-daemon
+            results=app/build/outputs/androidTest-results/connected/debug
+            if ! grep -q 'tests="[1-9]' $results/*.xml; then
+              echo "::error::connectedDebugAndroidTest passed without running any test"
+              exit 1
+            fi
+
+      # continue-on-error keeps the step (and the job) green either way, so print the real
+      # outcome where a reader will see it.
+      - name: Report instrumented test outcome
+        if: always()
+        run: echo "Instrumented tests (non-blocking) -> ${{ steps.instrumented.outcome }}"
+
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: android-test-reports
-          path: android/app/build/reports/tests/testDebugUnitTest
+          path: |
+            android/app/build/reports/tests/testDebugUnitTest
+            android/app/build/reports/androidTests/connected
+            android/app/build/outputs/androidTest-results/connected
           if-no-files-found: ignore

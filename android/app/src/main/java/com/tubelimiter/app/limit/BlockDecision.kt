@@ -100,6 +100,85 @@ fun emergencyBucketStartDate(frequency: EmergencyResetFrequency, date: LocalDate
 fun emergencyResetKey(frequency: EmergencyResetFrequency, date: LocalDate): String =
     emergencyBucketStartDate(frequency, date).toString()
 
+/**
+ * [planEmergencyReset]의 결론.
+ *
+ * - [RESET]: 시간이 흘러 버킷이 끝났다. 허용 횟수를 다시 채운다.
+ * - [CARRY_OVER]: 아직 같은 버킷인데 **주기만 바뀌었다.** 이미 쓴 횟수를 새 버킷이 이어받도록
+ *   버킷 표식만 옮기고 남은 횟수는 건드리지 않는다.
+ * - [NONE]: 표식도 남은 횟수도 그대로. 저장소를 쓸 필요가 없다.
+ */
+enum class EmergencyResetAction { RESET, CARRY_OVER, NONE }
+
+/** [planEmergencyReset]이 돌려주는 새 버킷 표식과 채울 횟수. */
+data class EmergencyResetPlan(
+    val action: EmergencyResetAction,
+    /** 새 버킷 키(= 버킷 시작일). [EmergencyResetAction.NONE]이면 지금 값과 같다. */
+    val resetKey: String,
+    /** 그 키를 만든 주기. 키와 **한 쌍으로** 저장해야 다음 판정이 구별을 할 수 있다. */
+    val frequency: EmergencyResetFrequency,
+    /** [EmergencyResetAction.RESET]일 때 채울 허용 횟수. */
+    val allowance: Int,
+)
+
+/**
+ * 긴급 시청 허용 횟수를 지금 리셋해야 하는지 판정한다. 확장
+ * `extension/src/lib/dateRollover.js`의 `planEmergencyReset`과 **같은 규칙**이고, 두 쪽이
+ * 갈라지면 같은 계정의 두 기기가 서로 다른 잔여를 보여준다
+ * (documents/BACKEND.md "긴급 시청 횟수 버킷 합산 규칙").
+ *
+ * ## 왜 "키가 달라졌다"만으로는 안 되는가 (QA_REVIEW §10.2)
+ *
+ * 버킷 키는 주기에 따라 오늘/주 시작일/월 시작일이라 **주기를 바꾸는 것만으로도** 키가
+ * 달라진다. 예전 규칙(저장된 키 != 지금 키면 리셋)에서는 하드코어를 켠 채 daily→weekly→
+ * monthly로 "조이기만" 해도 그 자리에서 횟수가 두 번 리필됐다 — 하드코어 게이트는 조이는
+ * 방향을 통과시키므로([findHardcoreViolations]) 잠금 안에서 뚫리는 구멍이었다.
+ *
+ * 그래서 **"시간이 흘러 새 버킷이 시작된 것"과 "주기가 바뀐 것"을 구별한다.** 구별 수단은
+ * 마지막으로 적용된 주기를 키와 함께 저장해두는 것이다([lastFrequency], DataStore의
+ * `emergency_reset_bucket_frequency`):
+ *
+ *   - **그때 주기로 다시 계산한 오늘의 키**가 저장된 키와 다르다 → 날짜가 흘러 버킷이 끝났다
+ *     → [EmergencyResetAction.RESET].
+ *   - 같다 → 아직 같은 버킷 안이다. 키가 달라진 이유는 주기 변경뿐이므로
+ *     [EmergencyResetAction.CARRY_OVER].
+ *
+ * 그 결과 주기 변경은 어느 방향이든 리필하지 않고, 주기를 바꾼 뒤 **실제로** 새 버킷이
+ * 시작되면 그때 정상적으로 리셋된다.
+ *
+ * 서버 합산 구간은 여전히 [emergencyBucketStartDate] 하나로 정해진다 — carryOver로 키가 주
+ * 시작일까지 넓어지면 합산 구간([emergencyBucketDateKeys])도 같이 넓어지고, 그 구간에서 이
+ * 기기가 이미 보고한 몫은 같은 구간으로 빼지므로 이중 차감이 생기지 않는다.
+ *
+ * @param lastKey 저장돼 있던 버킷 키. 없으면(설치 직후) 리셋으로 깔아준다.
+ * @param lastFrequency 그 키를 만들 때 적용됐던 주기. 이 값이 생기기 전 저장소에는 없다(null) —
+ *   그때는 "지금 주기와 같았다"고 보고 예전과 똑같이 판정하되, 다음 판정부터 구별이 되도록
+ *   표식만 남긴다([EmergencyResetAction.CARRY_OVER]).
+ */
+fun planEmergencyReset(
+    lastKey: String?,
+    lastFrequency: EmergencyResetFrequency?,
+    frequency: EmergencyResetFrequency,
+    allowance: Int,
+    date: LocalDate,
+): EmergencyResetPlan {
+    val resetKey = emergencyResetKey(frequency, date)
+    fun plan(action: EmergencyResetAction) = EmergencyResetPlan(action, resetKey, frequency, allowance)
+
+    // 기록이 아예 없다(설치 직후·계정 삭제 후) = 깔아줄 첫 버킷이다.
+    if (lastKey == null) return plan(EmergencyResetAction.RESET)
+
+    // 저장된 키를 **그때 주기로** 다시 계산해 오늘과 맞춰본다. 다르면 날짜가 흘러간 것이다.
+    if (lastKey != emergencyResetKey(lastFrequency ?: frequency, date)) {
+        return plan(EmergencyResetAction.RESET)
+    }
+
+    // 여기부터는 "아직 같은 버킷 안". 키·주기가 달라졌으면 표식만 새 버킷으로 옮긴다.
+    // 표식이 아예 없던 저장소(lastFrequency == null)도 이 길로 한 번 들어와 표식을 남긴다.
+    if (lastKey != resetKey || lastFrequency != frequency) return plan(EmergencyResetAction.CARRY_OVER)
+    return plan(EmergencyResetAction.NONE)
+}
+
 /** 버킷 시작일부터 [date]까지의 날짜 키. 서버에서 긁어온 행을 이 목록으로 합산한다. */
 fun emergencyBucketDateKeys(frequency: EmergencyResetFrequency, date: LocalDate): List<String> {
     val start = emergencyBucketStartDate(frequency, date)

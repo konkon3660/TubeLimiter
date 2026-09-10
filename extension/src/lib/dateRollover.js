@@ -67,29 +67,85 @@ export function emergencyResetDate(frequency, { today, weekStart, monthStart }) 
 export const DEFAULT_EMERGENCY_USES = 3;
 
 /**
+ * 저장·비교에 쓸 주기 값. 모르는 값과 누락은 emergencyResetDate와 같게 daily로 접는다 —
+ * 여기서 접지 않으면 `undefined`와 `'daily'`가 "주기가 바뀌었다"로 읽힌다.
+ */
+export function normalizeEmergencyFrequency(frequency) {
+  return frequency === 'weekly' || frequency === 'monthly' ? frequency : 'daily';
+}
+
+/**
  * 긴급 시청 횟수를 지금 리셋해야 하는지 판정한다.
+ *
+ * ## 왜 "키가 달라졌다"만으로는 안 되는가 (QA_REVIEW §10.2)
+ *
+ * 버킷 키는 주기에 따라 오늘/주 시작일/월 시작일이라, **주기를 바꾸는 것만으로도** 키가
+ * 달라진다. 예전 규칙(`lastResetDate !== resetDate`면 리셋)에서는 하드코어를 켠 채 daily→weekly
+ * →monthly로 "조이기만" 해도 그 자리에서 횟수가 두 번 리필됐다 — 하드코어 게이트는 조이는
+ * 방향을 통과시키므로 잠금 안에서 뚫리는 구멍이었다.
+ *
+ * 그래서 **"시간이 흘러 새 버킷이 시작된 것"과 "주기가 바뀐 것"을 구별한다.** 구별 수단은
+ * 마지막으로 적용된 주기를 같이 저장해두는 것이다(`last_emergency_date` 옆의
+ * `last_emergency_frequency`, 안드로이드는 `emergency_reset_bucket_frequency`):
+ *
+ *   - **그때 주기로 다시 계산한 오늘의 키**가 저장된 키와 다르다 → 날짜가 흘러 버킷이 끝났다 →
+ *     리셋(reset).
+ *   - 같다 → 아직 같은 버킷 안이다. 키가 달라진 이유는 주기 변경뿐이므로 **이미 쓴 횟수를 새
+ *     버킷이 이어받는다**(carryOver: 키와 주기만 새 값으로 갱신, 남은 횟수는 그대로).
+ *
+ * 결과적으로 주기 변경은 어느 방향이든 리필하지 않고, 주기를 바꾼 뒤 **실제로** 새 버킷이
+ * 시작되면 그때 정상적으로 리셋된다. 두 클라이언트가 같은 규칙이어야 하며(안드로이드
+ * `planEmergencyReset` in limit/BlockDecision.kt), 어긋나면 두 기기가 다른 잔여를 보여준다.
+ *
+ * 서버 합산 구간은 여전히 `emergencyResetDate` 하나로 정해진다 — carryOver로 키가 주 시작일로
+ * 넓어지면 합산 구간도 같이 넓어지고, 그 구간에서 내가 이미 보고한 몫은
+ * `reportedEmergencyUsesInBucket`이 같은 구간으로 빼주므로 이중 차감이 생기지 않는다.
  *
  * @param {object} inputs
  * @param {string|null|undefined} inputs.lastResetDate 저장돼 있던 last_emergency_date
+ * @param {string|null|undefined} inputs.lastResetFrequency 그 키를 만들 때 적용됐던 주기.
+ *   이 값이 생기기 전 저장소에는 없다(null) — 그때는 "지금 주기와 같았다"고 보고 예전과 똑같이
+ *   판정하되, 다음 판정부터 구별이 되도록 표식만 남긴다(carryOver).
  * @param {string|undefined} inputs.frequency emergency_config.resetFrequency
  * @param {number|null|undefined} inputs.dailyUses emergency_config.dailyUses
  * @param {string} inputs.today
  * @param {string} inputs.weekStart
  * @param {string} inputs.monthStart
- * @returns {{shouldReset: boolean, resetDate: string, uses: number}}
+ * @returns {{action: 'reset'|'carryOver'|'none', shouldReset: boolean, resetDate: string,
+ *   resetFrequency: string, uses: number}} action이 'none'이면 저장소를 건드릴 필요가 없다.
  */
 export function planEmergencyReset({
   lastResetDate,
+  lastResetFrequency,
   frequency,
   dailyUses,
   today,
   weekStart,
   monthStart
 }) {
-  const resetDate = emergencyResetDate(frequency, { today, weekStart, monthStart });
-  return {
-    shouldReset: lastResetDate !== resetDate,
+  const dates = { today, weekStart, monthStart };
+  const resetFrequency = normalizeEmergencyFrequency(frequency);
+  const resetDate = emergencyResetDate(resetFrequency, dates);
+  const uses = dailyUses ?? DEFAULT_EMERGENCY_USES;
+  const plan = (action) => ({
+    action,
+    shouldReset: action === 'reset',
     resetDate,
-    uses: dailyUses ?? DEFAULT_EMERGENCY_USES
-  };
+    resetFrequency,
+    uses
+  });
+
+  // 기록이 아예 없다(설치 직후·계정 삭제 후) = 깔아줄 첫 버킷이다.
+  if (!lastResetDate) return plan('reset');
+
+  // 저장된 키를 **그때 주기로** 다시 계산해 오늘과 맞춰본다. 다르면 날짜가 흘러간 것이다.
+  const previousFrequency = normalizeEmergencyFrequency(lastResetFrequency ?? resetFrequency);
+  if (lastResetDate !== emergencyResetDate(previousFrequency, dates)) return plan('reset');
+
+  // 여기부터는 "아직 같은 버킷 안". 키·주기가 달라졌으면 표식만 새 버킷으로 옮긴다.
+  // 표식이 아예 없던 저장소(lastResetFrequency == null)도 이 길로 한 번 들어와 표식을 남긴다.
+  if (lastResetDate !== resetDate || lastResetFrequency !== resetFrequency) {
+    return plan('carryOver');
+  }
+  return plan('none');
 }

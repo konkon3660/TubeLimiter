@@ -3,9 +3,11 @@ import { supabase } from '../lib/supabaseClient.js';
 import { HARDCORE_DISABLE_COOLDOWN_MS } from '../lib/hardcore.js';
 import {
   ACCESS_STATE,
+  PENDING_REJECTED_KEY,
   PENDING_SETTINGS_KEY,
   applyPendingSettings,
   isOfflineFailure,
+  planPendingSettingsPush,
   planSettingsSave,
   readPendingFor,
   resolveAccessState,
@@ -49,6 +51,8 @@ const accountDeletedView = document.getElementById('accountDeletedView');
 let accessState = ACCESS_STATE.signedOut;
 let currentUserId = null;
 let pendingSync = null;
+/** 대기분 중 서버 기준 재검증에서 거부돼 버려진 항목(PENDING_REJECTED_KEY). 없으면 null. */
+let pendingRejected = null;
 
 /** 서버에 행이 없거나(가입 직후) 로컬 캐시조차 없을 때 폼을 채울 값. */
 const DEFAULT_FORM_SETTINGS = Object.freeze({
@@ -752,10 +756,20 @@ document.getElementById('deletedSignUpButton').addEventListener('click', () => {
 const offlineNotice = document.getElementById('offlineNotice');
 const offlineNoticeText = document.getElementById('offlineNoticeText');
 const pendingSyncText = document.getElementById('pendingSyncText');
+const pendingRejectedText = document.getElementById('pendingRejectedText');
+const pendingRejectedDismiss = document.getElementById('pendingRejectedDismiss');
+
+// 확인을 눌러야 사라진다. 자동으로 걷으면 화면을 안 보고 있던 사이에 지나가버려, 결국
+// "조용히 버린 것"과 같아진다.
+pendingRejectedDismiss.addEventListener('click', async () => {
+  pendingRejected = null;
+  await chrome.storage.local.remove(PENDING_REJECTED_KEY);
+  renderSyncState();
+});
 
 function renderSyncState() {
   const offline = accessState === ACCESS_STATE.offline;
-  offlineNotice.style.display = offline || pendingSync ? '' : 'none';
+  offlineNotice.style.display = offline || pendingSync || pendingRejected ? '' : 'none';
   offlineNoticeText.style.display = offline ? '' : 'none';
   pendingSyncText.style.display = pendingSync ? '' : 'none';
   if (pendingSync) {
@@ -763,12 +777,26 @@ function renderSyncState() {
       formatTimeLabel(pendingSync.updatedAtMillis)
     ]);
   }
+
+  // 대기분이 서버 기준 재검증에서 거부된 경우. 조용히 버리면 사용자는 저장된 줄 알기 때문에,
+  // 무엇이 왜 안 올라갔는지를 여기서 알린다(QA_REVIEW §10.4).
+  pendingRejectedText.style.display = pendingRejected ? '' : 'none';
+  pendingRejectedDismiss.style.display = pendingRejected ? '' : 'none';
+  if (pendingRejected) {
+    const reasons = (pendingRejected.messageKeys || []).map((key) => t(key)).join(', ');
+    pendingRejectedText.textContent = t('options_pending_rejected_notice', [reasons]);
+  }
 }
 
 // 백그라운드가 온라인 복귀 시 대기분을 올리면 이 키가 사라진다. 화면을 열어둔 채로 서버가
 // 살아나는 경우가 흔하므로("잠깐 끊겼다가 돌아옴"), 그때 표시를 지우고 저장 경로도 서버로 되돌린다.
 chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName !== 'local' || !changes[PENDING_SETTINGS_KEY]) return;
+  if (areaName !== 'local') return;
+  if (changes[PENDING_REJECTED_KEY]) {
+    pendingRejected = changes[PENDING_REJECTED_KEY].newValue ?? null;
+    renderSyncState();
+  }
+  if (!changes[PENDING_SETTINGS_KEY]) return;
   const next = readPendingFor(changes[PENDING_SETTINGS_KEY].newValue, currentUserId);
   if (pendingSync && !next && accessState === ACCESS_STATE.offline) {
     // 대기분을 올렸다는 건 서버에 닿았다는 뜻이다. 착각이었더라도 다음 저장이 실패하면
@@ -807,7 +835,9 @@ async function init() {
 
   await renderDiagnostics();
 
-  const { settingsCache } = await getStorage(['settingsCache']);
+  const stored = await getStorage(['settingsCache', PENDING_REJECTED_KEY]);
+  const settingsCache = stored.settingsCache;
+  pendingRejected = stored[PENDING_REJECTED_KEY] ?? null;
   pendingSync = readPendingFor(await readPendingSettings(), currentUserId);
 
   if (accessState === ACCESS_STATE.offline) {
@@ -840,9 +870,29 @@ async function init() {
   // 화면을 여는 순간 표시가 바로 걷히는 편이 낫다.
   const plan = resolveSettingsSyncPlan({ pending: pendingSync, cached: settingsCache });
   if (plan.action === 'push') {
-    const { error: pushError } = await supabase
-      .from('settings')
-      .upsert({ user_id: currentUserId, ...plan.patch, updated_at: new Date().toISOString() });
+    // 여기도 서비스워커의 flushPendingSettings와 같은 재검증을 태운다(QA_REVIEW §10.4).
+    // 이 경로만 빼두면 "옵션 화면을 먼저 여는 것"이 게이트를 건너뛰는 방법이 된다.
+    // 서버 행(row)은 위에서 이미 읽었으므로 왕복이 더 늘지는 않는다.
+    const push = planPendingSettingsPush({
+      pending: pendingSync,
+      remote: row,
+      cached: settingsCache
+    });
+    if (push.dropped.length > 0) {
+      pendingRejected = {
+        messageKeys: push.dropped.map((violation) => violation.messageKey),
+        atMillis: Date.now()
+      };
+      await setStorage({ [PENDING_REJECTED_KEY]: pendingRejected });
+    }
+    const { error: pushError } =
+      Object.keys(push.patch).length === 0
+        ? { error: null }
+        : await supabase.from('settings').upsert({
+            user_id: currentUserId,
+            ...push.patch,
+            updated_at: new Date().toISOString()
+          });
     if (!pushError) {
       // 오프라인에서 하드코어가 실제로 풀렸다면 스트릭 리셋도 같이 밀려 있다. 백그라운드
       // flushPendingSettings와 같은 처리 — 여기서 빼먹으면 옵션 화면을 먼저 여는 것이
@@ -855,10 +905,10 @@ async function init() {
       }
       await clearPendingSettings();
       pendingSync = null;
-      await setStorage({ settingsCache: plan.settings });
+      await setStorage({ settingsCache: push.settings });
       await notifyBackground();
     }
-    fillForm(plan.settings);
+    fillForm(push.settings);
   } else {
     fillForm(resolveSettingsCacheAfterPull(settingsCache || {}, row, DEFAULT_FORM_SETTINGS));
   }

@@ -123,8 +123,8 @@ fun findHardcoreViolations(previous: Settings, next: Settings): List<HardcoreVio
     // 긴급 시청: 허용 횟수를 늘리는 것과 리셋 주기를 짧게 만드는 것 둘 다 약화다
     // (monthly < weekly < daily 순으로 느슨하다 — 자주 리셋될수록 총 횟수가 많아진다).
     val emergencyWeaker = next.emergencyAllowance > previous.emergencyAllowance ||
-        emergencyResetStrictness(next.emergencyResetFrequency) >
-        emergencyResetStrictness(previous.emergencyResetFrequency)
+        emergencyResetLooseness(next.emergencyResetFrequency) >
+        emergencyResetLooseness(previous.emergencyResetFrequency)
     if (emergencyWeaker) violations += HardcoreViolation.EMERGENCY
 
     // 예약 차단: 삭제·비활성화·구간 축소가 전부 약화다. 추가와 확대는 허용한다.
@@ -140,11 +140,14 @@ fun findHardcoreViolations(previous: Settings, next: Settings): List<HardcoreVio
 }
 
 /**
- * 확장 `RESET_STRICTNESS`와 같은 순서. 확장은 모르는 값이 오면 비교를 건너뛰지만 여기서는
- * 열거형이라 그런 값 자체가 존재할 수 없다 — 원격 문자열은 이미
- * [com.tubelimiter.app.sync.RemoteSettings] 디코드에서 걸러진다.
+ * 확장 `RESET_LOOSENESS`와 같은 순서. 값이 클수록 **느슨하다**(daily가 가장 느슨하다 —
+ * 매일 3회면 월 90회다). strictness로 읽히는 이름을 쓰면 다음에 이 줄을 보는 사람이 부호를
+ * 뒤집기 쉬워서 looseness로 못 박는다(QA_REVIEW §10.5).
+ *
+ * 확장은 모르는 값이 오면 비교를 건너뛰지만 여기서는 열거형이라 그런 값 자체가 존재할 수
+ * 없다 — 원격 문자열은 이미 [com.tubelimiter.app.sync.RemoteSettings] 디코드에서 걸러진다.
  */
-private fun emergencyResetStrictness(frequency: EmergencyResetFrequency): Int = when (frequency) {
+private fun emergencyResetLooseness(frequency: EmergencyResetFrequency): Int = when (frequency) {
     EmergencyResetFrequency.MONTHLY -> 0
     EmergencyResetFrequency.WEEKLY -> 1
     EmergencyResetFrequency.DAILY -> 2
